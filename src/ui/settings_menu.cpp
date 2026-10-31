@@ -355,6 +355,7 @@ namespace ui
             close();
     }
     bool settingsMenuBlocksInput() { return g_open || g_releaseWait; }
+    bool settingsMenuWaitingForKey() { return g_open && !g_capturing.empty(); }
 
     void drawSettingsMenu()
     {

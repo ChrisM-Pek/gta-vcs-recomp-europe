@@ -288,7 +288,7 @@ namespace present
     }
 
     bool capture(const Picture &picture, int srcWidth, int srcHeight, float aspect, int width, int height, std::vector<uint8_t> &rgb,
-                 float frameAspect, bool withUi)
+                 float frameAspect)
     {
         if (width <= 0 || height <= 0)
             return false;
@@ -310,7 +310,7 @@ namespace present
         pass.name = "capture";
         g_device->beginPass(pass);
         drawPicture(picture, srcWidth, srcHeight, aspect, width, height, frameAspect);
-        if (ImDrawData *data = withUi ? ImGui::GetDrawData() : nullptr; data && data->Valid && data->DisplaySize.x > 0.0f && data->DisplaySize.y > 0.0f)
+        if (ImDrawData *data = ImGui::GetDrawData(); data && data->Valid && data->DisplaySize.x > 0.0f && data->DisplaySize.y > 0.0f)
         {
             ImDrawData scaled = *data; // the window's UI, stretched to the capture size
             scaled.FramebufferScale = ImVec2(width / data->DisplaySize.x, height / data->DisplaySize.y);

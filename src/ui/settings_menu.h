@@ -17,4 +17,5 @@ namespace ui
     void drawSettingsMenu();
     bool settingsMenuOpen();
     bool settingsMenuBlocksInput(); // open, or its keys still held after closing (main.cpp blocks the game's input)
+    bool settingsMenuWaitingForKey(); // a key setting waits for the key to bind (the screenshot key does nothing then)
 }

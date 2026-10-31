@@ -75,6 +75,7 @@ namespace ui
         bool g_releaseWait = false;
         bool g_chordWasDown = false;
         bool g_camChordWasDown = false; // Back + LB: the free camera
+        bool g_hideShotNotices = false; // this frame only: hideScreenshotNotices
         std::vector<Level> g_stack{{Main}};
         bool g_padWas[platform::GAMEPAD_BUTTON_COUNT] = {};
 
@@ -395,7 +396,10 @@ namespace ui
         void drawNotices(const ImGuiViewport *vp, float s)
         {
             const double now = tr::now();
-            const std::vector<tr::Notice> list = tr::notices(4.0);
+            std::vector<tr::Notice> list = tr::notices(4.0);
+            if (g_hideShotNotices)
+                std::erase_if(list, [](const tr::Notice &n) { return n.screenshot; });
+            g_hideShotNotices = false;
             ImDrawList *dl = ImGui::GetForegroundDrawList();
             const float size = 17.0f * s, pad = 8.0f * s;
             float y = vp->Pos.y + vp->Size.y - 90.0f * s;
@@ -512,6 +516,7 @@ namespace ui
 
     bool trainerMenuOpen() { return g_open; }
     bool trainerMenuBlocksInput() { return g_open || g_releaseWait; }
+    void hideScreenshotNotices() { g_hideShotNotices = true; }
 
     void drawTrainerMenu()
     {

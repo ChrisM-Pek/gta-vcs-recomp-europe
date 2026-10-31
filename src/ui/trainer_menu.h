@@ -12,4 +12,6 @@ namespace ui
     void drawTrainerMenu();
     bool trainerMenuOpen();
     bool trainerMenuBlocksInput(); // open, or its keys still held after closing
+    // Before drawTrainerMenu, on a frame the screenshot key captures: the notices of earlier shots stay out of it.
+    void hideScreenshotNotices();
 }

@@ -242,14 +242,16 @@ namespace
         std::fprintf(stderr, "[settings] Alt+Enter: %s\n", next ? "full screen" : "windowed");
     }
 
-    // Each host frame: the screenshot key (Keyboard > Menus, F8) saves this frame's picture - the game's alone, at the
-    // window's size - as screenshots/vcs_<date>_<time>.png next to vcs.exe (VCS_SCREENSHOT_DIR: another folder). Not
-    // while the settings menu is open (it may be waiting for a key to bind).
+    // Each host frame, before the menus draw: the screenshot key (Keyboard > Menus, F8) saves this frame's picture as
+    // shown - menus and overlays included, at the window's size - as screenshots/vcs_<date>_<time>.png next to vcs.exe
+    // (VCS_SCREENSHOT_DIR: another folder). The notices of earlier shots are left out of it; nothing while the settings
+    // menu waits for a key to bind.
     void screenshotKey()
     {
         const int key = settings::value("controls.screenshot_key");
-        if (ui::settingsMenuOpen() || !(platform::keyPressed(key) || ps2control::keyPressed(key)))
+        if (ui::settingsMenuWaitingForKey() || !(platform::keyPressed(key) || ps2control::keyPressed(key)))
             return;
+        ui::hideScreenshotNotices();
         const char *env = std::getenv("VCS_SCREENSHOT_DIR");
         const fs::path dir = env && *env ? fs::path(env) : exeDirectory() / "screenshots";
         std::error_code ec;
@@ -270,11 +272,11 @@ namespace
             if (size.empty())
             {
                 std::fprintf(stderr, "[screenshot] could not write %s\n", path.string().c_str());
-                vcs::trainer::notify("Screenshot failed: cannot write " + path.parent_path().string());
+                vcs::trainer::notifyScreenshot("Screenshot failed: cannot write " + path.parent_path().string());
                 return;
             }
             std::fprintf(stderr, "[screenshot] %s (%s)\n", path.string().c_str(), size.c_str());
-            vcs::trainer::notify("Screenshot saved: " + path.filename().string());
+            vcs::trainer::notifyScreenshot("Screenshot saved: " + path.filename().string());
         });
     }
 

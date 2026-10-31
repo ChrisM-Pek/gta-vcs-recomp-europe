@@ -1423,5 +1423,11 @@ namespace vcs::trainer
         return out;
     }
 
-    void notify(const std::string &text) { post(text); }
+    void notifyScreenshot(const std::string &text)
+    {
+        std::lock_guard<std::mutex> lock(g_noticesMutex);
+        g_notices.push_back({text, now(), true});
+        while (g_notices.size() > 8)
+            g_notices.pop_front();
+    }
 }

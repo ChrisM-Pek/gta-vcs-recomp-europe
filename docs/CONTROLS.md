@@ -117,9 +117,10 @@ while a menu is open.
 
 **F8** (Keyboard > Menus > Screenshot, rebindable) saves the game's picture as a PNG in a `screenshots` folder next to
 vcs.exe, named `vcs_<date>_<time>.png` (`_2`, `_3`... for several in one second); a notice names the file. The shot is
-the window's size and holds the game alone: no settings / trainer menu, no performance overlay or frame-rate counter,
-no notice from an earlier shot. It does nothing while the settings menu is open (it may be waiting for a key to bind).
-`VCS_SCREENSHOT_DIR=<dir>` saves them elsewhere (the test tools do). (src/main.cpp `screenshotKey`)
+the window's size and holds what is on screen: the settings or trainer menu, the F3 overlay, the frame-rate counter
+and the trainer's notices - except the notices of earlier shots, so shots in a row stay clean. It does nothing while
+the settings menu waits for a key to bind. `VCS_SCREENSHOT_DIR=<dir>` saves them elsewhere (the test tools do).
+(src/main.cpp `screenshotKey`)
 
 ## Window
 

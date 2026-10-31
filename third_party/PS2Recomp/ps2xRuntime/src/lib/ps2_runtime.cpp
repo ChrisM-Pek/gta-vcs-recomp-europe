@@ -3289,9 +3289,8 @@ void PS2Runtime::run()
         present::drawWindow(shownTex, srcWidth, srcHeight, aspect, windowWidth, windowHeight, frameAspect);
 
         // [gta-recomp] control channel (runtime/ps2_control.h): screenshots render the same picture off-screen, so
-        // they work with the window hidden or covered. withUi false: the player's screenshot key (the game's picture at
-        // the window's size, no menus or overlays)
-        auto capturePng = [&](const std::string &path, bool withUi) -> std::string
+        // they work with the window hidden or covered
+        auto capturePng = [&](const std::string &path) -> std::string
             {
                 int w = std::max(windowWidth, 960), h = std::max(windowHeight, 672); // readable when hidden
                 // PS2X_CAPTURE_SIZE=WxH: a fixed size whatever the window (comparable test screenshots)
@@ -3304,8 +3303,7 @@ void PS2Runtime::run()
                 if (fixedSize.first > 0 && fixedSize.second > 0)
                     w = fixedSize.first, h = fixedSize.second;
                 std::vector<uint8_t> rgb;
-                if (!present::capture(shownTex, srcWidth, srcHeight, aspect, w, h, rgb, frameAspect, withUi) ||
-                    !platform::writePng(path.c_str(), rgb.data(), w, h))
+                if (!present::capture(shownTex, srcWidth, srcHeight, aspect, w, h, rgb, frameAspect) || !platform::writePng(path.c_str(), rgb.data(), w, h))
                     return {};
                 return std::to_string(w) + "x" + std::to_string(h);
             };
@@ -3313,7 +3311,7 @@ void PS2Runtime::run()
         {
             char name[32];
             std::snprintf(name, sizeof(name), "/burst_%04d.png", g_burst.index);
-            capturePng(g_burst.dir + name, true);
+            capturePng(g_burst.dir + name);
             if (FILE *f = std::fopen((g_burst.dir + "/burst.txt").c_str(), "a"))
             {
                 std::fprintf(f, "%04d aspect %.3f frame %.3f %s\n", g_burst.index, aspect, frameAspect,

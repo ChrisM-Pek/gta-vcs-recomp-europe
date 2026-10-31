@@ -94,8 +94,9 @@ namespace vcs::trainer
     {
         std::string text;
         double time = 0.0; // seconds (steady clock)
+        bool screenshot = false; // from the screenshot key: left out of the next shot (ui::hideScreenshotNotices)
     };
     std::vector<Notice> notices(double maxAgeSeconds);
     double now(); // the notices' clock
-    void notify(const std::string &text); // a notice from outside the trainer (the screenshot key); any thread
+    void notifyScreenshot(const std::string &text); // the screenshot key's notice (src/main.cpp); any thread
 }

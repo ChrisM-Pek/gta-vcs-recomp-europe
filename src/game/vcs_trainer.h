@@ -97,4 +97,5 @@ namespace vcs::trainer
     };
     std::vector<Notice> notices(double maxAgeSeconds);
     double now(); // the notices' clock
+    void notify(const std::string &text); // a notice from outside the trainer (the screenshot key); any thread
 }

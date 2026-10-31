@@ -809,6 +809,17 @@ namespace vcs::input
         s.defaultValue = KEY_F6;
         settings::add(s);
 
+        s = {};
+        s.key = "controls.screenshot_key";
+        s.page = kKeys;
+        s.section = "Menus";
+        s.label = "Screenshot";
+        s.help = "Saves the game's picture (without menus or overlays) as a PNG in the screenshots folder next to vcs.exe.";
+        s.type = Type::Key;
+        s.group = "keys";
+        s.defaultValue = KEY_F8;
+        settings::add(s);
+
         // ---- Gamepad ---------------------------------------------------------------------------------------------
         for (const Control &c : kControls)
         {

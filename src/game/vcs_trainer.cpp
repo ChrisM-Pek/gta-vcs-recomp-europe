@@ -1422,4 +1422,6 @@ namespace vcs::trainer
                 out.push_back(n);
         return out;
     }
+
+    void notify(const std::string &text) { post(text); }
 }

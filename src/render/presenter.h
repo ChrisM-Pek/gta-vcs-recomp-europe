@@ -50,9 +50,10 @@ namespace present
     // How present() shows frames (the Display > Vertical sync setting; main thread).
     void setPresentMode(int mode); // rhi::Device::PresentMode: 0 Immediate, 1 Vsync, 2 Tearing
 
-    // The same picture and Dear ImGui output (scaled) rendered off-screen at width x height; RGB rows top-down.
+    // The same picture and Dear ImGui output (scaled; withUi false: the picture alone) rendered off-screen at width x
+    // height; RGB rows top-down.
     bool capture(const Picture &picture, int srcWidth, int srcHeight, float aspect, int width, int height, std::vector<uint8_t> &rgb,
-                 float frameAspect = 0.0f);
+                 float frameAspect = 0.0f, bool withUi = true);
 
     // Where a picture of display aspect `aspect` goes in a width x height target: as large as fits inside the game's
     // frame - the target letterboxed at frameAspect (0: the whole target) - and centred. A 4:3 menu in a 32:9 game on a

@@ -13,7 +13,7 @@ leaving the car; free aim (src/game/vcs_aim.cpp: the right button enters the gam
 hits a man on the aim line and not one beside it, Vic strafes while aiming, the camera stays where the aim looked, fists
 and free aim off still lock on, the gamepad's RB and right stick, the sniper scope turned 1:1 and zoomed by the wheel,
 the wheel changing weapons); a mouse wheel binding; a menu key
-refuses a key a control has; the presets and Reset all settings; screenshots of the settings menu's pages; Audio >
+refuses a key a control has; the presets and Reset all settings; the screenshot key (F8) saves a PNG; screenshots of the settings menu's pages; Audio >
 Music / Sound effects are the game's own levels (set here, shown in its pause menu, changed there, kept by a save
 load) (src/game/vcs_volume.cpp). Results: OUT/summary.txt; screenshots OUT/*.png. Default
 OUT: build/controls/<date-time>.
@@ -477,7 +477,8 @@ class Check:
     def run(self):
         g = self.g = rig.Game.start(save=os.path.join(ROOT, "build", "rig", "saves", "fortbaxter"), name="controls_check",
                                     port=self.port, data_dir=os.path.join(ROOT, "build", "controls", "data"),
-                                    env={"VCS_FPS": "30", "VCS_TIMING": ""})  # timing unlocked: the presets set it
+                                    env={"VCS_FPS": "30", "VCS_TIMING": "",  # timing unlocked: the presets set it
+                                         "VCS_SCREENSHOT_DIR": os.path.join(self.out, "screenshot_key")})
         try:
             g.wait_ingame()
             # the player's own vcs.ini is read by hidden runs too (never written): start from the defaults
@@ -551,6 +552,14 @@ class Check:
                                                   "controls.menu_key": str(KEY_F2)}, str(got))
             p = self.held("shift")
             self.ok("bindings after the reset", p["buttons"] == CROSS, str(p))
+
+            # the screenshot key (F8): a PNG of the game's picture in VCS_SCREENSHOT_DIR, the pad left alone
+            shots = os.path.join(self.out, "screenshot_key")
+            p = self.held("f8")
+            time.sleep(0.5)
+            pngs = [n for n in os.listdir(shots) if n.endswith(".png")] if os.path.isdir(shots) else []
+            self.ok("screenshot key", len(pngs) == 1 and p["buttons"] == 0 and
+                    os.path.getsize(os.path.join(shots, pngs[0])) > 10000, "%s, pad %s" % (pngs, p))
 
             # the settings menu's pages
             for page in ("Display", "Graphics", "Audio", "Game", "Keyboard", "Gamepad", "Advanced"):

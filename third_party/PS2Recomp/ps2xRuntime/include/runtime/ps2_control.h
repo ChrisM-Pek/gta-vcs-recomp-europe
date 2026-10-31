@@ -42,6 +42,11 @@ namespace ps2control
     using Reply = std::function<void(const std::string &answer)>;
     using CommandHandler = std::function<void(const std::string &args, Reply reply)>;
     void addCommand(const std::string &verb, CommandHandler handler);
-    void pump(const std::function<std::string(const std::string &path)> &capture, const std::function<void()> &quit);
+    // [gta-recomp] Main thread: the player's screenshot key (game layer). The next pump() - this host frame's, after
+    // drawing - renders the game's picture without the UI on top into `path` and calls `done` with "<w>x<h>" or "".
+    void requestScreenshot(const std::string &path, std::function<void(const std::string &size)> done);
+    // `capture(path, withUi)`: withUi false leaves out Dear ImGui (menus, overlays, notices).
+    using Capture = std::function<std::string(const std::string &path, bool withUi)>;
+    void pump(const Capture &capture, const std::function<void()> &quit);
     void stop();
 }

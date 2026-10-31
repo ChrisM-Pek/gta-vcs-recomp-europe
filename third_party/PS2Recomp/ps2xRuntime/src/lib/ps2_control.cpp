@@ -169,8 +169,14 @@ namespace ps2control
             }
         }
 
-        void execute(const std::shared_ptr<Command> &command, const std::function<std::string(const std::string &)> &capture,
-                     const std::function<void()> &quit)
+        struct ScreenshotRequest
+        {
+            std::string path;
+            std::function<void(const std::string &)> done;
+        };
+        std::vector<ScreenshotRequest> g_screenshots; // main thread: requestScreenshot
+
+        void execute(const std::shared_ptr<Command> &command, const Capture &capture, const std::function<void()> &quit)
         {
             std::istringstream in(command->line);
             std::string verb;
@@ -186,7 +192,7 @@ namespace ps2control
                     command->reply.set_value("error usage: screenshot <path.png>");
                     return;
                 }
-                const std::string size = capture(path);
+                const std::string size = capture(path, true);
                 command->reply.set_value(size.empty() ? "error could not write " + path : "ok " + size);
             }
             else if (verb == "key" || verb == "press")
@@ -244,6 +250,11 @@ namespace ps2control
     }
 
     void addCommand(const std::string &verb, CommandHandler handler) { g_extraCommands[verb] = std::move(handler); }
+
+    void requestScreenshot(const std::string &path, std::function<void(const std::string &size)> done)
+    {
+        g_screenshots.push_back({path, std::move(done)});
+    }
 
     bool hiddenMode()
     {
@@ -318,8 +329,17 @@ namespace ps2control
         std::fprintf(stderr, "[control] listening on 127.0.0.1:%d%s\n", port, hiddenMode() ? " (window hidden, physical input off)" : "");
     }
 
-    void pump(const std::function<std::string(const std::string &path)> &capture, const std::function<void()> &quit)
+    void pump(const Capture &capture, const std::function<void()> &quit)
     {
+        // the player's screenshots first: this frame's picture, before any command changes what is shown
+        std::vector<ScreenshotRequest> shots;
+        shots.swap(g_screenshots);
+        for (ScreenshotRequest &shot : shots)
+        {
+            const std::string size = capture(shot.path, false);
+            if (shot.done)
+                shot.done(size);
+        }
         g_injectedEdge.fill(false);
         const auto now = std::chrono::steady_clock::now();
         for (size_t i = 0; i < g_releases.size();)

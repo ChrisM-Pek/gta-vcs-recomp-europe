@@ -77,7 +77,7 @@ It does nothing of this while a control is bound to the wheel, while driving or 
   button (left, right, middle, 4, 5) or turn the wheel (each notch is a short press); Esc cancels, a right-click on a
   slot clears it. Shift / Ctrl / Alt bind both sides, Enter is also Keypad Enter.
 - A key does one thing: binding it to a control takes it from the control that had it. The menu keys (Settings menu
-  F2, Trainer F5, Free camera F6, same page) never take a control's key, and a control can't take theirs - the menu says which setting
+  F2, Trainer F5, Free camera F6, Screenshot F8, same page) never take a control's key, and a control can't take theirs - the menu says which setting
   has it.
 - **Walk (hold)**: the left stick at the **Walking speed** (45% by default) while held - GTA walks below about half
   a tilt, which keys can't do otherwise.
@@ -112,6 +112,14 @@ game gets no input meanwhile). In the
 trainer: Up / Down or numpad 8 / 2 or the D-pad select, Left / Right or numpad 4 / 6 change a value, Enter / numpad
 5 / A applies, Backspace / numpad 0 / Escape / B goes back (and closes it on the first page). The game gets no input
 while a menu is open.
+
+## Screenshots
+
+**F8** (Keyboard > Menus > Screenshot, rebindable) saves the game's picture as a PNG in a `screenshots` folder next to
+vcs.exe, named `vcs_<date>_<time>.png` (`_2`, `_3`... for several in one second); a notice names the file. The shot is
+the window's size and holds the game alone: no settings / trainer menu, no performance overlay or frame-rate counter,
+no notice from an earlier shot. It does nothing while the settings menu is open (it may be waiting for a key to bind).
+`VCS_SCREENSHOT_DIR=<dir>` saves them elsewhere (the test tools do). (src/main.cpp `screenshotKey`)
 
 ## Window
 

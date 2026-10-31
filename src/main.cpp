@@ -45,6 +45,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <ctime>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -239,6 +240,42 @@ namespace
         if (!settings::set("display.window", next))
             platform::setFullscreen(next != 0);
         std::fprintf(stderr, "[settings] Alt+Enter: %s\n", next ? "full screen" : "windowed");
+    }
+
+    // Each host frame: the screenshot key (Keyboard > Menus, F8) saves this frame's picture - the game's alone, at the
+    // window's size - as screenshots/vcs_<date>_<time>.png next to vcs.exe (VCS_SCREENSHOT_DIR: another folder). Not
+    // while the settings menu is open (it may be waiting for a key to bind).
+    void screenshotKey()
+    {
+        const int key = settings::value("controls.screenshot_key");
+        if (ui::settingsMenuOpen() || !(platform::keyPressed(key) || ps2control::keyPressed(key)))
+            return;
+        const char *env = std::getenv("VCS_SCREENSHOT_DIR");
+        const fs::path dir = env && *env ? fs::path(env) : exeDirectory() / "screenshots";
+        std::error_code ec;
+        fs::create_directories(dir, ec);
+        const std::time_t t = std::time(nullptr);
+        std::tm local{};
+#if defined(_WIN32)
+        localtime_s(&local, &t);
+#else
+        localtime_r(&t, &local);
+#endif
+        char stamp[32];
+        std::strftime(stamp, sizeof(stamp), "vcs_%Y-%m-%d_%H-%M-%S", &local);
+        fs::path path = dir / (std::string(stamp) + ".png");
+        for (int n = 2; fs::exists(path, ec); ++n) // several in one second
+            path = dir / (std::string(stamp) + "_" + std::to_string(n) + ".png");
+        ps2control::requestScreenshot(path.string(), [path](const std::string &size) {
+            if (size.empty())
+            {
+                std::fprintf(stderr, "[screenshot] could not write %s\n", path.string().c_str());
+                vcs::trainer::notify("Screenshot failed: cannot write " + path.parent_path().string());
+                return;
+            }
+            std::fprintf(stderr, "[screenshot] %s (%s)\n", path.string().c_str(), size.c_str());
+            vcs::trainer::notify("Screenshot saved: " + path.filename().string());
+        });
     }
 
     // Each host frame: "Match window" follows the window as it is resized, moved to another monitor or made full screen.
@@ -800,6 +837,7 @@ int main(int argc, char *argv[])
         runtime.setDebugUiCallbacks([](PS2Runtime &, void *) {},
                                     [](PS2Runtime &, void *) {
                                         altEnter();
+                                        screenshotKey();
                                         followWindowAspect();
                                         ui::drawSettingsMenu();
                                         ui::drawTrainerMenu();

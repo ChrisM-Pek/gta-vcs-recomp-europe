@@ -43,9 +43,13 @@ namespace ps2control
     using CommandHandler = std::function<void(const std::string &args, Reply reply)>;
     void addCommand(const std::string &verb, CommandHandler handler);
     // [gta-recomp] Main thread: the player's screenshot key (game layer). The next pump() - this host frame's, after
-    // drawing - renders the picture as shown (menus and overlays included) into `path` and calls `done` with
-    // "<w>x<h>" or "".
-    void requestScreenshot(const std::string &path, std::function<void(const std::string &size)> done);
-    void pump(const std::function<std::string(const std::string &path)> &capture, const std::function<void()> &quit);
+    // drawing - takes the window as shown (its pixel size, menus and overlays included) for `path`; `done` gets
+    // "<w>x<h>" or "" once the file is written, on another thread (the PNG is written there: no hitch in the game).
+    using Done = std::function<void(const std::string &size)>;
+    void requestScreenshot(const std::string &path, Done done);
+    // `capture(path)`: the control channel's screenshot at its size (PS2X_CAPTURE_SIZE, at least 960x672), written
+    // before it returns. `shoot(path, done)`: requestScreenshot's.
+    void pump(const std::function<std::string(const std::string &path)> &capture,
+              const std::function<void(const std::string &path, Done done)> &shoot, const std::function<void()> &quit);
     void stop();
 }

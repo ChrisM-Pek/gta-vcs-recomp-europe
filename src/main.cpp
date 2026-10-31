@@ -268,14 +268,16 @@ namespace
         fs::path path = dir / (std::string(stamp) + ".png");
         for (int n = 2; fs::exists(path, ec); ++n) // several in one second
             path = dir / (std::string(stamp) + "_" + std::to_string(n) + ".png");
-        ps2control::requestScreenshot(path.string(), [path](const std::string &size) {
+        const auto asked = std::chrono::steady_clock::now();
+        ps2control::requestScreenshot(path.string(), [path, asked](const std::string &size) {
             if (size.empty())
             {
                 std::fprintf(stderr, "[screenshot] could not write %s\n", path.string().c_str());
                 vcs::trainer::notifyScreenshot("Screenshot failed: cannot write " + path.parent_path().string());
                 return;
             }
-            std::fprintf(stderr, "[screenshot] %s (%s)\n", path.string().c_str(), size.c_str());
+            std::fprintf(stderr, "[screenshot] %s (%s, %.0f ms)\n", path.string().c_str(), size.c_str(),
+                         std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - asked).count());
             vcs::trainer::notifyScreenshot("Screenshot saved: " + path.filename().string());
         });
     }

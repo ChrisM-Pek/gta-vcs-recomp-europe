@@ -1253,6 +1253,13 @@ bool PS2Runtime::initialize(const char *title)
         window.width = HOST_WINDOW_WIDTH;
         window.height = HOST_WINDOW_HEIGHT;
         window.hidden = ps2control::hiddenMode();
+        // [gta-recomp] PS2X_HIDDEN_WINDOW=WxH: a hidden window of that size (a player's window in a test: the screenshot key)
+        if (const char *e = std::getenv("PS2X_HIDDEN_WINDOW"); e && window.hidden)
+        {
+            int w = 0, h = 0;
+            if (std::sscanf(e, "%dx%d", &w, &h) == 2 && w > 0 && h > 0)
+                window.width = w, window.height = h;
+        }
         window.vulkan = present::backendNeedsVulkanWindow();
         if (!platform::init(window) || !present::init(window.width, window.height))
         {
@@ -3307,6 +3314,25 @@ void PS2Runtime::run()
                     return {};
                 return std::to_string(w) + "x" + std::to_string(h);
             };
+        // [gta-recomp] the player's screenshot key (ps2control::requestScreenshot): the window's own pixels - what was on
+        // screen, not the test size above (run.py sets PS2X_CAPTURE_SIZE) - read back here; the PNG is written on a thread
+        // of its own (at 2560x1440 compressing it held the frame ~0.5 s)
+        auto shootPng = [&](const std::string &path, ps2control::Done done)
+            {
+                const int w = windowWidth, h = windowHeight;
+                auto rgb = std::make_shared<std::vector<uint8_t>>();
+                if (w <= 0 || h <= 0 || !present::capture(shownTex, srcWidth, srcHeight, aspect, w, h, *rgb, frameAspect))
+                {
+                    if (done)
+                        done({});
+                    return;
+                }
+                std::thread([path, rgb, w, h, done = std::move(done)] {
+                    const bool ok = platform::writePng(path.c_str(), rgb->data(), w, h);
+                    if (done)
+                        done(ok ? std::to_string(w) + "x" + std::to_string(h) : std::string());
+                }).detach();
+            };
         if (g_burst.left > 0) // [gta-recomp] "burst" (above)
         {
             char name[32];
@@ -3321,7 +3347,7 @@ void PS2Runtime::run()
             ++g_burst.index;
             --g_burst.left;
         }
-        ps2control::pump(capturePng, [this] { requestStop(); });
+        ps2control::pump(capturePng, shootPng, [this] { requestStop(); });
         present::setFrameInputTime(gsHwShownInputNs()); // [gta-recomp] input-to-screen delay (PS2X_RHI_STATS)
         present::present();
         // [gta-recomp] frame lead (docs/PERFORMANCE.md 19): with host-paced game frames, the next one starts - on input

@@ -116,11 +116,13 @@ while a menu is open.
 ## Screenshots
 
 **F8** (Keyboard > Menus > Screenshot, rebindable) saves the game's picture as a PNG in a `screenshots` folder next to
-vcs.exe, named `vcs_<date>_<time>.png` (`_2`, `_3`... for several in one second); a notice names the file. The shot is
-the window's size and holds what is on screen: the settings or trainer menu, the F3 overlay, the frame-rate counter
-and the trainer's notices - except the notices of earlier shots, so shots in a row stay clean. It does nothing while
+vcs.exe, named `vcs_<date>_<time>.png` (`_2`, `_3`... for several in one second); a notice names the file once it is
+written. The shot is the window pixel for pixel - its resolution (the monitor's in full screen), its letterboxing, the
+UI where it was - and holds what is on screen: the settings or trainer menu, the F3 overlay, the frame-rate counter and
+the trainer's notices, except the notices of earlier shots, so shots in a row stay clean. The PNG is written on a thread
+of its own (a 2560x1440 one takes ~0.6 s to compress; the game keeps its frame rate meanwhile). It does nothing while
 the settings menu waits for a key to bind. `VCS_SCREENSHOT_DIR=<dir>` saves them elsewhere (the test tools do).
-(src/main.cpp `screenshotKey`)
+(src/main.cpp `screenshotKey`; the control channel's `screenshot` stays at its fixed test size, `PS2X_CAPTURE_SIZE`)
 
 ## Window
 

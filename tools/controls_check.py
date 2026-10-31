@@ -553,13 +553,21 @@ class Check:
             p = self.held("shift")
             self.ok("bindings after the reset", p["buttons"] == CROSS, str(p))
 
-            # the screenshot key (F8): a PNG of the game's picture in VCS_SCREENSHOT_DIR, the pad left alone
+            # the screenshot key (F8): a PNG of the window in VCS_SCREENSHOT_DIR (written on a thread of its own: the log
+            # line says when), the pad left alone
             shots = os.path.join(self.out, "screenshot_key")
             p = self.held("f8")
-            time.sleep(0.5)
+            saved = None
+            for _ in range(50):
+                with open(g.log_path, encoding="utf-8", errors="replace") as f:
+                    saved = re.search(r"\[screenshot\] (.+\.png) \((\d+)x(\d+)", f.read())
+                if saved:
+                    break
+                time.sleep(0.1)
             pngs = [n for n in os.listdir(shots) if n.endswith(".png")] if os.path.isdir(shots) else []
-            self.ok("screenshot key", len(pngs) == 1 and p["buttons"] == 0 and
-                    os.path.getsize(os.path.join(shots, pngs[0])) > 10000, "%s, pad %s" % (pngs, p))
+            self.ok("screenshot key", saved is not None and len(pngs) == 1 and p["buttons"] == 0 and
+                    os.path.getsize(os.path.join(shots, pngs[0])) > 10000,
+                    "%s, %s, pad %s" % (saved.group(0) if saved else "no [screenshot] line", pngs, p))
 
             # the settings menu's pages
             for page in ("Display", "Graphics", "Audio", "Game", "Keyboard", "Gamepad", "Advanced"):

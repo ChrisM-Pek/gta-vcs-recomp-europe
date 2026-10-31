@@ -175,6 +175,13 @@ dropped on uploads (lazy render-target patching).
   - [x] **Per-element anchoring**: HUD "Screen edges" (`VCS_HUD=2`) - each HUD element squeezed towards the edge it
         sits near (radar left; clock / weapon / money / zone name right; help text left), the elements found from the
         frame's Im2D calls (game-internals.md 6f, DECISIONS.md).
+  - [x] **Screen edges: text and radar jumping** (reported by the user, 2026-11-01): subtitles, mission text and the
+        stunt results at the bottom switched between the left, middle and right, the radar sometimes going to the
+        middle with them. The radar's map tiles reach far past its circle, so text near it was grouped with the radar
+        and the pair's anchor flipped as the map turned. The radar and centred lines are now known by who draws them
+        (game-internals.md 6f "Radar and text"): the radar always left, centred lines always in the middle (the stunt
+        results' right-shifted rect moved there too). `tools/hud_check.py` (airport jumps at 16:9): 1240 frames, radar
+        always left, centred lines in 426 frames, all centred on x 320.
   - [x] **Native HUD layer**: the HUD's primitives kept out of the PS2 frame buffer and drawn over the shown picture
         at the window's size (NATIVE_RENDERER.md "HUD layer"); on by default, `VCS_HUD_NATIVE=0` = into the frame
         buffer. Textures from the GS backend's decoded cache, not a RenderWare raster decoder (DECISIONS.md).
@@ -851,6 +858,7 @@ Python scripts still usable on their own. docs/LAUNCHER.md has the whole of it; 
 | `PS2X_HW_CLUT_FROM_UPLOAD=0`, `PS2X_HW_CLUT_VERIFY=1` | CLUT loads read emulated VRAM (writing the queued uploads there first) instead of the queued upload's data; both, compared (`[gs-hw] clut from upload`) |
 | `VCS_TRACE_IM2D_DELAY=s`, `VCS_TRACE_IM2D_STACK=1` | start the Im2D trace after s seconds (default 30); print the guest stack's return addresses per call |
 | `VCS_TRACE_HUDKEY=n` | log n 2D primitives the HUD classifier did not find (positions) |
+| `VCS_TRACE_HUDANCHOR=n` | log n frames of HUD elements (box, part: 1 radar / 2 centred text, anchor) and each text line's justify and rect, from `VCS_TRACE_IM2D_DELAY` on (`tools/hud_check.py`) |
 | `PS2X_HW_OUTPUT=WxH` | the renderer's output size whatever the window (full-screen sizes in test runs; with `PS2X_CAPTURE_SIZE`) |
 | `PS2X_HW_DUMP_TEX=<key hex>` | write that decoded texture (colour + alpha PPM, keys from the F12 draw log) - analysis only, never commit |
 | `PS2X_HW_HUD_LOG=1` | the renderer's HUD layers (per frame buffer, stale or not) and the output size, every 2 s |

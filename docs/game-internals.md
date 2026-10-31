@@ -699,7 +699,35 @@ primitives each frame, groups them into elements (boxes closer than 12 px across
 radar and its blips, the clock / weapon / money cluster) and gives each an anchor from where it sits on the 4:3
 screen: left edge when its middle is left of 280 and it starts before 160, right edge when its middle is right of 360
 and it ends after 480, the middle otherwise; full-width draws (fades, letterbox bars) stretch. At the frame kick the
-whole-pixel positions of its vertices go to the renderer, which finds each GS primitive's element by them.
+whole-pixel positions of its vertices go to the renderer, which finds each GS primitive's element by them. The radar
+and centred text are not grouped by position but known by who draws them (below).
+
+**Radar and text** (2026-11-01, user report: with the HUD at the screen edges, subtitles / stunt texts at the bottom
+jumped between left, middle and right, and the radar sometimes left its corner; `VCS_TRACE_IM2D_STACK=1` and
+`tools/eedecomp.py`):
+- **The radar** is `FUN_00321500` (called from CHud::Draw): the map through `FUN_00110eb0` (tiles from `FUN_001178f8`,
+  Im2D returns 0x117620 / 0x1178a8), then the ring and blips (0x3e0018, 0x3e0094, 0x3dff64, 0x3e0ba0). The map tiles
+  are **huge quads** scissored to the radar (x -210..410, y 141..716 at 4:3 for a radar at 37..122 x 336..415). That was
+  the bug: text near the bottom left merged with the radar's element, and the pair's box - changing as the map turns
+  and scrolls and with the text's length - flipped between "left edge" and "middle". CHud::Draw's next call after the
+  radar is `FUN_00113d50`, `FUN_00321758` or `FUN_002dfe10` (whichever path it takes), so "the radar is drawing" =
+  from `FUN_00321500`'s entry to one of theirs.
+- **Text**: the font setters (`FUN_003f4000` style = 0x48a1dc, `FUN_003f4020` colour = 0x711f30, `FUN_003f4050`
+  rect = 0x711f38, `FUN_003f41e0` justify = 0x48a1ec, `FUN_003f3c30` reset) and `FUN_003f3d10` print(string, x, y) ->
+  `FUN_003f3d88`, which copies the state into the style's font object (`*(0x48a1d8 + style * 4)`) and calls
+  **`FUN_00261be8` = render(font, string, x, y, colour, rect, ?, shadow)** twice (drop shadow with a copy of the rect,
+  then the text with the global one). The glyphs go out synchronously, one Im2D batch per line from `FUN_003dfdd8`
+  (return address **0x3dfe24**, nothing else draws through it). **Justify** = font + 0x28: bit 1 left, 2 centred, 4
+  right in the rect, 8 / 0x10 / 0x20 top / middle / bottom; none = at (x, y). The **rect** is (left, bottom, right,
+  top) floats in the PSP's 480-wide units (x 640 / 480 on screen) and the glyphs are scissored to it. Seen: subtitles
+  and mission text 0xa in 24..456; the stunt results ("Distance: ... Height: ...", "INSANE STUNT BONUS") 0xa in
+  **116..456** - centred right of the middle (x 381 of 640), clear of the 4:3 radar; help text 0x9 in 28..248; zone /
+  vehicle names 0x14 in 0..456; the ammo count 0x14 / 0x12 / 0x11 in 414..438 / 438..444 / 444..462.
+- So `vcs_hud.cpp` tags the radar's primitives (left edge, never grouped) and lines centred in a rect at least 240
+  units wide (the middle, never grouped). At the screen edges a centred line's rect is moved to the middle before the
+  game lays it out (the stunt results: the radar they avoided is at the edge now), the rect rather than the glyphs
+  because of the scissor. `VCS_TRACE_HUDANCHOR=<frames>` logs the elements and the text lines; `tools/hud_check.py`
+  checks it.
 
 **What reaches the GS as PATH2** (2026-10-24, `PS2X_TRACE_PATH2_TAGS=1`, decompiled with `tools/eedecomp.py`):
 - **Im2D's packet** (`FUN_002FB690`, called through `FUN_002FB9D0`): `CNT` (3n + 1 qwords) with `DIRECT 3n + 1`, one

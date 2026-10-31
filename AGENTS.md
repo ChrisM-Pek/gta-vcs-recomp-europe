@@ -93,6 +93,7 @@ python tools/soundcheck.py all OUT [--mission N]             # native sound vs t
 python tools/trainer_check.py [OUT] [--vehicles all]          # every trainer feature, checked in the game's memory
 python tools/finale_check.py [OUT] [--story] [--full]         # Last Stand's end from the trainer: final cutscene, credits
 python tools/controls_check.py [OUT]                          # bindings, presets, reset, vibration, volume levels; menu screenshots
+python tools/hud_check.py [OUT]                               # HUD at the screen edges: radar left, centred text in the middle
 python tools/irxdis.py --decompile X.IRX OUT.c                # an IOP module as C (headless Ghidra; analysis only)
 python tools/eedecomp.py 0x2f7d58 [...] [--out FILE]          # game functions as C (the analysed EE project; analysis only)
 ```

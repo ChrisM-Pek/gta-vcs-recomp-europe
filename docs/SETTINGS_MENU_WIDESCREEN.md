@@ -109,7 +109,10 @@ pause map) are shown at 4:3, pillarboxed.
   the screen edge it sits near (radar left; clock, weapon, money, zone name right; help text left; centred text in the
   middle) instead of all towards the middle. The game names its own HUD primitives (`src/game/vcs_hud.cpp`, found by
   their vertex positions; game-internals.md 6f), so the "far plane = HUD" heuristic only covers 2D outside CHud::Draw's
-  frame. `gsHwSetHudClassifier` in the renderer; the pivot is x 0 / 640 / 320 of the 640-wide frame.
+  frame. `gsHwSetHudClassifier` in the renderer; the pivot is x 0 / 640 / 320 of the 640-wide frame. Since 2026-11-01
+  the radar and centred text lines are known by who draws them, not grouped by position: the radar always at the left
+  edge, centred lines (subtitles, mission text, stunt results) always in the middle - before, bottom text near the
+  radar jumped between left, middle and right (game-internals.md 6f "Radar and text", `tools/hud_check.py`).
 - **Entity culling** (2026-10-27): the claim "RenderWare derives the frustum from the view window, so culling
   follows" held for the world sectors only. Buildings, peds and cars go through `CCamera::IsSphereVisible`, whose
   side planes the game builds from the FOV global (4:3); they vanished in the outer eighths of a 16:9 picture.

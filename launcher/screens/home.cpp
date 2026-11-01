@@ -84,6 +84,10 @@ namespace screens
         const Rect big{left, y, px(232), px(56)};
         // the big button's label is the other place for Pricedown
         const float heroSize = fontFound(kFontBrand) ? px(31) : px(18); // Pricedown is small on its body
+        // as wide as its label needs (Pricedown at that size is wide), never narrower than the usual 232
+        auto fit = [&](std::string_view label, char32_t icon) {
+            return Rect{big.x, big.y, std::max(big.w, ui::buttonWidth(label, icon, heroSize, kFontBrand) + px(12)), big.h};
+        };
         bool primary = false;
         std::string below;
         Color belowColor = theme::kFaint;
@@ -95,14 +99,16 @@ namespace screens
         else if (!app.doctorDone || app.doctorCached)
         {
             // the last answer is on screen; this run's check is still out: nothing to press yet
-            ui::button("Play", big, ButtonStyle::Primary, theme::icon::kPlay, false, heroSize, kFontBrand);
-            ui::spinner(big.right() + px(26), big.cy(), px(8), theme::kDim, px(2));
-            ui::label(kFontBody, px(theme::kBody), {big.right() + px(44), big.y, px(200), big.h}, theme::kDim, "Checking");
+            const Rect b = fit("Play", theme::icon::kPlay);
+            ui::button("Play", b, ButtonStyle::Primary, theme::icon::kPlay, false, heroSize, kFontBrand);
+            ui::spinner(b.right() + px(26), b.cy(), px(8), theme::kDim, px(2));
+            ui::label(kFontBody, px(theme::kBody), {b.right() + px(44), b.y, px(200), b.h}, theme::kDim, "Checking");
             below = app.doctorCached ? buildSummary(app) : "";
         }
         else if (app.doctorFailed())
         {
-            primary = ui::button(app.doctorRunning ? "Checking..." : "Check again", big, ButtonStyle::Primary, theme::icon::kRefresh,
+            const char *label = app.doctorRunning ? "Checking..." : "Check again";
+            primary = ui::button(label, fit(label, theme::icon::kRefresh), ButtonStyle::Primary, theme::icon::kRefresh,
                                  !app.doctorRunning, heroSize, kFontBrand);
             if (primary || (platform::input.key(platform::kKeyEnter) && !ui::state.focusVisible && ui::inputAllowed()))
                 app.refresh();
@@ -111,7 +117,7 @@ namespace screens
         }
         else if (next == "build")
         {
-            primary = ui::button("Update the build", big.offset(0, 0), ButtonStyle::Primary, theme::icon::kRepair, !app.busy(), heroSize, kFontBrand);
+            primary = ui::button("Update the build", fit("Update the build", theme::icon::kRepair), ButtonStyle::Primary, theme::icon::kRepair, !app.busy(), heroSize, kFontBrand);
             if (primary || (platform::input.key(platform::kKeyEnter) && !ui::state.focusVisible && ui::inputAllowed() && !app.busy()))
                 app.startBuild();
             const launcher::Json &reasons = app.doctor["build"]["reasons"];
@@ -120,14 +126,14 @@ namespace screens
         }
         else if (next == "play")
         {
-            primary = ui::button("Play", big, ButtonStyle::Primary, theme::icon::kPlay, true, heroSize, kFontBrand);
+            primary = ui::button("Play", fit("Play", theme::icon::kPlay), ButtonStyle::Primary, theme::icon::kPlay, true, heroSize, kFontBrand);
             if (primary || (platform::input.key(platform::kKeyEnter) && !ui::state.focusVisible && ui::inputAllowed()))
                 play(app);
             below = buildSummary(app);
         }
         else
         {
-            if (ui::button("Continue setup", big, ButtonStyle::Primary, theme::icon::kChevronRight, true, heroSize, kFontBrand))
+            if (ui::button("Continue setup", fit("Continue setup", theme::icon::kChevronRight), ButtonStyle::Primary, theme::icon::kChevronRight, true, heroSize, kFontBrand))
                 openSetup(-1);
         }
         y += big.h + px(16);

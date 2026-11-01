@@ -801,7 +801,7 @@ The user asked for a light and a dark mode following Windows' (with System / Lig
 the primary colour - pink and white in light, pink and "a really nice black" in dark - no purple anywhere, other
 colours sparingly. The dusk-violet palette and the sunset orange went: dark is neutral blacks and greys
 (`#0A0A0B` behind, `#17171A` cards) with hot pink `#FF2E8B`; light is blush white behind (`#FFF4F8`), white cards,
-warm greys for text and a deeper pink `#F0177F` (white text on it stays readable). Teal stays for done, amber and red
+warm greys for text and a deeper, slightly redder pink `#EC1A62` (the user's choice; white text on it stays readable). Teal stays for done, amber and red
 for attention - signals only; decoration (the backdrop's sea lines, the playing indicator, the saves icon) is pink.
 Colours are fields of a palette struct, so the two blend field by field: switching crossfades instead of jumping.
 Overlays (hover tints, hairlines) are `theme::ink(a)` - white on dark, a deep pink-brown on light - and shadows

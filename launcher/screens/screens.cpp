@@ -20,6 +20,7 @@ namespace screens
         float g_hero = 0;
         bool g_checkedUpdates = false;
         bool g_wasPlaying = false;
+        float g_dark = -1; // the palette, 1 dark, 0 light: fades across when it changes
 
         bool hasWarnings(const App &app) { return app.doctor["folder"]["warnings"].size() > 0; }
 
@@ -340,6 +341,13 @@ namespace screens
         return app.settings.reduceMotionSet ? app.settings.reduceMotion : platform::window.reducedMotion;
     }
 
+    bool darkTheme(const App &app)
+    {
+        if (app.settings.theme == "light" || app.settings.theme == "dark")
+            return app.settings.theme == "dark";
+        return platform::window.darkMode;
+    }
+
     bool canPlay(const App &app) { return app.next() == "play" && !app.doctorCached && !app.gameRunning; }
 
     // ---- actions -------------------------------------------------------------------------------------------------
@@ -564,6 +572,14 @@ namespace screens
         // the launcher's own setting decides, both ways (Windows' "Animate controls and elements inside windows" is
         // off on many PCs tuned for speed - it only gives the starting value)
         ui::state.motion = reduceMotion(app) ? 0.0f : 1.0f;
+
+        // light or dark: the whole palette crossfades (a quarter of a second), the window's frame switches with it
+        const bool dark = darkTheme(app);
+        if (g_dark < 0)
+            g_dark = dark ? 1.0f : 0.0f;
+        ui::animate(g_dark, dark ? 1.0f : 0.0f, 14);
+        theme::apply(g_dark);
+        platform::setDarkFrame(dark);
 
         // files dropped on the window: a disc
         for (const fs::path &file : in.dropped)

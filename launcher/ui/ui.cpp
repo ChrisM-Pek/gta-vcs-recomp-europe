@@ -134,8 +134,8 @@ namespace ui
                 const float t = animate(tw.t, 1, 22);
                 render::pushOpacity(t);
                 const Rect box = snap({x, y + (1 - t) * px(4), w, h});
-                render::shadow(box.offset(0, px(4)), theme::kShadow, px(10), px(8));
-                render::rectEx(box, theme::kSurfaceTop, theme::kSurfaceTop, px(7), theme::kLineSoft, hairline());
+                render::shadow(box.offset(0, px(4)), theme::shade(0.67f), px(10), px(8));
+                render::rectEx(box, theme::kSurfaceTop, theme::kSurfaceTop, px(7), theme::ink(0.055f), hairline());
                 render::drawText(render::kFontBody, size, box.x + px(10), box.y + px(19), theme::kText, state.tooltipText);
                 render::popOpacity();
                 render::popClip();

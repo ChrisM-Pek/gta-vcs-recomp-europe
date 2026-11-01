@@ -178,8 +178,8 @@ namespace screens
             const Rect box = zone.scaled(1.0f + 0.012f * glow);
             if (glow > 0.01f)
                 shadow(box, withAlpha(theme::kPink, 0.20f * glow + 0.08f * breathe), px(18), px(14));
-            const Color edge = ok && glow < 0.5f ? withAlpha(theme::kTeal, 0.35f) : mix(withAlpha(rgb(0xFFFFFF), 0.10f + 0.06f * w.hover), theme::kPink, glow);
-            rectEx(box, mix(rgb(0x120E1A), rgb(0x24122A), glow), mix(rgb(0x100C17), rgb(0x1E0F24), glow), px(14), edge,
+            const Color edge = ok && glow < 0.5f ? withAlpha(theme::kTeal, 0.35f) : mix(theme::ink(0.10f + 0.06f * w.hover), theme::kPink, glow);
+            rectEx(box, mix(theme::kWell, theme::kWellGlow, glow), mix(theme::kWellBottom, theme::kWellGlowBottom, glow), px(14), edge,
                    px(1.5f) + px(0.5f) * glow);
             const Color iconColor = glow > 0.5f ? theme::kPink : ok ? theme::kTeal : app.discChecked ? theme::kRed : theme::kDim;
             const float iconCx = box.x + px(64), iconCy = box.cy();
@@ -257,7 +257,7 @@ namespace screens
             ui::paragraph(kFontBody, px(theme::kBody), {body.x + px(180), y + px(12), body.w - px(190), 0},
                           status == ui::Status::Failed || status == ui::Status::Missing ? theme::kRed : theme::kDim, value, 1.4f);
             y += h;
-            rect({body.x + px(40), y - 1, body.w - px(40), 1}, withAlpha(rgb(0xFFFFFF), 0.05f));
+            rect({body.x + px(40), y - 1, body.w - px(40), 1}, theme::ink(0.05f));
         }
 
         float stepTools(App &app, Rect body, Rect &footer, bool footerPass)
@@ -406,7 +406,7 @@ namespace screens
             Rect body = inner;
             core::cutTop(body, px(30));
             const Rect footer = core::cutBottom(body, px(72));
-            rect({card.x, footer.y, card.w, 1}, withAlpha(rgb(0xFFFFFF), 0.05f));
+            rect({card.x, footer.y, card.w, 1}, theme::ink(0.05f));
             const ui::Id scrollId = ui::id("#setup-scroll", step);
             using StepFn = float (*)(App &, Rect, Rect &, bool);
             const StepFn fn = step == kStepFolder ? stepFolder : step == kStepDisc ? stepDisc : step == kStepTools ? stepTools : stepGame;
@@ -484,7 +484,7 @@ namespace screens
                 const float b = x0 + gap * float(i + 1) - textW[i + 1] * 0.5f - px(18);
                 if (b <= a)
                     continue;
-                rect({a, titleMid - lineH * 0.5f, b - a, lineH}, withAlpha(rgb(0xFFFFFF), 0.08f), lineH * 0.5f);
+                rect({a, titleMid - lineH * 0.5f, b - a, lineH}, theme::ink(0.08f), lineH * 0.5f);
                 if (done > 0 && fillTo > a)
                     gradient({a, titleMid - lineH * 0.5f, std::min(b, fillTo) - a, lineH}, theme::kTeal,
                              mix(theme::kTeal, rgb(0xFFFFFF), 0.2f), lineH * 0.5f, Gradient::Horizontal);
@@ -521,11 +521,11 @@ namespace screens
                 // how far inside the moving box this step is: on the box its text turns white
                 const float inside = core::clamp01(1.0f - std::fabs(boxCx - cx) / (gap * 0.5f));
                 if (i != target && in.w->hover > 0.01f)
-                    quad(shapes[i], withAlpha(rgb(0xFFFFFF), 0.05f * in.w->hover * (1 - inside)));
+                    quad(shapes[i], theme::ink(0.05f * in.w->hover * (1 - inside)));
                 const ui::Status status = stepStatus(app, i);
-                const Color titleColor = mix(mix(theme::kDim, theme::kText, in.w->hover), rgb(0xFFFFFF), inside);
+                const Color titleColor = mix(mix(theme::kDim, theme::kText, in.w->hover), theme::kOnPink, inside);
                 ui::label(titleFont, titleSize, {cx - gap * 0.5f, titleY, gap, px(26)}, titleColor, stepName(i), ui::Align::Centre);
-                const Color lineColor = mix(status == ui::Status::Warning ? theme::kAmber : theme::kFaint, rgb(0xFFFFFF, 225), inside);
+                const Color lineColor = mix(status == ui::Status::Warning ? theme::kAmber : theme::kFaint, withAlpha(theme::kOnPink, 0.88f), inside);
                 ui::label(kFontBody, lineSize, {cx - gap * 0.5f, lineY, gap, px(18)}, lineColor, lines[i], ui::Align::Centre);
                 if (in.w->focus > 0.01f)
                     outline(hit.inset(-px(4)), withAlpha(theme::kText, in.w->focus), px(2), px(6));

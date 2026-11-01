@@ -1,5 +1,6 @@
-// The look: Vice City after sunset. A deep violet night, one warm sunset gradient for the thing to do next, teal for
-// done, amber and red for attention. Every colour the UI draws comes from here; sizes are logical units.
+// The look: hot pink for the thing to do, on a deep black (dark) or on white and blush (light); teal for done, amber
+// and red for attention, and nothing else. Which of the two follows Windows' app mode unless the player picks one
+// (Settings). Every colour the UI draws comes from here; sizes are logical units.
 #pragma once
 
 #include "core/math.h"
@@ -9,30 +10,147 @@ namespace theme
     using core::Color;
     using core::rgb;
 
-    // surfaces, darkest first
-    constexpr Color kNight = rgb(0x0C0A12);    // behind everything
-    constexpr Color kBase = rgb(0x13101B);
-    constexpr Color kSurface = rgb(0x1B1626);  // cards
-    constexpr Color kSurfaceHi = rgb(0x241D33); // hovered cards, controls
-    constexpr Color kSurfaceTop = rgb(0x2D2540);
-    constexpr Color kLine = rgb(0x2F2843);
-    constexpr Color kLineSoft = rgb(0xFFFFFF, 14);
+    struct Palette
+    {
+        // surfaces, back to front
+        Color night;      // behind everything
+        Color base;       // sheets, drawers
+        Color surface;    // cards
+        Color surfaceHi;  // hovered cards, controls
+        Color surfaceTop; // what sits on controls
+        // text
+        Color text, dim, faint;
+        // signal colours
+        Color pink;   // the primary: the thing to do, the selection
+        Color pinkHi; // its gradients' lighter end
+        Color onPink; // text and marks on pink
+        Color teal, amber, red;
+        // what is laid over surfaces at an alpha: hover tints, hairlines, dividers (its own alpha scales them)
+        Color ink;
+        Color shadow; // its alpha scales every shadow
+        Color scrim;  // behind dialogs and sheets
+        // particular fills
+        Color errorFill, doneFill;                     // a failure's card, a finished task's card
+        Color dangerFill, dangerFillHi, dangerText;    // the danger button
+        Color logFill;                                 // the log's well
+        Color well, wellBottom, wellGlow, wellGlowBottom; // the disc drop zone, idle and with a file over it
+        Color sky, sea;                                // the backdrop's top and its sea
+    };
 
-    // text
-    constexpr Color kText = rgb(0xF3EFF9);
-    constexpr Color kDim = rgb(0xA79FBA);
-    constexpr Color kFaint = rgb(0x6F6784);
+    inline constexpr Palette kDarkPalette{
+        .night = rgb(0x0A0A0B),
+        .base = rgb(0x101012),
+        .surface = rgb(0x17171A),
+        .surfaceHi = rgb(0x1F1F23),
+        .surfaceTop = rgb(0x2A2A2F),
+        .text = rgb(0xF6F4F5),
+        .dim = rgb(0xA9A5A8),
+        .faint = rgb(0x6E6A6D),
+        .pink = rgb(0xFF2E8B),
+        .pinkHi = rgb(0xFF62A8),
+        .onPink = rgb(0xFFFFFF),
+        .teal = rgb(0x3DDBC6),
+        .amber = rgb(0xF5B544),
+        .red = rgb(0xF26868),
+        .ink = rgb(0xFFFFFF),
+        .shadow = rgb(0x000000),
+        .scrim = rgb(0x050405, 180),
+        .errorFill = rgb(0x26131A),
+        .doneFill = rgb(0x12211E),
+        .dangerFill = rgb(0x3A1C25),
+        .dangerFillHi = rgb(0x4A222E),
+        .dangerText = rgb(0xFFC9C9),
+        .logFill = rgb(0x0C0C0E),
+        .well = rgb(0x131315),
+        .wellBottom = rgb(0x0E0E10),
+        .wellGlow = rgb(0x2C0F1F),
+        .wellGlowBottom = rgb(0x210B17),
+        .sky = rgb(0x140A0F),
+        .sea = rgb(0x0F080B),
+    };
 
-    // signal colours
-    constexpr Color kPink = rgb(0xFF4F8E);
-    constexpr Color kSunset = rgb(0xFF8A4C); // the primary gradient's other end
-    constexpr Color kTeal = rgb(0x3DDBC6);
-    constexpr Color kAmber = rgb(0xF5B544);
-    constexpr Color kRed = rgb(0xF26868);
-    constexpr Color kViolet = rgb(0x8E74FF);
+    inline constexpr Palette kLightPalette{
+        .night = rgb(0xFFF4F8),
+        .base = rgb(0xFFFFFF),
+        .surface = rgb(0xFFFFFF),
+        .surfaceHi = rgb(0xFFF0F6),
+        .surfaceTop = rgb(0xFFE3EE),
+        .text = rgb(0x1C1517),
+        .dim = rgb(0x675F62),
+        .faint = rgb(0x9F9699),
+        .pink = rgb(0xF0177F),
+        .pinkHi = rgb(0xFF4E9C),
+        .onPink = rgb(0xFFFFFF),
+        .teal = rgb(0x0B9C84),
+        .amber = rgb(0xB57700),
+        .red = rgb(0xD6334A),
+        .ink = rgb(0x3A1626, 200),
+        .shadow = rgb(0x8C2457, 85),
+        .scrim = rgb(0xFFF6FA, 160), // light: the content behind washes out
+        .errorFill = rgb(0xFFF0F2),
+        .doneFill = rgb(0xEEF9F6),
+        .dangerFill = rgb(0xFFE4E8),
+        .dangerFillHi = rgb(0xFFD4DB),
+        .dangerText = rgb(0xB0243A),
+        .logFill = rgb(0xFFFAFC),
+        .well = rgb(0xFFFFFF),
+        .wellBottom = rgb(0xFFF8FB),
+        .wellGlow = rgb(0xFFE8F2),
+        .wellGlowBottom = rgb(0xFFDBEA),
+        .sky = rgb(0xFFD9E9),
+        .sea = rgb(0xFFE8F1),
+    };
 
-    constexpr Color kShadow = rgb(0x05030A, 170);
-    constexpr Color kScrim = rgb(0x07050C, 175); // behind dialogs and sheets
+    // the palette in use: between the two while it changes (apply)
+    inline Palette current = kDarkPalette;
+    inline float darkness = 1; // 1 dark, 0 light
+
+    // every colour, blended: 0 is light, 1 is dark
+    inline void apply(float dark)
+    {
+        static_assert(sizeof(Palette) % sizeof(Color) == 0);
+        constexpr int n = int(sizeof(Palette) / sizeof(Color));
+        const Color *a = reinterpret_cast<const Color *>(&kLightPalette);
+        const Color *b = reinterpret_cast<const Color *>(&kDarkPalette);
+        Color *out = reinterpret_cast<Color *>(&current);
+        for (int i = 0; i < n; ++i)
+            out[i] = core::mix(a[i], b[i], dark);
+        darkness = dark;
+    }
+
+    // the names the UI draws with
+    inline Color &kNight = current.night;
+    inline Color &kBase = current.base;
+    inline Color &kSurface = current.surface;
+    inline Color &kSurfaceHi = current.surfaceHi;
+    inline Color &kSurfaceTop = current.surfaceTop;
+    inline Color &kText = current.text;
+    inline Color &kDim = current.dim;
+    inline Color &kFaint = current.faint;
+    inline Color &kPink = current.pink;
+    inline Color &kPinkHi = current.pinkHi;
+    inline Color &kOnPink = current.onPink;
+    inline Color &kTeal = current.teal;
+    inline Color &kAmber = current.amber;
+    inline Color &kRed = current.red;
+    inline Color &kScrim = current.scrim;
+    inline Color &kErrorFill = current.errorFill;
+    inline Color &kDoneFill = current.doneFill;
+    inline Color &kDangerFill = current.dangerFill;
+    inline Color &kDangerFillHi = current.dangerFillHi;
+    inline Color &kDangerText = current.dangerText;
+    inline Color &kLogFill = current.logFill;
+    inline Color &kWell = current.well;
+    inline Color &kWellBottom = current.wellBottom;
+    inline Color &kWellGlow = current.wellGlow;
+    inline Color &kWellGlowBottom = current.wellGlowBottom;
+    inline Color &kSky = current.sky;
+    inline Color &kSea = current.sea;
+
+    // a tint over a surface (white on dark, a deep pink on light)
+    inline Color ink(float a) { return core::withAlpha(current.ink, a * core::alphaOf(current.ink)); }
+    // a shadow's colour at strength a (light mode's are softer and pinker)
+    inline Color shade(float a) { return core::withAlpha(current.shadow, a * core::alphaOf(current.shadow)); }
 
     // type sizes
     constexpr float kWordmark = 46;

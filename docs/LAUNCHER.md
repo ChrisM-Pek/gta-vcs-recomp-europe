@@ -69,7 +69,7 @@ motion is (2026-11-01, the user's "rethink everything"; before, a sidebar of pag
 - **Setup** (`launcher/screens/setup.cpp`), until the game can be played: a rail of the four steps (Folder, Disc,
   Build tools, Game: their titles in Pricedown when installed, each with a line under it) whose line fills in teal as
   they are done, and one step at a time below it in a large card - a pink label, a title, a line of explanation, the
-  step, its state as a badge in the card's top right corner, and a footer whose primary (sunset-gradient) button is the
+  step, its state as a badge in the card's top right corner, and a footer whose primary (hot pink) button is the
   step's next thing. A step that turns good plays its check (a stroke that draws itself), holds 0.9 s, and the next
   slides in from the side it comes from. Behind the step shown sits a solid pink box, as in Vice City's menus: each
   step's is a quadrilateral of its own (its corners set off the step's text, each differently), and going to another
@@ -98,6 +98,12 @@ motion is (2026-11-01, the user's "rethink everything"; before, a sidebar of pag
   until the player sets it, it starts as Windows' "Animate controls and elements inside windows" (2026-11-01: that
   setting is off on many PCs tuned for speed - the dev machine's too - and had made the launcher snap with its own
   setting off; `reduce_motion` is written to launcher.ini only once set).
+- Light and dark (`ui/theme.h`): hot pink is the primary colour - the thing to do, the selection - on a deep black
+  (dark) or on white and blush pink (light); teal only for done, amber and red only for attention, no purple. *Appearance*
+  in Settings: System (the default: Windows' app mode, `AppsUseLightTheme`, followed live on `WM_SETTINGCHANGE`), Light
+  or Dark (`theme=` in launcher.ini). Every colour is a field of a palette; the two palettes crossfade over a quarter
+  of a second when the choice or Windows' mode changes, and the window's own frame (DWM dark mode, Windows 11's border)
+  switches with them. The icon (`launcher/make_icon.py`) is the same hot pink sun on black.
 - The first frame: the last doctor answer (`build/launcher_state.json`) gives the right mode at once; while this run's
   check is out, only "fine" is believed (anything else shows as checking) and the big button waits.
 
@@ -131,7 +137,8 @@ What each step and sheet holds:
   5 no window / graphics / sound; `0xC...` a crash, with the log).
 - **Saves**: the card's folder, Back up now, the backups with Restore (asks first; tools/backup.py).
 - **Settings**: what the launcher does when the game starts, updates (check now, check at start, Update now when one
-  is found - a dot on the title bar's Settings marks it), Reduce motion, a desktop shortcut.
+  is found - a dot on the title bar's Settings marks it), Appearance (System / Light / Dark), Reduce motion, a desktop
+  shortcut.
 - **Help**: Make a report (tools/report.py), the game's last log, the build log, the README, the keyboard, version and
   folder.
 
@@ -241,7 +248,8 @@ exe prints to the terminal that started it only through AttachConsole; `--out` f
 `--screen` picks what is shown (`setup:folder|disc|tools|game`, `home`, `task`, `sheet:saves|settings|help|folder`,
 `dialog:restore|quit|cancel`, `gallery` - every widget in its states), `--demo` a sample state (`running`, `link`,
 `firstlink`, `error`, `done`, `playing`, `update`, `gameerror`), `--then S --at T` switches after T seconds and `--frames N` saves N
-consecutive frames (a transition, frame by frame), `--scale K` / `--size WxH` the pixels per unit and the logical size;
+consecutive frames (a transition, frame by frame), `--scale K` / `--size WxH` the pixels per unit and the logical size,
+`--theme light|dark` the palette (dark when not given, whatever launcher.ini or Windows say);
 `--step N` (the old page numbers), `--action build --every S`, `--iso X`, `--wait S`, `--pick-build-dir PATH` as
 before. Screenshots run on a fixed 60 Hz clock, so the same arguments give the same picture. `--hidden --quit-after S`
 runs the real window and frame loop without showing it and prints the frames drawn and the CPU used (the idle cost);

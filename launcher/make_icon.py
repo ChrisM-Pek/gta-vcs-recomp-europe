@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Draws the launcher's icon (launcher.ico): a striped sunset sun over the sea, on dusk violet. Standard library only.
+"""Draws the launcher's icon (launcher.ico): a striped hot-pink sun over the sea, on black. Standard library only.
 
     python launcher/make_icon.py        writes launcher/launcher.ico (16, 24, 32, 48, 64, 256 px)
 
@@ -17,13 +17,13 @@ def pixel(x, y, size):
     cx, cy = min(max(x, r), 1 - r), min(max(y, r), 1 - r)
     if (x - cx) ** 2 + (y - cy) ** 2 > r * r:
         return (0, 0, 0, 0)
-    # sky: violet at the top to pink at the horizon; sea below it
+    # sky: black at the top to a deep pink at the horizon; sea below it
     horizon = 0.70
     if y < horizon:
         t = y / horizon
-        sky = (0.16 + 0.70 * t, 0.07 + 0.18 * t, 0.30 + 0.25 * t)
+        sky = (0.04 + 0.20 * t, 0.04 + 0.02 * t, 0.045 + 0.08 * t)
         colour = sky
-        # the sun: a disc, yellow at the top to pink at the bottom, cut by stripes that thicken toward the horizon
+        # the sun: a disc, light pink at the top to hot pink at the bottom, cut by stripes that thicken toward the horizon
         sx, sy, sr = 0.5, 0.52, 0.30
         if (x - sx) ** 2 + (y - sy) ** 2 < sr * sr:
             v = (y - (sy - sr)) / (2 * sr)
@@ -34,13 +34,13 @@ def pixel(x, y, size):
                 phase = ((y - (sy - 0.02)) % period) / period
                 stripe = phase > 1 - (0.15 + 0.45 * band)
             if not stripe:
-                colour = (1.0, 0.85 - 0.45 * v, 0.30 + 0.30 * v)
+                colour = (1.0, 0.60 - 0.42 * v, 0.80 - 0.26 * v)
     else:
         t = (y - horizon) / (1 - horizon)
-        colour = (0.10, 0.45 - 0.20 * t, 0.55 - 0.15 * t)
+        colour = (0.07 - 0.03 * t, 0.035 - 0.01 * t, 0.055 - 0.02 * t)
         # the sun's reflection: short pink lines
         if abs(x - 0.5) < 0.24 - 0.10 * t - 0.06 * (int((y - horizon) * 40) % 4 == 2) and int((y - horizon) * 40) % 2 == 0:
-            colour = (0.93, 0.45, 0.62)
+            colour = (1.0, 0.24, 0.58)
     return tuple(int(max(0, min(1, c)) * 255) for c in colour) + (255,)
 
 

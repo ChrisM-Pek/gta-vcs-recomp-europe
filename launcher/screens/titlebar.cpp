@@ -21,13 +21,13 @@ namespace screens
             const Rect disc{cx - r, cy - r, r * 2, r * 2};
             const float cut1 = cy + r * 0.18f, cut2 = cy + r * 0.48f;
             pushClip({disc.x, disc.y, disc.w, cut1 - disc.y});
-            gradient(disc, rgb(0xFFC56E), rgb(0xFF3F86), r);
+            gradient(disc, theme::kPinkHi, theme::kPink, r);
             popClip();
             pushClip({disc.x, cut1 + r * 0.12f, disc.w, cut2 - cut1 - r * 0.12f});
-            gradient(disc, rgb(0xFFC56E), rgb(0xFF3F86), r);
+            gradient(disc, theme::kPinkHi, theme::kPink, r);
             popClip();
             pushClip({disc.x, cut2 + r * 0.16f, disc.w, r});
-            gradient(disc, rgb(0xFFC56E), rgb(0xFF3F86), r);
+            gradient(disc, theme::kPinkHi, theme::kPink, r);
             popClip();
         }
 
@@ -38,7 +38,7 @@ namespace screens
             if (close)
                 rect(r, withAlpha(rgb(0xC42B1C), hover * (1.0f - 0.25f * in.w->press)));
             else
-                rect(r, withAlpha(rgb(0xFFFFFF), 0.07f * hover + 0.05f * in.w->press));
+                rect(r, theme::ink(0.07f * hover + 0.05f * in.w->press));
             const Color c = close ? mix(theme::kDim, rgb(0xFFFFFF), hover) : mix(theme::kDim, theme::kText, hover);
             drawIcon(kFontIcons, px(10), r.cx(), r.cy(), platform::window.focused ? c : theme::kFaint, icon);
             return in.clicked;
@@ -53,7 +53,7 @@ namespace screens
                 w.t = active ? 1.0f : 0.0f;
             ui::animate(w.t, active ? 1.0f : 0.0f, 16);
             const Rect pillRect = r.inset(0, px(7));
-            rect(pillRect, withAlpha(rgb(0xFFFFFF), 0.06f * w.hover + 0.09f * w.t), px(8));
+            rect(pillRect, theme::ink(0.06f * w.hover + 0.09f * w.t), px(8));
             const Color c = mix(mix(theme::kDim, theme::kText, w.hover), theme::kText, w.t);
             drawIcon(kFontIcons, px(13), r.x + px(19), r.cy(), c, icon);
             label(kFontBody, px(theme::kSmall), {r.x + px(32), r.y, r.w - px(38), r.h}, c, text);
@@ -79,7 +79,7 @@ namespace screens
             ~EndLayer() { ui::endLayer(); }
         } endLayer;
         // a hairline under it once something scrolls or a sheet covers the content
-        rect({bar.x, bar.bottom() - 1, bar.w, 1}, withAlpha(rgb(0xFFFFFF), 0.04f));
+        rect({bar.x, bar.bottom() - 1, bar.w, 1}, theme::ink(0.04f));
 
         const bool focused = platform::window.focused;
         Rect left = bar;
@@ -104,7 +104,7 @@ namespace screens
         if (windowButton("#min", theme::icon::kMinimize, minR, false))
             platform::minimize();
         core::cutRight(right, px(10));
-        rect({right.right(), bar.y + px(14), 1, h - px(28)}, withAlpha(rgb(0xFFFFFF), 0.08f));
+        rect({right.right(), bar.y + px(14), 1, h - px(28)}, theme::ink(0.08f));
         core::cutRight(right, px(10));
 
         struct Nav

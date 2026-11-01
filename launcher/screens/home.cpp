@@ -23,9 +23,9 @@ namespace screens
             const ui::Interaction in = ui::interact(ui::id(idLabel), r, true);
             ui::Widget &w = *in.w;
             const Rect box = r.offset(0, -w.hover * px(2));
-            shadow(box.offset(0, px(10)), withAlpha(theme::kShadow, 0.45f + 0.15f * w.hover), px(20), px(theme::kRadius));
+            shadow(box.offset(0, px(10)), theme::shade(0.45f + 0.15f * w.hover), px(20), px(theme::kRadius));
             rectEx(box, withAlpha(mix(theme::kSurface, theme::kSurfaceHi, w.hover), 0.78f), withAlpha(theme::kSurface, 0.70f),
-                   px(theme::kRadius), withAlpha(rgb(0xFFFFFF), 0.07f + 0.05f * w.hover), ui::hairline());
+                   px(theme::kRadius), theme::ink(0.07f + 0.05f * w.hover), ui::hairline());
             circle(box.x + px(34), box.y + px(36), px(16), withAlpha(iconColor, 0.14f));
             drawIcon(kFontIcons, px(15), box.x + px(34), box.y + px(36), iconColor, icon);
             ui::label(kFontSemibold, px(theme::kBody), {box.x + px(60), box.y + px(18), box.w - px(80), px(22)}, theme::kText, title);
@@ -40,10 +40,10 @@ namespace screens
         // while the game plays, never continuously (the game wants the GPU)
         void playing(App &app, Rect r)
         {
-            rectEx(r, withAlpha(theme::kTeal, 0.12f), withAlpha(theme::kTeal, 0.08f), px(14), withAlpha(theme::kTeal, 0.35f), ui::hairline());
+            rectEx(r, withAlpha(theme::kPink, 0.12f), withAlpha(theme::kPink, 0.08f), px(14), withAlpha(theme::kPink, 0.35f), ui::hairline());
             const float cx = r.x + px(28), cy = r.cy();
-            shadow({cx - px(5), cy - px(5), px(10), px(10)}, withAlpha(theme::kTeal, 0.6f), px(4), px(5));
-            circle(cx, cy, px(5), theme::kTeal);
+            shadow({cx - px(5), cy - px(5), px(10), px(10)}, withAlpha(theme::kPink, 0.6f), px(4), px(5));
+            circle(cx, cy, px(5), theme::kPink);
             const double played = ui::state.wall - app.gameStart;
             ui::label(kFontSemibold, px(17), {r.x + px(48), r.y, r.w - px(56), r.h}, theme::kText, "Playing  \xC2\xB7  " + duration(played));
         }
@@ -156,7 +156,7 @@ namespace screens
             const std::string text = app.gameExitText();
             const float h = ui::paragraphHeight(kFontBody, px(theme::kBody), colW - px(40), text) + px(70);
             const Rect box{left, y, colW, h};
-            ui::card(box, rgb(0x2A1620), theme::kRed);
+            ui::card(box, theme::kErrorFill, theme::kRed);
             ui::paragraph(kFontBody, px(theme::kBody), {box.x + px(22), box.y + px(16), box.w - px(40), 0}, theme::kText, text);
             float bx = box.x + px(16);
             const float by = box.bottom() - px(44);
@@ -173,7 +173,7 @@ namespace screens
             pushReveal(since, 4);
             const float h = std::min(px(160), ui::paragraphHeight(kFontMono, px(12), colW - px(40), app.doctorError, 1.4f) + px(32));
             const Rect box{left, y, colW, h};
-            ui::card(box, rgb(0x2A1620), theme::kRed);
+            ui::card(box, theme::kErrorFill, theme::kRed);
             render::pushClip(box.inset(px(4)));
             ui::paragraph(kFontMono, px(12), {box.x + px(22), box.y + px(16), box.w - px(40), 0}, theme::kDim, app.doctorError, 1.4f);
             render::popClip();
@@ -204,7 +204,7 @@ namespace screens
             std::string line = "Your memory card, backed up on demand";
             if (app.backups.size())
                 line = "Last backup " + app.backups[0]["name"].str();
-            if (glassCard("#card-saves", {strip.x + cw + gap, strip.y, cw, cardsH}, theme::icon::kSave, theme::kViolet, "Saves", line))
+            if (glassCard("#card-saves", {strip.x + cw + gap, strip.y, cw, cardsH}, theme::icon::kSave, theme::kPink, "Saves", line))
                 openSheet(Sheet::Saves);
         }
         popReveal();

@@ -64,6 +64,12 @@ namespace platform
             BOOL animations = TRUE;
             SystemParametersInfoW(SPI_GETCLIENTAREAANIMATION, 0, &animations, 0);
             window.reducedMotion = !animations;
+            // Settings > Personalisation > Colours > "Choose your default app mode"; no value (before Windows 10
+            // 1809) is light
+            DWORD light = 1, size = sizeof(light);
+            RegGetValueW(HKEY_CURRENT_USER, L"Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize",
+                         L"AppsUseLightTheme", RRF_RT_REG_DWORD, nullptr, &light, &size);
+            window.darkMode = light == 0;
             window.doubleClickSeconds = float(GetDoubleClickTime()) / 1000.0f;
         }
 
@@ -557,13 +563,10 @@ namespace platform
         window.refreshHz = detectRefreshRate();
         readSystemSettings();
 
-        // dark, and on Windows 11 rounded corners with a border in the window's own colour
-        const BOOL dark = TRUE;
-        DwmSetWindowAttribute(g_hwnd, 20 /* DWMWA_USE_IMMERSIVE_DARK_MODE */, &dark, sizeof(dark));
+        // on Windows 11 rounded corners; the frame's mode and border follow the palette (setDarkFrame)
         const int round = 2; // DWMWCP_ROUND
         DwmSetWindowAttribute(g_hwnd, 33 /* DWMWA_WINDOW_CORNER_PREFERENCE */, &round, sizeof(round));
-        const COLORREF border = RGB(42, 34, 58);
-        DwmSetWindowAttribute(g_hwnd, 34 /* DWMWA_BORDER_COLOR */, &border, sizeof(border));
+        setDarkFrame(window.darkMode);
         // a sliver of frame extended into the client area keeps the DWM shadow on a window without a visible frame
         const MARGINS margins = {0, 0, 1, 0};
         DwmExtendFrameIntoClientArea(g_hwnd, &margins);
@@ -668,6 +671,19 @@ namespace platform
 
     void minimize() { ShowWindow(g_hwnd, SW_MINIMIZE); }
     void toggleMaximize() { ShowWindow(g_hwnd, IsZoomed(g_hwnd) ? SW_RESTORE : SW_MAXIMIZE); }
+
+    void setDarkFrame(bool dark)
+    {
+        static int current = -1;
+        if (!g_hwnd || current == int(dark))
+            return;
+        current = int(dark);
+        const BOOL value = dark;
+        DwmSetWindowAttribute(g_hwnd, 20 /* DWMWA_USE_IMMERSIVE_DARK_MODE */, &value, sizeof(value));
+        // Windows 11's border, in the window's own colour
+        const COLORREF border = dark ? RGB(40, 40, 44) : RGB(242, 208, 224);
+        DwmSetWindowAttribute(g_hwnd, 34 /* DWMWA_BORDER_COLOR */, &border, sizeof(border));
+    }
 
     void restoreAndRaise()
     {

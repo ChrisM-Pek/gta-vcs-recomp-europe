@@ -72,7 +72,7 @@ target_compile_definitions(VCSLauncher PRIVATE VCS_VERSION_MAJOR=${CMAKE_MATCH_1
                            VCS_VERSION_PATCH=${CMAKE_MATCH_3} "VCS_VERSION_TEXT=\"${VCS_VERSION}\"")
 
 target_sources(VCSLauncher PRIVATE launcher.rc)
-target_link_libraries(VCSLauncher PRIVATE d3d11 dxgi dwrite dwmapi ole32 shell32 uuid winmm)
+target_link_libraries(VCSLauncher PRIVATE d3d11 dxgi dwrite dwmapi ole32 shell32 uuid winmm advapi32)
 target_compile_definitions(VCSLauncher PRIVATE UNICODE _UNICODE NOMINMAX WIN32_LEAN_AND_MEAN)
 target_include_directories(VCSLauncher PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}" "${VCS_ROOT}/src" "${VCS_LAUNCHER_SHADERS}")
 # next to tools/ and the source, where a release has it (the launcher finds the repository from its own folder)

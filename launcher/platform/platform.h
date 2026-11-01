@@ -79,6 +79,7 @@ namespace platform
         bool quitRequested = false;  // the close button, Alt+F4: the UI decides
         bool needsRedraw = true;     // input or an OS event since the last frame
         bool reducedMotion = false;  // Windows' "Show animations in Windows" is off
+        bool darkMode = true;        // Windows' app mode is dark
         float doubleClickSeconds = 0.5f;
     };
 
@@ -117,6 +118,7 @@ namespace platform
     void minimize();
     void toggleMaximize();
     void restoreAndRaise();  // back from the game
+    void setDarkFrame(bool dark); // the window's frame, border and menus to match the palette
     void releaseInput();     // everything held is let go (a dialog took the keyboard and mouse)
 
     double now();            // seconds, monotonic

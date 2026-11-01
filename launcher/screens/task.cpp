@@ -55,7 +55,7 @@ namespace screens
             const float h = px(36);
             // a line joins the badges
             if (i > 0)
-                rect({r.x + px(12) - px(1), r.y - px(12), px(2), px(12) + px(2)}, withAlpha(rgb(0xFFFFFF), 0.07f));
+                rect({r.x + px(12) - px(1), r.y - px(12), px(2), px(12) + px(2)}, theme::ink(0.07f));
             ui::statusBadge(ui::id("#stage", int(i)), r.x + px(12), r.y + h * 0.5f, px(10), status);
             const Color c = running ? theme::kText : broke ? theme::kRed : theme::kDim;
             ui::label(running ? kFontSemibold : kFontBody, px(theme::kBody), {r.x + px(36), r.y, r.w - px(120), h}, c, s.title);
@@ -124,7 +124,7 @@ namespace screens
                     line += "  \xC2\xB7  longer than the last time";
                 ui::label(kFontBody, px(theme::kSmall), {tx, base - px(18), col.right() - tx, px(20)}, theme::kFaint, line);
                 y = base + m.descent + px(14);
-                ui::progressBar(ui::id("#bar"), {col.x, y, col.w, px(8)}, float(t.done) / float(t.total), theme::kPink, theme::kSunset);
+                ui::progressBar(ui::id("#bar"), {col.x, y, col.w, px(8)}, float(t.done) / float(t.total), theme::kPink, theme::kPinkHi);
             }
             else
             {
@@ -135,7 +135,7 @@ namespace screens
                     line += "  \xC2\xB7  one long step: the whole game is optimised at once";
                 ui::label(kFontBody, px(theme::kSmall), {col.x, y, col.w, px(20)}, theme::kFaint, line);
                 y += px(30);
-                ui::progressBar(ui::id("#bar"), {col.x, y, col.w, px(8)}, -1, theme::kPink, theme::kSunset);
+                ui::progressBar(ui::id("#bar"), {col.x, y, col.w, px(8)}, -1, theme::kPink, theme::kPinkHi);
             }
             y += px(36);
             popReveal();
@@ -155,7 +155,7 @@ namespace screens
             pushReveal(g_finishedAt, 0, 16);
             render::pushOffset(shake, 0);
             const Rect box{col.x, y, col.w, h};
-            ui::card(box, rgb(0x2A1620), theme::kRed);
+            ui::card(box, theme::kErrorFill, theme::kRed);
             float by = box.y + px(24);
             drawIcon(kFontIcons, px(18), box.x + px(32), by + px(12), theme::kRed, theme::icon::kWarning);
             ui::label(kFontSemibold, px(18), {box.x + px(56), by, textW, px(26)}, theme::kText, help.title);
@@ -200,7 +200,7 @@ namespace screens
             // done (or stopped): a check that draws itself, what happened, and what's next
             pushReveal(g_finishedAt, 0, 12);
             const Rect box{col.x, y, col.w, px(116)};
-            ui::card(box, t.cancelled ? 0 : rgb(0x152A2A));
+            ui::card(box, t.cancelled ? 0 : theme::kDoneFill);
             ui::statusBadge(ui::id("#donebadge"), box.x + px(46), box.cy(), px(20), t.cancelled ? ui::Status::Missing : ui::Status::Good);
             const std::string message = t.cancelled ? "Stopped. Starting again continues where it stopped." : doneMessage(t, elapsed);
             ui::paragraph(kFontSemibold, px(16), {box.x + px(88), box.y + px(24), box.w - px(300), 0}, theme::kText, message);
@@ -287,9 +287,9 @@ namespace screens
         if (g_drawer.value > 0.01f)
         {
             const Rect drawer{r.x, drawerY, r.w, r.bottom() - drawerY + px(20)};
-            shadow(drawer.offset(0, -px(4)), withAlpha(theme::kShadow, 0.7f * core::clamp01(g_drawer.value)), px(16), px(16));
-            rectEx(drawer, theme::kBase, theme::kNight, {px(16), px(16), 0, 0}, withAlpha(rgb(0xFFFFFF), 0.06f), ui::hairline());
-            rect({drawer.cx() - px(18), drawer.y + px(8), px(36), px(4)}, withAlpha(rgb(0xFFFFFF), 0.12f), px(2));
+            shadow(drawer.offset(0, -px(4)), theme::shade(0.7f * core::clamp01(g_drawer.value)), px(16), px(16));
+            rectEx(drawer, theme::kBase, theme::kNight, {px(16), px(16), 0, 0}, theme::ink(0.06f), ui::hairline());
+            rect({drawer.cx() - px(18), drawer.y + px(8), px(36), px(4)}, theme::ink(0.12f), px(2));
             const Rect inner{col.x - px(12), drawer.y + px(22), col.w + px(24), r.bottom() - drawer.y - px(36)};
             if (inner.h > px(40))
                 ui::logView(ui::id("#log"), inner, t.log);

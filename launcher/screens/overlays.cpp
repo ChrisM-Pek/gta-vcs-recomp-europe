@@ -42,8 +42,8 @@ namespace screens
             const Rect box = core::centred(window, width, h).offset(0, (1 - e) * px(12)).scaled(0.96f + 0.04f * core::easeOutBack(t));
             ui::blockInput(box);
             render::pushOpacity(core::clamp01(t * 1.4f));
-            shadow(box.offset(0, px(16)), withAlpha(theme::kShadow, 0.9f), px(34), px(16));
-            rectEx(box, theme::kSurfaceHi, theme::kSurface, px(16), withAlpha(rgb(0xFFFFFF), 0.08f), ui::hairline());
+            shadow(box.offset(0, px(16)), theme::shade(0.9f), px(34), px(16));
+            rectEx(box, theme::kSurfaceHi, theme::kSurface, px(16), theme::ink(0.08f), ui::hairline());
             float y = box.y + px(30);
             drawText(kFontSemibold, px(21), box.x + px(32), y + metrics(kFontSemibold, px(21)).ascent, theme::kText, title);
             y += px(42);
@@ -208,8 +208,8 @@ namespace screens
             const float h = px(42);
             const Rect box{window.cx() - w * 0.5f, y - h + (1 - in) * px(24) - (1 - out) * px(8), w, h};
             render::pushOpacity(core::clamp01(in) * out);
-            shadow(box.offset(0, px(8)), withAlpha(theme::kShadow, 0.9f), px(16), h * 0.5f);
-            rectEx(box, theme::kSurfaceTop, theme::kSurfaceHi, h * 0.5f, withAlpha(rgb(0xFFFFFF), 0.09f), ui::hairline());
+            shadow(box.offset(0, px(8)), theme::shade(0.9f), px(16), h * 0.5f);
+            rectEx(box, theme::kSurfaceTop, theme::kSurfaceHi, h * 0.5f, theme::ink(0.09f), ui::hairline());
             circle(box.x + px(22), box.cy(), px(4), toast.color);
             drawText(kFontBody, size, box.x + px(38), box.cy() + px(5), theme::kText, text);
             render::popOpacity();

@@ -83,8 +83,8 @@ namespace screens
         y += px(78);
 
         title("PROGRESS");
-        ui::progressBar(ui::id("#g-bar"), {x, y, px(420), px(8)}, 0.62f, theme::kPink, theme::kSunset);
-        ui::progressBar(ui::id("#g-bar2"), {x + px(460), y, px(300), px(8)}, -1, theme::kPink, theme::kSunset);
+        ui::progressBar(ui::id("#g-bar"), {x, y, px(420), px(8)}, 0.62f, theme::kPink, theme::kPinkHi);
+        ui::progressBar(ui::id("#g-bar2"), {x + px(460), y, px(300), px(8)}, -1, theme::kPink, theme::kPinkHi);
         y += px(26);
         const int pct = int(ui::state.time * 7) % 100;
         ui::rollingNumber(ui::id("#g-num"), kFontDisplay, px(48), x, y + px(44), theme::kText, pct);

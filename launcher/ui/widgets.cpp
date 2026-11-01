@@ -122,24 +122,24 @@ namespace ui
         {
         case ButtonStyle::Primary:
             shadow(box.offset(0, px(6)), withAlpha(theme::kPink, 0.22f + 0.30f * w.hover), px(14 + 6 * w.hover), radius);
-            gradient(box, mix(theme::kPink, rgb(0xFFFFFF), 0.10f * w.hover), mix(theme::kSunset, rgb(0xFFFFFF), 0.10f * w.hover),
+            gradient(box, mix(theme::kPink, rgb(0xFFFFFF), 0.10f * w.hover), mix(theme::kPinkHi, rgb(0xFFFFFF), 0.10f * w.hover),
                      radius, Gradient::Horizontal);
             // a highlight along the top edge: light from above
             gradient({box.x, box.y, box.w, box.h * 0.5f}, rgb(0xFFFFFF, 40), rgb(0xFFFFFF, 0), {radius, radius, 0, 0});
-            textColor = rgb(0xFFFFFF);
+            textColor = theme::kOnPink;
             break;
         case ButtonStyle::Secondary:
             rectEx(box, mix(theme::kSurfaceHi, theme::kSurfaceTop, w.hover), mix(theme::kSurfaceHi, theme::kSurfaceTop, w.hover * 0.6f),
-                   radius, withAlpha(rgb(0xFFFFFF), 0.07f + 0.06f * w.hover), hairline());
+                   radius, theme::ink(0.07f + 0.06f * w.hover), hairline());
             break;
         case ButtonStyle::Ghost:
-            rect(box, withAlpha(rgb(0xFFFFFF), 0.07f * w.hover + 0.04f * w.press), radius);
+            rect(box, theme::ink(0.07f * w.hover + 0.04f * w.press), radius);
             textColor = mix(theme::kDim, theme::kText, w.hover);
             break;
         case ButtonStyle::Danger:
-            rectEx(box, mix(rgb(0x3A1F2A), rgb(0x4A2533), w.hover), mix(rgb(0x3A1F2A), rgb(0x4A2533), w.hover), radius,
+            rectEx(box, mix(theme::kDangerFill, theme::kDangerFillHi, w.hover), mix(theme::kDangerFill, theme::kDangerFillHi, w.hover), radius,
                    withAlpha(theme::kRed, 0.35f), hairline());
-            textColor = mix(rgb(0xFFC9C9), rgb(0xFFFFFF), w.hover);
+            textColor = mix(theme::kDangerText, theme::kText, 0.6f * w.hover);
             break;
         }
         const float textW = measure(font, s, text);
@@ -161,7 +161,7 @@ namespace ui
         const Interaction in = interact(id(idLabel), r, true, enabled);
         Widget &w = *in.w;
         const float radius = std::min(px(theme::kRadiusSmall), r.h * 0.5f);
-        rect(r.scaled(1.0f - 0.06f * w.press), withAlpha(rgb(0xFFFFFF), 0.08f * w.hover + 0.05f * w.press), radius);
+        rect(r.scaled(1.0f - 0.06f * w.press), theme::ink(0.08f * w.hover + 0.05f * w.press), radius);
         const Color c = enabled ? mix(theme::kDim, theme::kText, w.hover) : theme::kFaint;
         drawIcon(kFontIcons, iconSize > 0 ? iconSize : px(15), r.cx(), r.cy(), c, icon);
         focusRing(r, w.focus, radius);
@@ -180,11 +180,11 @@ namespace ui
         spring(w.spring, float(selected), 420, 0.82f);
         const float radius = px(theme::kRadiusSmall + 1);
         render::pushOpacity(enabled ? 1.0f : 0.5f);
-        rectEx(r, theme::kBase, theme::kBase, radius, withAlpha(rgb(0xFFFFFF), 0.06f), hairline());
+        rectEx(r, theme::kBase, theme::kBase, radius, theme::ink(0.06f), hairline());
         // the thumb slides on a spring to the chosen segment
         const Rect thumb = Rect{r.x + w.spring.value * seg, r.y, seg, r.h}.inset(px(3));
-        shadow(thumb.offset(0, px(2)), theme::kShadow, px(6), radius - px(3));
-        rectEx(thumb, theme::kSurfaceTop, theme::kSurfaceHi, radius - px(3), withAlpha(rgb(0xFFFFFF), 0.08f), hairline());
+        shadow(thumb.offset(0, px(2)), theme::shade(0.67f), px(6), radius - px(3));
+        rectEx(thumb, theme::kSurfaceTop, theme::kSurfaceHi, radius - px(3), theme::ink(0.08f), hairline());
         bool changed = false;
         for (int i = 0; i < n; ++i)
         {
@@ -216,11 +216,11 @@ namespace ui
         spring(w.spring, value ? 1.0f : 0.0f, 500, 0.7f);
         const float t = core::clamp01(w.spring.value);
         const Rect track = centred(r, px(38), px(22)).offset(r.w * 0.5f - px(19), 0);
-        rectEx(track, mix(theme::kSurfaceTop, theme::kPink, t), mix(theme::kSurfaceTop, theme::kSunset, t), track.h * 0.5f,
-               withAlpha(rgb(0xFFFFFF), 0.08f * (1 - t)), hairline());
+        rectEx(track, mix(theme::kSurfaceTop, theme::kPink, t), mix(theme::kSurfaceTop, theme::kPinkHi, t), track.h * 0.5f,
+               theme::ink(0.08f * (1 - t)), hairline());
         const float knob = px(16) * (1.0f + 0.12f * w.press);
         const float kx = track.x + px(3) + knob * 0.5f + w.spring.value * (track.w - px(6) - knob);
-        shadow({kx - knob * 0.5f, track.cy() - knob * 0.5f + px(1), knob, knob}, theme::kShadow, px(3), knob * 0.5f);
+        shadow({kx - knob * 0.5f, track.cy() - knob * 0.5f + px(1), knob, knob}, theme::shade(0.67f), px(3), knob * 0.5f);
         circle(kx, track.cy(), knob * 0.5f, mix(theme::kDim, rgb(0xFFFFFF), std::max(t, w.hover * 0.5f)));
         focusRing(track, w.focus, track.h * 0.5f);
         return in.clicked;
@@ -234,7 +234,7 @@ namespace ui
         if (w.fresh)
             w.spring.snap(selected ? 1.0f : 0.0f);
         spring(w.spring, selected ? 1.0f : 0.0f, 520, 0.6f);
-        rect(r, withAlpha(rgb(0xFFFFFF), 0.035f * w.hover + 0.03f * core::clamp01(w.spring.value)), px(10));
+        rect(r, theme::ink(0.035f * w.hover + 0.03f * core::clamp01(w.spring.value)), px(10));
         const float cx = r.x + px(22), cy = r.y + px(detail.empty() ? 0 : 0) + r.h * 0.5f;
         const float ring = px(9);
         outline({cx - ring, cy - ring, ring * 2, ring * 2}, mix(theme::kFaint, theme::kPink, core::clamp01(w.spring.value)),
@@ -263,8 +263,8 @@ namespace ui
         const float radius = px(theme::kRadius);
         if (!fill)
             fill = theme::kSurface;
-        shadow(r.offset(0, px(8)), withAlpha(theme::kShadow, 0.55f), px(18), radius);
-        rectEx(r, mix(fill, rgb(0xFFFFFF), 0.025f), fill, radius, withAlpha(rgb(0xFFFFFF), 0.06f), hairline());
+        shadow(r.offset(0, px(8)), theme::shade(0.55f), px(18), radius);
+        rectEx(r, mix(fill, rgb(0xFFFFFF), 0.025f), fill, radius, theme::ink(0.06f), hairline());
         if (edge)
         {
             pushClip(r);
@@ -400,7 +400,7 @@ namespace ui
     {
         Widget &w = widget(wid);
         const float radius = r.h * 0.5f;
-        rect(r, withAlpha(rgb(0xFFFFFF), 0.06f), radius);
+        rect(r, theme::ink(0.06f), radius);
         const float t = float(state.time);
         if (value < 0)
         {
@@ -555,7 +555,7 @@ namespace ui
             wakeAt(s.lastScroll + 1.0);
         animate(s.bar, show ? 1.0f : 0.0f, show ? 16.0f : 5.0f);
         if (s.bar > 0.01f)
-            rect(thumb.inset(-in.w->hover * px(1), 0), withAlpha(rgb(0xFFFFFF), (0.16f + 0.14f * in.w->hover) * s.bar), px(2) + in.w->hover * px(1));
+            rect(thumb.inset(-in.w->hover * px(1), 0), theme::ink((0.16f + 0.14f * in.w->hover) * s.bar), px(2) + in.w->hover * px(1));
     }
 
     void scrollToEnd(Id wid) { g_scrolls[wid].toEnd = true; }
@@ -568,7 +568,7 @@ namespace ui
 
     void logView(Id wid, Rect r, const std::deque<std::string> &lines)
     {
-        rectEx(r, rgb(0x0E0B15), rgb(0x0E0B15), px(10), withAlpha(rgb(0xFFFFFF), 0.05f), hairline());
+        rectEx(r, theme::kLogFill, theme::kLogFill, px(10), theme::ink(0.05f), hairline());
         const Rect view = r.inset(px(14), px(10));
         const float size = px(12.5f);
         const float step = std::ceil(px(19));

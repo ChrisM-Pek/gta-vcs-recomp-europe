@@ -37,7 +37,7 @@ namespace screens
         void divider(Rect r, float &y)
         {
             y += px(10);
-            rect({r.x, y, r.w, 1}, withAlpha(rgb(0xFFFFFF), 0.06f));
+            rect({r.x, y, r.w, 1}, theme::ink(0.06f));
             y += px(22);
         }
 
@@ -82,8 +82,8 @@ namespace screens
                     const Rect item{r.x - px(10), y, r.w + px(20), px(56)};
                     ui::pushId(int(i));
                     const bool over = ui::mouseOver(item);
-                    rect(item, withAlpha(rgb(0xFFFFFF), over ? 0.035f : 0.0f), px(10));
-                    drawIcon(kFontIcons, px(15), item.x + px(26), item.cy(), theme::kViolet, theme::icon::kSave);
+                    rect(item, theme::ink(over ? 0.035f : 0.0f), px(10));
+                    drawIcon(kFontIcons, px(15), item.x + px(26), item.cy(), theme::kPink, theme::icon::kSave);
                     ui::label(kFontSemibold, px(theme::kBody), {item.x + px(48), item.y + px(8), item.w - px(170), px(22)}, theme::kText, name);
                     ui::label(kFontBody, px(theme::kSmall), {item.x + px(48), item.y + px(29), item.w - px(170), px(20)}, theme::kFaint, b["saves"].str());
                     const float bw = ui::buttonWidth("Restore", theme::icon::kUndo);
@@ -153,6 +153,25 @@ namespace screens
                 app.startUpdateCheck(false);
             divider(r, y);
 
+            section(r, y, "APPEARANCE");
+            {
+                static const char *themes[] = {"system", "light", "dark"};
+                int selected = 0;
+                for (int i = 0; i < 3; ++i)
+                    if (app.settings.theme == themes[i])
+                        selected = i;
+                if (ui::segmented("#theme", {r.x, y, std::min(r.w, px(340)), px(38)}, {"System", "Light", "Dark"}, selected))
+                {
+                    app.settings.theme = themes[selected];
+                    changed = true;
+                }
+                y += px(48);
+                text(r, y, selected == 0 ? std::string("Follows Windows' app mode, now ") + (platform::window.darkMode ? "dark." : "light.")
+                                         : std::string("Always ") + (selected == 1 ? "light." : "dark."),
+                     theme::kFaint);
+            }
+            divider(r, y);
+
             section(r, y, "THIS LAUNCHER");
             {
                 const Rect line{r.x, y, r.w, px(30)};
@@ -219,7 +238,7 @@ namespace screens
             for (const auto &k : keys)
             {
                 const float kw = measure(kFontSemibold, px(12), k[0]) + px(16);
-                rectEx({r.x, y + px(3), kw, px(22)}, theme::kSurfaceHi, theme::kSurfaceHi, px(5), withAlpha(rgb(0xFFFFFF), 0.10f), ui::hairline());
+                rectEx({r.x, y + px(3), kw, px(22)}, theme::kSurfaceHi, theme::kSurfaceHi, px(5), theme::ink(0.10f), ui::hairline());
                 ui::label(kFontSemibold, px(12), {r.x, y + px(3), kw, px(22)}, theme::kText, k[0], ui::Align::Centre);
                 ui::label(kFontBody, px(theme::kSmall), {r.x + px(84), y, r.w - px(84), px(28)}, theme::kDim, k[1]);
                 y += px(32);
@@ -271,8 +290,8 @@ namespace screens
         const float width = std::min(px(480), area.w * 0.9f);
         const Rect panel{area.right() - width * open, area.y, width, area.h};
         ui::blockInput(panel);
-        shadow(panel.offset(-px(6), 0), withAlpha(theme::kShadow, 0.8f * core::clamp01(open)), px(24), 0);
-        rectEx(panel, theme::kBase, mix(theme::kBase, theme::kNight, 0.5f), {px(14), 0, 0, 0}, withAlpha(rgb(0xFFFFFF), 0.06f), ui::hairline());
+        shadow(panel.offset(-px(6), 0), theme::shade(0.8f * core::clamp01(open)), px(24), 0);
+        rectEx(panel, theme::kBase, mix(theme::kBase, theme::kNight, 0.5f), {px(14), 0, 0, 0}, theme::ink(0.06f), ui::hairline());
 
         const char *title = "";
         const char *subtitle = "";

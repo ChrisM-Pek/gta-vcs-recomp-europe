@@ -13,6 +13,7 @@
 //       [--then S --at T]               switch to S after T seconds (transitions)
 //       [--frames N]                    N consecutive frames from the start (or from --then): F-000.png...
 //       [--size WxH] [--scale K]        logical size (1100x700) and pixels per unit (1)
+//       [--theme light|dark]            the palette (dark when not given, whatever launcher.ini or Windows say)
 //       [--step N]                      the old page numbers: 0-3 the setup steps, 4 Saves, 5 Settings, 6 Help
 //       [--action build --every S] [--iso X] [--wait S] [--pick-build-dir PATH]
 //   VCSLauncher.exe --stats             the window with a frame-time overlay (also Ctrl+Shift+F11)
@@ -169,7 +170,7 @@ namespace
 
     struct Shots
     {
-        std::string path, screen, demo, then, action, iso, pickBuildDir;
+        std::string path, screen, demo, then, action, iso, pickBuildDir, theme;
         double wait = 3.0, every = 0, at = 1.0;
         int frames = 0;
         int width = 1100, height = 700;
@@ -330,6 +331,7 @@ namespace
             platform::window.dpiScale = shots->scale;
             platform::window.refreshHz = 60;
             platform::window.reducedMotion = false;
+            app.settings.theme = shots->theme == "light" ? "light" : "dark";
             if (!shots->iso.empty())
                 app.chooseDisc(pathFrom(shots->iso));
         }
@@ -516,6 +518,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
                 shots.screen = pages[n];
         }
         shots.demo = argValue(args, "--demo");
+        shots.theme = argValue(args, "--theme");
         shots.then = argValue(args, "--then");
         shots.action = argValue(args, "--action");
         shots.iso = argValue(args, "--iso");

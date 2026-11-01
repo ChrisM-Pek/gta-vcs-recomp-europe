@@ -679,6 +679,8 @@ namespace launcher
                 settings.opt = value;
             else if (key == "check_updates")
                 settings.checkUpdates = value == "1";
+            else if (key == "theme" && (value == "system" || value == "light" || value == "dark"))
+                settings.theme = value;
             else if (key == "reduce_motion")
             {
                 settings.reduceMotion = value == "1";
@@ -695,7 +697,8 @@ namespace launcher
         out << "# the launcher's own settings (the game's are in vcs.ini)\n"
             << "after_launch=" << settings.afterLaunch << "\n"
             << "opt=" << settings.opt << "\n"
-            << "check_updates=" << (settings.checkUpdates ? 1 : 0) << "\n";
+            << "check_updates=" << (settings.checkUpdates ? 1 : 0) << "\n"
+            << "theme=" << settings.theme << "\n";
         if (settings.reduceMotionSet) // until the player sets it, it follows Windows
             out << "reduce_motion=" << (settings.reduceMotion ? 1 : 0) << "\n";
     }

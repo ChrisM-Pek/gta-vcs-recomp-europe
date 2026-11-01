@@ -795,6 +795,20 @@ bar, disc art behind Home later.
 - **Tests stay hidden**: `--screenshot` renders offscreen on a fixed clock (same arguments, same picture), with
   `--frames` for transitions; `--hidden --quit-after` runs the real window loop unshown and reports its cost.
 
+## 2026-11-01 - The launcher in light and dark, hot pink, no purple
+
+The user asked for a light and a dark mode following Windows' (with System / Light / Dark in Settings), hot pink as
+the primary colour - pink and white in light, pink and "a really nice black" in dark - no purple anywhere, other
+colours sparingly. The dusk-violet palette and the sunset orange went: dark is neutral blacks and greys
+(`#0A0A0B` behind, `#17171A` cards) with hot pink `#FF2E8B`; light is blush white behind (`#FFF4F8`), white cards,
+warm greys for text and a deeper pink `#F0177F` (white text on it stays readable). Teal stays for done, amber and red
+for attention - signals only; decoration (the backdrop's sea lines, the playing indicator, the saves icon) is pink.
+Colours are fields of a palette struct, so the two blend field by field: switching crossfades instead of jumping.
+Overlays (hover tints, hairlines) are `theme::ink(a)` - white on dark, a deep pink-brown on light - and shadows
+`theme::shade(a)`, softer and pinker on light. Light mode's scrim washes the content out (a translucent blush)
+instead of darkening it. Screenshots default to dark (`--theme`), so docs and tests give the same picture on any PC.
+The app icon was redrawn in the same colours.
+
 ## 2026-11-01 - Pricedown in the launcher only when the player has it installed
 
 The user asked for Pricedown (GTA's lettering) on the launcher's prominent elements, from a zip of Typodermic's free

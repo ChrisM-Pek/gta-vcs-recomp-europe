@@ -14,7 +14,7 @@ namespace ui
 {
     enum class ButtonStyle
     {
-        Primary,   // the sunset gradient: the one thing to do next
+        Primary,   // the hot pink gradient: the one thing to do next
         Secondary, // a raised control
         Ghost,     // text until hovered
         Danger,

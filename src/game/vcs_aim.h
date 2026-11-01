@@ -36,6 +36,8 @@ namespace vcs::aim
         bool own = false;    // free aim has the target button: R1 is `r1` and L3 `l3`, not the bindings'
         bool camera = false; // and the camera: the right stick centred, the mouse camera left alone
         bool leftStick = false; // and the left stick: centred (in a car it moves the game's free-aim dummy)
+        bool padR1Fires = false; // the gamepad's R1 fires (Circle) - in a car, where the right stick aims and Circle is
+                                 // out of the thumb's reach
         bool r1 = false, l3 = false;
     };
     Output update(const Input &in);

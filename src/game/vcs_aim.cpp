@@ -347,7 +347,7 @@ namespace vcs::aim
                 std::fprintf(stderr, "[aim] free aim in the car (the game's drive-by, dummy 0x%x)\n", g_dummy);
             }
             g_dummy = rd32(ped + kPedTarget);
-            out.camera = out.leftStick = true;
+            out.camera = out.leftStick = out.padR1Fires = true;
 
             const float dt = std::clamp(rdf(kTimeStep), 0.05f, 3.4f) / 50.0f;
             const float turn = in.turn + in.turnRate * kStickRate * dt;

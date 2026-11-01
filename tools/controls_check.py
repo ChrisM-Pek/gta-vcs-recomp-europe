@@ -515,6 +515,12 @@ class Check:
         self.setting("mouse.free_aim", 0)
         g.wait_frames(5)
         off = self.aim()[0], mouse_turn(), stick_turn()
+        g.cmd("gamepad on")
+        g.cmd("gamepad rb 1")
+        rb_off = self.pad()["buttons"]
+        g.cmd("gamepad rb 0")
+        g.cmd("gamepad off")
+        self.ok("in a car, free aim off: the gamepad's R1 is R1", rb_off == R1, "buttons %04x" % rb_off)
         self.ok("in a car, free aim off: the game's drive-by aim (left stick)",
                 self.cam()[0] == 11 and kind == 8 and off[0] == 0 and abs(off[1]) < 0.02 and abs(off[2]) > 0.2,
                 "mode %d target kind %d, active %d, mouse %+.3f, left stick %+.3f" % ((self.cam()[0], kind) + off))
@@ -538,8 +544,17 @@ class Check:
         g.cmd("gamepad rx 0")
         time.sleep(0.3)
         pad = turned(h0)
-        g.cmd("gamepad off")
         self.ok("in a car: the right stick aims", -1.4 < pad < -0.6, "aim %+.3f" % pad)
+        # the gamepad's R1 (RB) fires there, as Circle (the right thumb is on the stick)
+        shots0 = self.aim()[1]
+        g.cmd("gamepad rb 1")
+        rb = self.pad()["buttons"]
+        time.sleep(1.0)
+        g.cmd("gamepad rb 0")
+        time.sleep(0.3)
+        fired = self.aim()[1] - shots0
+        g.cmd("gamepad off")
+        self.ok("in a car: the gamepad's R1 fires", rb == CIRCLE and fired >= 1, "buttons %04x, %d shot(s)" % (rb, fired))
 
         # up and down within the game's limits there: 20 degrees above level, 5 below
         def elevation():

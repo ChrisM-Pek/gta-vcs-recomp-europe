@@ -600,6 +600,9 @@ namespace vcs::input
                 rx = ry = 0.0f;
                 if (g_mouse.aim.leftStick)
                     lx = ly = 0.0f;
+                // the right thumb is on the stick: the gamepad's R1 fires there (the user's ask), and is not R1 then
+                if (g_mouse.aim.padR1Fires && padR1)
+                    buttons = static_cast<uint16_t>((buttons & ~(keyR1 ? 0 : kR1)) | kCircle);
             }
 
             const uint16_t word = static_cast<uint16_t>(~buttons);

@@ -753,3 +753,7 @@ from them: Vic moves while free aiming exactly when he can move locked on with t
   the game: the dummy at the gun's range, the world direction while the car turns, 20 deg up / 5 down; the shots go
   down the camera line as on foot. Both devices' sticks / mice turn it whichever setting is on: there is no button to
   tell the devices apart, and the left stick no longer aims. Free aim off is the PS2's left stick.
+- (2026-11-01, the user, next) With the right stick aiming in Jive Drive's car, Circle (fire) was hard to reach. In
+  that car aim only, the gamepad's R1 button fires: it is sent as Circle, and not as R1 (the keyboard's R1 keys are
+  left as they are). Nowhere else changes: on foot R1 is the target button, and in the car
+  with free aim off it is R1 (controls_check checks both).

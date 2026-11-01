@@ -68,7 +68,8 @@ game-internals.md 12c):
 - **Shooting from a car** (Jive Drive: Vic in the passenger seat while Lance drives - the game's own free aim, which the
   mission starts itself): with free aim on for either device, the mouse and the right stick turn the circle instead of
   the left stick (the game's help text still says the left stick), no button to hold; the left button fires through
-  the circle. The circle keeps its direction while the car turns, up to 20 degrees above level and 5 below, as the game
+  the circle. On the gamepad **R1 fires** there (as Circle, which still fires too): the right thumb is on the stick.
+  Only in this car aim - R1 is the target button everywhere else. The circle keeps its direction while the car turns, up to 20 degrees above level and 5 below, as the game
   allows there. With free aim off it is the PS2's left stick.
 
 **In the scopes** (sniper rifles, rocket launcher, M16 view, camera, binoculars) the mouse turns the view itself, 1:1,

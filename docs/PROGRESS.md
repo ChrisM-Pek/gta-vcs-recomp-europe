@@ -634,7 +634,9 @@ dropped on uploads (lazy render-target patching).
   on - the mouse 1.000 rad per 400 counts (the camera -1.008), the right stick -1.05 in 0.5 s, the left stick 0, 21 deg
   at the top, a man under the circle hit and one 2 m beside it not, leaving the car ends it. In the mission itself
   (hidden run, the user's save, god mode): the aim kept its world heading for 4 s of Lance's driving (0.02 rad), 62
-  shots in 3 s of fire, all down the camera line, tracers to the circle.
+  shots in 3 s of fire, all down the camera line, tracers to the circle. Then (the user's ask) the gamepad's R1 fires
+  in that car aim only (sent as Circle): controls_check "the gamepad's R1 fires" (Circle, 30 shots in 1 s) and, free
+  aim off, "the gamepad's R1 is R1".
 - **Music / sound effects volume** (2026-10-28, asked for by the user): Audio > Music and Sound effects are the game's
   own levels, in step with its pause menu both ways and kept across save loads (game-internals.md 9c). controls_check
   checks that the levels reach the game and its prefs, a save load keeps them, and the pause menu's slider changes the

@@ -523,6 +523,14 @@ dropped on uploads (lazy render-target patching).
       it after the points before it, in every configuration; a fresh teleport there from Fort Baxter lands (z 14.5).
       Collision streaming order / timing at that spot needs a look.
 ## Phase 5 - stability
+- [x] Saves lost when saving (players' reports after 0.1.0: "crashed and destroyed my savegame", "deletes the save
+      file when I save at Phil's safehouse") - **fixed 2026-11-01** in the card layer (game-internals.md 10f). The slot
+      file is named after the last mission; "Kill Phil: Part 2" made NTFS put the save in a stream of an empty
+      `1 Kill Phil` after the game had deleted the old slot, so the save was never found again. Names are now stored as
+      `%XX` where the host can't take them, such lost saves come back at the next start, and both cards are zipped into
+      `<data>/backups/auto-*.zip` before the game deletes or overwrites anything (it deletes the whole save folder after
+      a failed write). `tools/saves.py` checks all three: recover, save, load, delete, backup - 5/5 ok. The crash itself
+      was not reproduced: neither case crashed, and the only crash log from a player (#34) is a lost D3D11 device.
 - [x] The game stopping at start in a non-ASCII folder, or with a Windows user name in Cyrillic (issue #27, "No mapping
       for the Unicode character...") - **fixed 2026-11-01**: vcs.exe's manifest sets the UTF-8 code page (DECISIONS.md).
       Checked hidden: the game in `...\Игры é\game` and a data folder `...\Пользователь é\VCSRecomp` both crashed before
@@ -788,6 +796,7 @@ Python scripts still usable on their own. docs/LAUNCHER.md has the whole of it; 
 | `VCS_TIMING=0\|1`, `VCS_FPS=30\|60\|120\|144\|-1\|0` | game timing original / frame-rate independent; frame rate cap (-1 display refresh, 0 unlimited) |
 | `VCS_TIMESTEP=N` | independent timing: exactly 1/N s per game frame, unpaced (frame-dependence tests) |
 | `VCS_SKIP_MOVIES=0\|1` | play / skip the intro movies (Display > Skip intro movies); test tools default to 1 |
+| `PS2X_MC_BACKUP=0` | no automatic card backup (`<data>/backups/auto-*.zip`) before the game deletes or overwrites a card file |
 | `VCS_MOVIE_LOG=1` | movie playback: sound pushed / queued / played vs the pictures, every second |
 | `VCS_NATIVE_STREAM=0`, `VCS_STREAM_LOG=1` | disc streaming through the IOP (the reference); native read stats every 5 s |
 | `VCS_NATIVE_SOUND=0` | sound through the emulated IOP's CDSTREAM / LIBSD (the reference) |

@@ -914,3 +914,23 @@ OSes**, and **CI on Linux now, a Linux release later**.
 - **Hidden runs on Linux draw offscreen**: presenting to a window that is never shown can block forever under Wayland
   (FIFO waits for a frame callback); the frame loop is paced at the display's rate instead.
 - Update checks and copying a DVD are hidden on Linux until there are Linux releases and a Linux `rip_disc.py`.
+
+## 2026-11-01 - Card names the host can't store are %XX; the card is zipped before every change
+
+Players lost saves after saving (game-internals.md 10f): VCS names a slot file after the last mission, and "1 Kill Phil:
+Part 2" became an NTFS stream of an empty file after the game had deleted the old slot. And the game deletes a slot
+before writing it, and its whole save folder after a failed write, so any crash or host error mid-save loses saves.
+
+- **Names**: the characters Windows refuses (`<>:"/\|?*`), control bytes, bytes >= 0x7F (not UTF-8: they would throw
+  under the UTF-8 code page), `%` itself, trailing dots / spaces and device names (CON, COM1...) are stored as `%XX`;
+  the game sees the name it wrote. The same encoding on Linux, so a card folder copied between systems keeps working;
+  a name Linux stored before is still found. Readable in Explorer ("1 Kill Phil%3A Part 2"), ASCII, reversible. The
+  alternative - Unicode look-alikes (U+FF1A for `:`) - reads nicer but is a guess per character and not ASCII.
+- **Recovery**: on Windows the card layer turns an empty file whose stream holds 900+ bytes back into the save it was
+  meant to be, at the next listing (smaller streams are Windows' own, e.g. a download's Zone.Identifier). Players who
+  lost a save this way get it back by starting the new build.
+- **Backups**: before the first delete / write to an existing file / rename / format in 10 s, both cards go into
+  `<data>/backups/auto-<date>.zip`, tools/backup.py's own format, so the launcher's Saves sheet lists them and Restore
+  works unchanged; newest 10 kept (a card is ~0.5-1 MB, stored). In vcs.exe, not the launcher: players start vcs.exe on
+  its own too, and only the card layer knows when a change comes. Saving into an empty slot changes nothing old and
+  makes none. `PS2X_MC_BACKUP=0` turns it off.

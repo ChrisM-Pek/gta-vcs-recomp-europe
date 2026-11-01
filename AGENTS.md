@@ -183,6 +183,9 @@ card copies to start from (never the user's live card).
 - `[main] fatal exception: No mapping for the Unicode character exists in the target multi-byte code page`, or a path
   full of `?`s: a non-ASCII folder seen through the ANSI code page - vcs.exe's UTF-8 manifest missing or ignored
   (`src/vcs.manifest`, DECISIONS.md 2026-11-01).
+- A save gone after saving (an empty slot file, or the whole save folder deleted): a card name the host could not
+  store, or a failed card write - the game deletes its save folder after one (game-internals.md 10f). The card is
+  zipped into `<data>/backups/auto-*.zip` before every change (`[MC] card backup` in the log).
 - First things to grep in a log: `[ee] thread N -> dormant`, `[guest-branch:unlisted-resume]`.
 
 ## Working style for long autonomous runs

@@ -146,7 +146,8 @@ What each step and sheet holds:
   job that outlives the launcher. The launcher minimises (or closes, or stays: *Settings*) and comes back when the game
   ends; a non-zero exit is explained from vcs.exe's exit codes (`vcs_disc_id.h`: 2 no disc, 3 unreadable, 4 wrong disc,
   5 no window / graphics / sound; `0xC...` a crash, with the log).
-- **Saves**: the card's folder, Back up now, the backups with Restore (asks first; tools/backup.py).
+- **Saves**: the card's folder, Back up now, the backups with Restore (asks first; tools/backup.py). The list includes
+  the game's own `auto-*` backups, made before it deletes or overwrites a save (game-internals.md 10f).
 - **Settings**: what the launcher does when the game starts, updates (check now, check at start, Update now when one
   is found - a dot on the title bar's Settings marks it), Appearance (System / Light / Dark), Reduce motion, a desktop
   shortcut.

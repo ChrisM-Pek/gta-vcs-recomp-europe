@@ -1,7 +1,9 @@
 #include "Common.h"
 #include "MemoryCard.h"
 
+#include <chrono>
 #include <fstream>
+#include <iterator>
 
 #if defined(_WIN32) // [gta-recomp] file creation times (card directory order)
 #ifndef WIN32_LEAN_AND_MEAN
@@ -257,12 +259,84 @@ namespace ps2_stubs
             return joinMcPathComponents(parts);
         }
 
+        // [gta-recomp] Card entry names on the host. A card name may hold what a host file name cannot: VCS names a save
+        // slot after the last mission passed, and "1 Kill Phil: Part 2" on NTFS became an empty file "1 Kill Phil" with
+        // the save in an alternate data stream " Part 2" - the old slot deleted, the new one never found again
+        // (game-internals.md 10f). Bytes that are not UTF-8 would throw in std::filesystem under the UTF-8 code page.
+        // So characters Windows refuses, control bytes, bytes >= 0x7F, '%', trailing dots / spaces and device names are
+        // stored as %XX, the same on every host (a card folder copied between systems stays readable); the guest sees
+        // the name it wrote.
+        std::string encodeMcName(const std::string &name)
+        {
+            static const char *const kHex = "0123456789ABCDEF";
+            const size_t keep = name.find_last_not_of(". ") + 1; // trailing dots and spaces: Windows drops them
+            std::string out;
+            for (size_t i = 0; i < name.size(); ++i)
+            {
+                const unsigned char c = static_cast<unsigned char>(name[i]);
+                if (c < 0x20u || c >= 0x7Fu || c == '%' || std::strchr("<>:\"/\\|?*", c) || i >= keep)
+                {
+                    out.push_back('%');
+                    out.push_back(kHex[c >> 4]);
+                    out.push_back(kHex[c & 0xFu]);
+                }
+                else
+                {
+                    out.push_back(static_cast<char>(c));
+                }
+            }
+            // CON, PRN, AUX, NUL, COM1-9, LPT1-9, alone or before an extension
+            std::string base = toLowerAscii(out.substr(0, out.find('.')));
+            if (base == "con" || base == "prn" || base == "aux" || base == "nul" ||
+                (base.size() == 4u && (base.rfind("com", 0) == 0 || base.rfind("lpt", 0) == 0) && base[3] >= '1' &&
+                 base[3] <= '9'))
+            {
+                const unsigned char c = static_cast<unsigned char>(out[0]);
+                out = std::string("%") + kHex[c >> 4] + kHex[c & 0xFu] + out.substr(1);
+            }
+            return out;
+        }
+
+        std::string decodeMcName(const std::string &name)
+        {
+            auto hex = [](char c) -> int
+            {
+                return c >= '0' && c <= '9' ? c - '0' : c >= 'A' && c <= 'F' ? c - 'A' + 10 : c >= 'a' && c <= 'f' ? c - 'a' + 10 : -1;
+            };
+            std::string out;
+            for (size_t i = 0; i < name.size(); ++i)
+            {
+                if (name[i] == '%' && i + 2 < name.size() && hex(name[i + 1]) >= 0 && hex(name[i + 2]) >= 0)
+                {
+                    out.push_back(static_cast<char>(hex(name[i + 1]) * 16 + hex(name[i + 2])));
+                    i += 2;
+                }
+                else
+                {
+                    out.push_back(name[i]);
+                }
+            }
+            return out;
+        }
+
+        // A guest path ("/folder/name", normalised) on the host, each component encoded.
         std::filesystem::path guestMcPathToHostPath(int32_t port, const std::string &guestPath)
         {
             std::filesystem::path resolved = getMcRootPath(port);
-            if (guestPath.size() > 1u)
+            for (const std::string &part : splitMcPathComponents(guestPath))
             {
-                resolved /= std::filesystem::path(guestPath.substr(1));
+                const std::string host = encodeMcName(part);
+#if !defined(_WIN32)
+                // a name stored as it was before the encoding (Linux takes ':' and '?'): still found
+                std::error_code ec;
+                if (host != part && !std::filesystem::exists(resolved / host, ec) &&
+                    std::filesystem::exists(resolved / part, ec))
+                {
+                    resolved /= part;
+                    continue;
+                }
+#endif
+                resolved /= host;
             }
             return resolved.lexically_normal();
         }
@@ -326,9 +400,99 @@ namespace ps2_stubs
             return static_cast<uint64_t>(entry.last_write_time(ec).time_since_epoch().count());
         }
 
+#if defined(_WIN32)
+        // [gta-recomp] Saves lost to an NTFS stream before the names were encoded (encodeMcName): an empty file whose
+        // named stream holds the data ("1 Kill Phil" with " Part 2") becomes the file it should have been
+        // ("1 Kill Phil%3A Part 2"), taking the empty file's place in the card order.
+        void recoverMcStreams(const std::filesystem::path &dir)
+        {
+            std::error_code ec;
+            std::vector<std::filesystem::path> empty;
+            for (const auto &entry : std::filesystem::directory_iterator(dir, ec))
+            {
+                std::error_code entryEc;
+                if (entry.is_regular_file(entryEc) && entry.file_size(entryEc) == 0u && !entryEc)
+                {
+                    empty.push_back(entry.path());
+                }
+            }
+            for (const std::filesystem::path &file : empty)
+            {
+                try
+                {
+                    std::vector<std::pair<std::wstring, uint64_t>> streams; // name, size
+                    WIN32_FIND_STREAM_DATA data{};
+                    HANDLE find = FindFirstStreamW(file.c_str(), FindStreamInfoStandard, &data, 0);
+                    if (find == INVALID_HANDLE_VALUE)
+                    {
+                        continue;
+                    }
+                    do
+                    {
+                        // ":name:$DATA"; the file's own data is "::$DATA". Small streams are Windows' own (a download's
+                        // Zone.Identifier); the game's smallest file is icon.sys, 964 bytes
+                        const std::wstring s = data.cStreamName;
+                        if (data.StreamSize.QuadPart >= 900 && s.size() > 7u && s.compare(s.size() - 6u, 6u, L":$DATA") == 0)
+                        {
+                            streams.emplace_back(s.substr(1u, s.size() - 7u), static_cast<uint64_t>(data.StreamSize.QuadPart));
+                        }
+                    } while (FindNextStreamW(find, &data));
+                    FindClose(find);
+
+                    std::string recovered;
+                    size_t moved = 0;
+                    for (const auto &[stream, size] : streams)
+                    {
+                        const std::filesystem::path source(file.native() + L":" + stream);
+                        const std::string guest =
+                            decodeMcName(file.filename().string()) + ":" + std::filesystem::path(stream).string();
+                        const std::filesystem::path target = dir / encodeMcName(guest);
+                        if (std::filesystem::exists(target, ec))
+                        {
+                            continue;
+                        }
+                        {
+                            std::ifstream in(source, std::ios::binary);
+                            std::ofstream out(target, std::ios::binary);
+                            out << in.rdbuf();
+                        }
+                        if (std::filesystem::file_size(target, ec) != size || ec)
+                        {
+                            std::filesystem::remove(target, ec);
+                            continue;
+                        }
+                        std::filesystem::last_write_time(target, std::filesystem::last_write_time(file, ec), ec);
+                        DeleteFileW(source.c_str());
+                        recovered = target.filename().string();
+                        ++moved;
+                        std::fprintf(stderr, "[MC] recovered the save '%s' from an NTFS stream of '%s'\n", guest.c_str(),
+                                     file.filename().string().c_str());
+                    }
+                    if (!recovered.empty() && moved == streams.size() && std::filesystem::remove(file, ec))
+                    {
+                        std::vector<std::string> order = readMcOrder(dir);
+                        auto it = std::find(order.begin(), order.end(), file.filename().string());
+                        if (it != order.end())
+                        {
+                            *it = recovered;
+                            writeMcOrder(dir, order);
+                        }
+                    }
+                }
+                catch (const std::exception &e)
+                {
+                    std::fprintf(stderr, "[MC] stream recovery of a file failed: %s\n", e.what());
+                }
+            }
+        }
+#endif
+
         // A card folder's entries (without "." / "..") in card order; records entries it did not know yet.
         std::vector<std::filesystem::directory_entry> listMcDirOrdered(const std::filesystem::path &dir)
         {
+#if defined(_WIN32)
+            recoverMcStreams(dir); // [gta-recomp]
+#endif
             std::vector<std::filesystem::directory_entry> onDisk;
             std::error_code ec;
             for (const auto &entry : std::filesystem::directory_iterator(
@@ -675,6 +839,296 @@ namespace ps2_stubs
 
             return std::fopen(hostPath.string().c_str(), mode);
         }
+
+        // [gta-recomp] Automatic card backups. The game deletes a slot's file before it writes the new one, and when a
+        // write fails it deletes its whole save folder (game-internals.md 10f): a crash or a host error in between loses
+        // saves. Before the first change of a burst (a delete, a write to an existing file, a rename, a format) both
+        // cards go into <data>/backups/auto-<date>.zip in tools/backup.py's format (the launcher lists and restores
+        // them); the newest kMcAutoBackups are kept. PS2X_MC_BACKUP=0 turns it off.
+        constexpr size_t kMcAutoBackups = 10;
+        constexpr auto kMcBackupQuiet = std::chrono::seconds(10); // one save's deletes and writes take a second or two
+
+        uint32_t crc32Mc(const std::vector<uint8_t> &data)
+        {
+            static const std::array<uint32_t, 256> table = []
+            {
+                std::array<uint32_t, 256> t{};
+                for (uint32_t i = 0; i < 256u; ++i)
+                {
+                    uint32_t c = i;
+                    for (int k = 0; k < 8; ++k)
+                    {
+                        c = (c & 1u) ? 0xEDB88320u ^ (c >> 1) : c >> 1;
+                    }
+                    t[i] = c;
+                }
+                return t;
+            }();
+            uint32_t crc = 0xFFFFFFFFu;
+            for (uint8_t b : data)
+            {
+                crc = table[(crc ^ b) & 0xFFu] ^ (crc >> 8);
+            }
+            return crc ^ 0xFFFFFFFFu;
+        }
+
+        // Creation and modification times in seconds since 1970 (backup.py's manifest).
+        std::pair<double, double> mcEpochTimes(const std::filesystem::path &path)
+        {
+#if defined(_WIN32)
+            WIN32_FILE_ATTRIBUTE_DATA data{};
+            if (GetFileAttributesExW(path.c_str(), GetFileExInfoStandard, &data))
+            {
+                auto seconds = [](const FILETIME &ft)
+                {
+                    const uint64_t v = (static_cast<uint64_t>(ft.dwHighDateTime) << 32) | ft.dwLowDateTime;
+                    return (static_cast<double>(v) - 116444736000000000.0) / 1e7;
+                };
+                return {seconds(data.ftCreationTime), seconds(data.ftLastWriteTime)};
+            }
+#elif defined(__linux__)
+            struct statx st{};
+            if (statx(AT_FDCWD, path.c_str(), 0, STATX_BTIME | STATX_MTIME, &st) == 0)
+            {
+                const double m = static_cast<double>(st.stx_mtime.tv_sec) + st.stx_mtime.tv_nsec / 1e9;
+                const double b = (st.stx_mask & STATX_BTIME) ? static_cast<double>(st.stx_btime.tv_sec) + st.stx_btime.tv_nsec / 1e9 : m;
+                return {b, m};
+            }
+#endif
+            std::error_code ec;
+            const double m = static_cast<double>(fileTimeToTimeTMc(std::filesystem::last_write_time(path, ec)));
+            return {m, m};
+        }
+
+        std::string jsonStringMc(const std::string &value)
+        {
+            std::string out = "\"";
+            for (const char ch : value)
+            {
+                const unsigned char c = static_cast<unsigned char>(ch);
+                if (c == '"' || c == '\\')
+                {
+                    out.push_back('\\');
+                    out.push_back(ch);
+                }
+                else if (c < 0x20u)
+                {
+                    char buf[8];
+                    std::snprintf(buf, sizeof(buf), "\\u%04x", c);
+                    out += buf;
+                }
+                else
+                {
+                    out.push_back(ch);
+                }
+            }
+            return out + "\"";
+        }
+
+        // A zip of stored (uncompressed) entries: names (a trailing '/' for a folder) and their data.
+        bool writeZipMc(const std::filesystem::path &out, const std::vector<std::pair<std::string, std::vector<uint8_t>>> &files)
+        {
+            std::vector<uint8_t> zip, central;
+            auto put16 = [](std::vector<uint8_t> &v, uint32_t x)
+            {
+                v.push_back(static_cast<uint8_t>(x));
+                v.push_back(static_cast<uint8_t>(x >> 8));
+            };
+            auto put32 = [&](std::vector<uint8_t> &v, uint32_t x)
+            {
+                put16(v, x & 0xFFFFu);
+                put16(v, x >> 16);
+            };
+            const std::time_t now = std::time(nullptr);
+            std::tm tm{};
+            localtimeSafeMc(&now, &tm);
+            const uint32_t dosTime = (tm.tm_hour << 11) | (tm.tm_min << 5) | (tm.tm_sec / 2);
+            const uint32_t dosDate = ((std::max(tm.tm_year, 80) - 80) << 9) | ((tm.tm_mon + 1) << 5) | tm.tm_mday;
+            for (const auto &[name, data] : files)
+            {
+                const uint32_t offset = static_cast<uint32_t>(zip.size()), crc = crc32Mc(data);
+                const uint32_t size = static_cast<uint32_t>(data.size());
+                auto header = [&](std::vector<uint8_t> &v, bool isCentral)
+                {
+                    put32(v, isCentral ? 0x02014B50u : 0x04034B50u);
+                    if (isCentral)
+                    {
+                        put16(v, 20); // made by
+                    }
+                    put16(v, 20);     // needed
+                    put16(v, 0x800);  // UTF-8 names
+                    put16(v, 0);      // stored
+                    put16(v, dosTime);
+                    put16(v, dosDate);
+                    put32(v, crc);
+                    put32(v, size);
+                    put32(v, size);
+                    put16(v, static_cast<uint32_t>(name.size()));
+                    put16(v, 0);      // extra
+                    if (isCentral)
+                    {
+                        put16(v, 0);  // comment
+                        put16(v, 0);  // disk
+                        put16(v, 0);  // internal attributes
+                        put32(v, !name.empty() && name.back() == '/' ? 0x10u : 0u);
+                        put32(v, offset);
+                    }
+                    v.insert(v.end(), name.begin(), name.end());
+                };
+                header(zip, false);
+                zip.insert(zip.end(), data.begin(), data.end());
+                header(central, true);
+            }
+            const uint32_t centralOffset = static_cast<uint32_t>(zip.size());
+            zip.insert(zip.end(), central.begin(), central.end());
+            put32(zip, 0x06054B50u);
+            put16(zip, 0);
+            put16(zip, 0);
+            put16(zip, static_cast<uint32_t>(files.size()));
+            put16(zip, static_cast<uint32_t>(files.size()));
+            put32(zip, static_cast<uint32_t>(central.size()));
+            put32(zip, centralOffset);
+            put16(zip, 0);
+
+            const std::filesystem::path tmp = out.string() + ".tmp";
+            {
+                std::ofstream f(tmp, std::ios::binary | std::ios::trunc);
+                f.write(reinterpret_cast<const char *>(zip.data()), static_cast<std::streamsize>(zip.size()));
+                if (!f)
+                {
+                    return false;
+                }
+            }
+            std::error_code ec;
+            std::filesystem::rename(tmp, out, ec);
+            return !ec;
+        }
+
+        void backupMcCardsLocked()
+        {
+            static std::chrono::steady_clock::time_point s_last{};
+            static bool s_any = false;
+            const char *env = std::getenv("PS2X_MC_BACKUP");
+            const auto now = std::chrono::steady_clock::now();
+            if ((env && env[0] == '0') || (s_any && now - s_last < kMcBackupQuiet))
+            {
+                return;
+            }
+            s_any = true;
+            s_last = now;
+
+            try
+            {
+                const std::filesystem::path data = getMcRootPath(0).parent_path();
+                struct Entry
+                {
+                    std::string rel;
+                    bool dir;
+                    double ctime, mtime;
+                    std::filesystem::path full;
+                };
+                std::vector<Entry> entries;
+                size_t fileCount = 0;
+                for (int32_t port = 0; port < static_cast<int32_t>(g_mcPorts.size()); ++port)
+                {
+                    const std::filesystem::path card = getMcRootPath(port);
+                    std::error_code ec;
+                    if (!std::filesystem::is_directory(card, ec))
+                    {
+                        continue;
+                    }
+                    for (auto it = std::filesystem::recursive_directory_iterator(card, ec);
+                         !ec && it != std::filesystem::recursive_directory_iterator(); it.increment(ec))
+                    {
+                        std::error_code entryEc;
+                        const bool dir = it->is_directory(entryEc);
+                        const auto [c, m] = mcEpochTimes(it->path());
+                        entries.push_back({std::filesystem::relative(it->path(), data, entryEc).generic_string(), dir, c, m,
+                                           it->path()});
+                        fileCount += dir ? 0u : 1u;
+                    }
+                    const auto [c, m] = mcEpochTimes(card);
+                    entries.push_back({std::filesystem::relative(card, data, ec).generic_string(), true, c, m, card});
+                }
+                if (fileCount == 0u)
+                {
+                    return; // nothing saved yet
+                }
+                // creation order, as backup.py: a restore makes folders and files again in that order
+                std::sort(entries.begin(), entries.end(), [](const Entry &a, const Entry &b)
+                          {
+                              const auto depth = [](const std::string &s) { return std::count(s.begin(), s.end(), '/'); };
+                              if (a.ctime != b.ctime)
+                                  return a.ctime < b.ctime;
+                              if (depth(a.rel) != depth(b.rel))
+                                  return depth(a.rel) < depth(b.rel);
+                              return a.rel < b.rel;
+                          });
+
+                std::ostringstream manifest;
+                manifest.precision(17);
+                manifest << "{\"created\": " << static_cast<long long>(std::time(nullptr))
+                         << ", \"source\": " << jsonStringMc(data.string()) << ", \"auto\": true, \"entries\": [";
+                std::vector<std::pair<std::string, std::vector<uint8_t>>> files;
+                files.emplace_back("backup.json", std::vector<uint8_t>{});
+                for (size_t i = 0; i < entries.size(); ++i)
+                {
+                    const Entry &e = entries[i];
+                    manifest << (i ? ", " : "") << "{\"path\": " << jsonStringMc(e.rel) << ", \"dir\": "
+                             << (e.dir ? "true" : "false") << ", \"ctime\": " << e.ctime << ", \"mtime\": " << e.mtime << "}";
+                    if (e.dir)
+                    {
+                        files.emplace_back(e.rel + "/", std::vector<uint8_t>{});
+                        continue;
+                    }
+                    std::ifstream in(e.full, std::ios::binary);
+                    std::vector<uint8_t> bytes((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+                    files.emplace_back(e.rel, std::move(bytes));
+                }
+                manifest << "]}";
+                const std::string text = manifest.str();
+                files[0].second.assign(text.begin(), text.end());
+
+                const std::filesystem::path dir = data / "backups";
+                std::error_code ec;
+                std::filesystem::create_directories(dir, ec);
+                const std::time_t wall = std::time(nullptr);
+                std::tm tm{};
+                localtimeSafeMc(&wall, &tm);
+                char stamp[32];
+                std::strftime(stamp, sizeof(stamp), "auto-%Y%m%d-%H%M%S", &tm);
+                std::filesystem::path out = dir / (std::string(stamp) + ".zip");
+                for (int n = 2; std::filesystem::exists(out, ec); ++n)
+                {
+                    out = dir / (std::string(stamp) + "-" + std::to_string(n) + ".zip");
+                }
+                if (!writeZipMc(out, files))
+                {
+                    std::fprintf(stderr, "[MC] card backup to %s failed\n", out.string().c_str());
+                    return;
+                }
+                std::fprintf(stderr, "[MC] card backup before a change: %s (%zu files)\n", out.string().c_str(), fileCount);
+
+                std::vector<std::filesystem::path> autos;
+                for (const auto &entry : std::filesystem::directory_iterator(dir, ec))
+                {
+                    const std::string name = entry.path().filename().string();
+                    if (name.rfind("auto-", 0) == 0 && entry.path().extension() == ".zip")
+                    {
+                        autos.push_back(entry.path());
+                    }
+                }
+                std::sort(autos.begin(), autos.end()); // the names sort by time
+                for (size_t i = 0; i + kMcAutoBackups < autos.size(); ++i)
+                {
+                    std::filesystem::remove(autos[i], ec);
+                }
+            }
+            catch (const std::exception &e)
+            {
+                std::fprintf(stderr, "[MC] card backup failed: %s\n", e.what());
+            }
+        }
     }
 
     MemoryCardDebugSnapshot getMemoryCardDebugSnapshot()
@@ -806,6 +1260,10 @@ namespace ps2_stubs
                         if (std::filesystem::exists(hostPath, ec) && !ec)
                         {
                             const bool isDir = std::filesystem::is_directory(hostPath, ec);
+                            if (!isDir)
+                            {
+                                backupMcCardsLocked(); // [gta-recomp]
+                            }
                             if (isDir && !isMcDirEmpty(hostPath))
                             {
                                 result = kMcResultNotEmpty;
@@ -875,6 +1333,7 @@ namespace ps2_stubs
             std::lock_guard<std::mutex> lock(g_mcStateMutex);
             if (isValidMcPortSlot(port, slot))
             {
+                backupMcCardsLocked(); // [gta-recomp]
                 closeMcFilesForPortLocked(port);
                 const std::filesystem::path root = getMcRootPath(port);
                 std::error_code ec;
@@ -922,30 +1381,20 @@ namespace ps2_stubs
                     const bool hasWildcard =
                         guestQuery.find('*') != std::string::npos || guestQuery.find('?') != std::string::npos;
 
-                    const std::filesystem::path queryRel =
-                        (guestQuery.size() > 1u) ? std::filesystem::path(guestQuery.substr(1)) : std::filesystem::path{};
-
-                    std::filesystem::path parentRel;
-                    std::string pattern;
-                    if (hasWildcard)
-                    {
-                        parentRel = queryRel.parent_path();
-                        pattern = queryRel.filename().string();
-                    }
-                    else
+                    // [gta-recomp] the folder and the pattern as guest strings (card names are not host paths:
+                    // encodeMcName), the listed host names decoded back
+                    const size_t lastSlash = guestQuery.find_last_of('/');
+                    std::string parentGuest = guestQuery.substr(0, lastSlash == 0u ? 1u : lastSlash);
+                    std::string pattern = guestQuery.substr(lastSlash + 1u);
+                    if (!hasWildcard)
                     {
                         const std::filesystem::path queryHostPath = guestMcPathToHostPath(port, guestQuery);
                         std::error_code queryEc;
                         if (std::filesystem::exists(queryHostPath, queryEc) && !queryEc &&
                             std::filesystem::is_directory(queryHostPath, queryEc))
                         {
-                            parentRel = queryRel;
+                            parentGuest = guestQuery;
                             pattern = "*";
-                        }
-                        else
-                        {
-                            parentRel = queryRel.parent_path();
-                            pattern = queryRel.filename().string();
                         }
                     }
 
@@ -954,12 +1403,7 @@ namespace ps2_stubs
                         pattern = "*";
                     }
 
-                    std::filesystem::path hostDir = getMcRootPath(port);
-                    if (!parentRel.empty())
-                    {
-                        hostDir /= parentRel;
-                    }
-                    hostDir = hostDir.lexically_normal();
+                    const std::filesystem::path hostDir = guestMcPathToHostPath(port, parentGuest);
 
                     std::error_code ec;
                     if (std::filesystem::exists(hostDir, ec) && !ec &&
@@ -985,7 +1429,7 @@ namespace ps2_stubs
 
                         for (const auto &entry : dirEntries)
                         {
-                            const std::string name = entry.path().filename().string();
+                            const std::string name = decodeMcName(entry.path().filename().string());
                             if (!wildcardMatch(pattern, name))
                             {
                                 continue;
@@ -1212,6 +1656,10 @@ namespace ps2_stubs
                         {
                             reserveMcOrderSlot(hostPath); // [gta-recomp] card directory order
                         }
+                        else if ((flags & PS2_FIO_O_RDWR) != PS2_FIO_O_RDONLY)
+                        {
+                            backupMcCardsLocked(); // [gta-recomp] an existing file about to change
+                        }
                         FILE *file = openMcHostFile(hostPath, flags);
                         if (!file)
                         {
@@ -1300,6 +1748,7 @@ namespace ps2_stubs
                     if (std::filesystem::exists(oldHostPath, ec) && !ec &&
                         std::filesystem::exists(newHostPath.parent_path(), ec) && !ec)
                     {
+                        backupMcCardsLocked(); // [gta-recomp]
                         std::filesystem::rename(oldHostPath, newHostPath, ec);
                         result = ec ? kMcResultDeniedPermit : kMcResultSucceed;
                         if (!ec) // [gta-recomp] card directory order
@@ -1448,6 +1897,7 @@ namespace ps2_stubs
             std::lock_guard<std::mutex> lock(g_mcStateMutex);
             if (isValidMcPortSlot(port, slot))
             {
+                backupMcCardsLocked(); // [gta-recomp]
                 closeMcFilesForPortLocked(port);
                 const std::filesystem::path root = getMcRootPath(port);
                 std::error_code ec;

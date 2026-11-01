@@ -4,18 +4,26 @@
     python tools/saves.py [OUT] [--port N]
 
 One session from a copy of build/rig/saves/fortbaxter (slot 1 = "1 Soldier"):
-  save    ACTIVATE_SAVE_MENU (script opcode 0x0260) -> Save Game -> slot 2 -> Yes: a "2 ..." slot file appears
+  recover (Windows) slot 3 planted as the card layer once stored "3 Kill Phil: Part 2" - an empty "3 Kill Phil" with
+          the save in an NTFS stream: at boot it is the file "3 Kill Phil%3A Part 2" again (game-internals.md 10f)
+  save    "Kill Phil: Part 2" registered as the last mission passed (the save's name; a colon), then
+          ACTIVATE_SAVE_MENU (script opcode 0x0260) -> Save Game -> slot 2 -> Yes: "2 Kill Phil%3A Part 2" appears,
+          whole
   load    pause menu -> Game -> Load Game -> slot 1 -> Yes, with trainer god mode on: slot 1 is read in full, the
           player is back in free roam
   delete  pause menu -> Game -> Delete Game -> slot 2 -> Yes: the slot file and its card-order entry are gone
+  backup  the card was zipped into <data>/backups/auto-*.zip before the delete: the deleted slot is in it
 Screenshots after every key press go to OUT (default build/saves); OUT/results.json holds the checks. Exit code 1
 when one fails. Menu keys (CONTROLS.md): Shift = Cross, Return = Start, arrows = D-pad.
 """
 import argparse
+import glob
 import json
 import os
+import shutil
 import sys
 import time
+import zipfile
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import rig  # noqa: E402
@@ -33,8 +41,17 @@ def main():
     os.makedirs(out, exist_ok=True)
     data = os.path.join(out, "data")
     folder = os.path.join(data, *FOLDER)
-    g = rig.Game.start(save=os.path.join(ROOT, "build", "rig", "saves", "fortbaxter"), name="saves", data_dir=data,
-                       port=a.port)
+    seed = os.path.join(out, "seed")
+    rig.copy_card(os.path.join(ROOT, "build", "rig", "saves", "fortbaxter", "mc0"), os.path.join(seed, "mc0"))
+    if os.path.isdir(os.path.join(data, "backups")):
+        shutil.rmtree(os.path.join(data, "backups"))
+    if os.name == "nt":
+        # what the card layer did before names were encoded: fopen("3 Kill Phil: Part 2") on NTFS
+        seed_folder = os.path.join(seed, *FOLDER)
+        with open(os.path.join(seed_folder, "1 Soldier"), "rb") as f, \
+                open(os.path.join(seed_folder, "3 Kill Phil: Part 2"), "wb") as lost:
+            lost.write(f.read())
+    g = rig.Game.start(save=seed, name="saves", data_dir=data, port=a.port)
     shots = [0]
 
     def keys(tag, *seq):
@@ -56,13 +73,19 @@ def main():
     try:
         g.wait_ingame()
         _, saved_pos, _ = g.player()  # where the card's save put the player
+        if os.name == "nt":
+            got = os.path.join(folder, "3 Kill Phil%3A Part 2")
+            checks["recover"] = {"ok": os.path.isfile(got) and os.path.getsize(got) == 98304 and
+                                 not os.path.exists(os.path.join(folder, "3 Kill Phil")), "files": slot_files()}
         before = slot_files()
-        # save: the menu opens on "Save Game"; the slot list starts on Cancel, two down is slot 2
+        # save: named after the last mission passed - REGISTER_MISSION_PASSED (0x01EB) "REN_C05", "Kill Phil: Part 2".
+        # The menu opens on "Save Game"; the slot list starts on Cancel, two down is slot 2
+        g.cmd("scm " + (rig.Scm.op(0x01EB) + b"\x0aREN_C05\x00" + rig.Scm.end()).hex())
         g.cmd("scm " + (rig.Scm.op(0x0260) + rig.Scm.end()).hex())
         time.sleep(3)
         keys("save", "Shift@3", "Down", "Down", "Shift@3", "Up", "Shift@12", "Shift@4")
         new = [f for f in slot_files() if f not in before]
-        checks["save"] = {"ok": len(new) == 1 and new[0].startswith("2 ") and
+        checks["save"] = {"ok": new == ["2 Kill Phil%3A Part 2"] and
                           os.path.getsize(os.path.join(folder, new[0])) == 98304, "new_files": new}
         # load slot 1 (Map -> Brief -> Game tab), from the other end of the map: the load must bring the player back.
         # Trainer god mode on first: its tick script's slot is one the load fills with the save's scripts, which the
@@ -88,12 +111,19 @@ def main():
         order = open(os.path.join(folder, ".ps2x-order")).read().split("\n")
         left = [f for f in slot_files() if f.startswith("2 ")]
         checks["delete"] = {"ok": not left and not any(o.startswith("2 ") for o in order), "left": left}
+        backups = sorted(glob.glob(os.path.join(data, "backups", "auto-*.zip")))
+        held = []
+        if backups:
+            with zipfile.ZipFile(backups[-1]) as z:
+                held = [n.rsplit("/", 1)[-1] for n in z.namelist() if n.rsplit("/", 1)[-1][:1].isdigit()]
+        checks["backup"] = {"ok": "2 Kill Phil%3A Part 2" in held, "zips": [os.path.basename(b) for b in backups],
+                            "slots_in_newest": held}
     finally:
         g.quit()
     json.dump(checks, open(os.path.join(out, "results.json"), "w"), indent=1)
     for k, v in checks.items():
         print("%-7s %s %s" % (k, "ok" if v["ok"] else "FAIL", {x: y for x, y in v.items() if x != "ok"}))
-    return 0 if checks and all(v["ok"] for v in checks.values()) and len(checks) == 3 else 1
+    return 0 if checks and all(v["ok"] for v in checks.values()) and len(checks) == (5 if os.name == "nt" else 4) else 1
 
 
 if __name__ == "__main__":

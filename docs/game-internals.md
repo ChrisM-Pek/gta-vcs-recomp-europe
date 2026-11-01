@@ -1472,6 +1472,40 @@ keeps its order in a hidden `.ps2x-order` file (PS2RECOMP_PATCHES.md).
   menus show only the newer one.
 - At boot the newest slot (by the header date) is loaded automatically; with slots 1 and 2 present it took slot 2.
 
+### 10f. Save names, a failed save, and saves lost on the host (2026-11-01)
+
+Players' reports after 0.1.0: "it crashed and destroyed my savegame", "the game closes and deletes the save file when I
+save at Phil's safehouse". Found by reading the mission names out of `TEXT\AMERICAN.GXT` and saving under each odd one
+with the rig (`REGISTER_MISSION_PASSED` 0x01EB with a text-label argument: type byte 0x0A, the key, a NUL - e.g.
+`EB 01 0A "REN_C05" 00`, then `ACTIVATE_SAVE_MENU`).
+
+- **The slot file's name is `"<slot> <name of the last mission passed>"`**, the GXT text of the key the last
+  `REGISTER_MISSION_PASSED` gave (the game's text table, 12-byte entries, MAIN's `TKEY` / `TDAT`). The Load / Save /
+  Delete lists show that name back from the file name. Mission names with characters a Windows file name cannot hold:
+  `REN_C05` "Kill Phil: Part 2" (a colon), `MAR_A05` "Got Protection?", `MAR_A04` "O, Brothel, Where Art Thou?";
+  `LOU_A03` "D.I.V.O.R.C.E." ends in a dot (Windows drops trailing dots). The game itself drops the `?`
+  ("1 Got Protection" on the card); the colon and the dot it keeps.
+- **"Kill Phil: Part 2" on NTFS**: the card layer's `fopen("...\1 Kill Phil: Part 2")` made an empty file `1 Kill Phil`
+  with the 98,304 bytes in an alternate data stream ` Part 2`. The game wrote, closed and said "Save Successful" - but
+  it had already deleted the old slot file (10b), and the listing now showed `1 Kill Phil`, 0 bytes, which the slot scan
+  skips (10c): the save was gone. Fixed in the card layer: card names are stored with such characters as `%XX`
+  (`1 Kill Phil%3A Part 2`) and listed back decoded; files lost to a stream this way are recovered at the next listing
+  (PS2RECOMP_PATCHES.md, DECISIONS.md 2026-11-01). Checked: the save is whole, listed and loaded at boot ("2 Kill Phil:
+  Part 2" in the Load list); a card made by the old code is put right at boot and that save loaded.
+- **A failed save deletes the whole save folder.** With the slot file's open failing (reproduced: a read-only file in
+  the way; anything that fails the open or a write does it), the game shows "Save failed! Check the memory card (8MB)
+  (for PlayStation 2) in MEMORY CARD slot 1 and please try again." - and before that deletes every file in
+  `BASLUS-21590GTA40001` (every slot, the data file, `icon.sys`, the icon; `sceMcDelete` x6) and tries to remove the
+  folder. On a PS2 that clears a half-written save; here a host error took every save with it. Together with the delete
+  before the write, any crash or error in a save loses saves, so the card layer now zips both cards into
+  `<data>/backups/auto-<date>.zip` before the first delete / overwrite / rename / format of a burst (tools/backup.py's
+  format: the launcher's Saves sheet lists and restores them; newest 10 kept). Checked: the folder wiped by a failed
+  save, then `backup.py restore auto-...` put every file back byte for byte.
+- Not found: a crash in the save itself. Neither the stream case nor the failed open crashed the game (both hidden and
+  quit cleanly); the one crash log from a player (issue #34) is a lost D3D11 device on Intel graphics. A crash at any
+  point in a save is still covered by the backups.
+- Check: `tools/saves.py` (recover, save as "Kill Phil: Part 2", load, delete, backup).
+
 ## 11. Scripts: MAIN.SCM and the script VM
 
 Found 2026-10-22 for the automation rig (`src/debug/rig.cpp`, `tools/rig.py`) from a RAM dump at the Fort Baxter

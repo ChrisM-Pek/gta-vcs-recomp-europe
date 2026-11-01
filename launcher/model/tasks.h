@@ -51,8 +51,7 @@ namespace launcher
         std::string afterLaunch = "minimize"; // minimize, close, stay
         std::string opt;                      // "" (keep the build's), lto, none, pgo
         bool checkUpdates = false;            // ask GitHub for a newer release when the launcher starts
-        bool reduceMotion = false;            // the launcher's animations off; this alone decides
-        bool reduceMotionSet = false;         // reduce_motion is in launcher.ini; else it starts as Windows' setting
+        bool reduceMotion = false;            // the launcher's animations off; this alone decides (off until set)
         std::string theme = "system";         // system (Windows' app mode), light, dark
     };
 

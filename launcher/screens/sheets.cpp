@@ -180,13 +180,10 @@ namespace screens
                 if (ui::toggle("#reduce-motion", {line.right() - px(44), line.y, px(44), line.h}, reduce))
                 {
                     app.settings.reduceMotion = reduce;
-                    app.settings.reduceMotionSet = true;
                     changed = true;
                 }
                 y += px(34);
-                text(r, y, app.settings.reduceMotionSet ? "Everything moves at once instead of animating."
-                                                        : "Follows Windows' \"Animate controls and elements inside windows\" until you change it.",
-                     theme::kFaint);
+                text(r, y, "Everything moves at once instead of animating, and Home's scene stands still.", theme::kFaint);
             }
             if (action(r, y, "Add a shortcut to the desktop", ButtonStyle::Secondary, theme::icon::kLink))
             {

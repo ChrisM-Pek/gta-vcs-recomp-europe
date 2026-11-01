@@ -682,10 +682,7 @@ namespace launcher
             else if (key == "theme" && (value == "system" || value == "light" || value == "dark"))
                 settings.theme = value;
             else if (key == "reduce_motion")
-            {
                 settings.reduceMotion = value == "1";
-                settings.reduceMotionSet = true;
-            }
         }
     }
 
@@ -698,8 +695,7 @@ namespace launcher
             << "after_launch=" << settings.afterLaunch << "\n"
             << "opt=" << settings.opt << "\n"
             << "check_updates=" << (settings.checkUpdates ? 1 : 0) << "\n"
-            << "theme=" << settings.theme << "\n";
-        if (settings.reduceMotionSet) // until the player sets it, it follows Windows
-            out << "reduce_motion=" << (settings.reduceMotion ? 1 : 0) << "\n";
+            << "theme=" << settings.theme << "\n"
+            << "reduce_motion=" << (settings.reduceMotion ? 1 : 0) << "\n";
     }
 }

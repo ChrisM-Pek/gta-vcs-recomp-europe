@@ -102,10 +102,10 @@ motion is (2026-11-01, the user's "rethink everything"; before, a sidebar of pag
   task, quit during a task, the chosen build folder's check) scale up and fade in; **toasts** rise at the bottom and
   leave after 6 s.
 - Keyboard: Enter is the highlighted action, Escape closes the top sheet or dialog, F1 Help, Ctrl+L the log, Tab /
-  Shift+Tab walk the controls with a focus ring. *Reduce motion* in Settings: everything snaps. It alone decides;
-  until the player sets it, it starts as Windows' "Animate controls and elements inside windows" (2026-11-01: that
-  setting is off on many PCs tuned for speed - the dev machine's too - and had made the launcher snap with its own
-  setting off; `reduce_motion` is written to launcher.ini only once set).
+  Shift+Tab walk the controls with a focus ring. *Reduce motion* in Settings: everything snaps and Home's scene
+  stands still. Off until the player turns it on (`reduce_motion` in launcher.ini). Windows' "Animate controls and
+  elements inside windows" has no say: it is off on many PCs tuned for speed - the dev machine's too - and first made
+  the launcher snap, then (as the starting value) made new installs start with reduce motion on (2026-11-01).
 - Light and dark (`ui/theme.h`): hot pink is the primary colour - the thing to do, the selection - on a deep black
   (dark) or on white and blush pink (light); teal only for done, amber and red only for attention, no purple. *Appearance*
   in Settings: System (the default: Windows' app mode, `AppsUseLightTheme`, followed live on `WM_SETTINGCHANGE`), Light

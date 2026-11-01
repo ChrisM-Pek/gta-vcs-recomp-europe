@@ -338,10 +338,9 @@ namespace screens
         return out;
     }
 
-    bool reduceMotion(const App &app)
-    {
-        return app.settings.reduceMotionSet ? app.settings.reduceMotion : platform::window.reducedMotion;
-    }
+    // the launcher's own setting, off until the player turns it on. Not Windows' "Animate controls and elements inside
+    // windows": that one is off on many PCs tuned for speed (this one too), and new installs started without motion
+    bool reduceMotion(const App &app) { return app.settings.reduceMotion; }
 
     bool darkTheme(const App &app)
     {

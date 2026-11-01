@@ -791,7 +791,9 @@ bar, disc art behind Home later.
   while a task runs (spinners, the bar's sheen) - never while the game plays (the game wants the GPU).
 - **Motion is optional**: the launcher's own *Reduce motion* makes everything snap. (Later the same day, the user:
   panels opened instantly with it off. Windows' "Animate controls and elements inside windows" was off on the PC and
-  also turned motion off. Now the launcher's setting alone decides; Windows' only gives its value until it is set.)
+  also turned motion off. Now the launcher's setting alone decides; Windows' only gives its value until it is set.
+  Then the user found reduce motion on after updating a release folder, whose launcher.ini didn't have the setting yet:
+  that starting value was Windows' again. It is now simply off until the player turns it on, Windows' ignored.)
 - **Tests stay hidden**: `--screenshot` renders offscreen on a fixed clock (same arguments, same picture), with
   `--frames` for transitions; `--hidden --quit-after` runs the real window loop unshown and reports its cost.
 

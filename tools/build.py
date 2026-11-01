@@ -20,6 +20,8 @@ recompiles the whole game (~6-10 min). The last line of each build says which on
 
 Progress: every build step shows `[build] <target> done/total %, elapsed, ~time left` (Ninja's step count; redrawn in
 place on a terminal, a line per 5% / minute otherwise); CMake configure and the recompiler show their elapsed time.
+With link-time optimisation the game's link is a step of its own (minutes: the whole game is optimised there), timed
+against the last one (link_times.json in the build folder; docs/LAUNCHER.md).
 
 PGO training: an instrumented build in build/pgo-gen plays tools/bench.py (city spots, an AI drive: from the rig's Fort
 Baxter card copy, or a new game when there is none) and the reference scenes' boot / flyover / cutscene
@@ -113,7 +115,7 @@ def main():
     tc.configure(env, force=a.reconfigure or configured_without_game(), defines=defines)
     print(f"[build] building {a.target}")
     tc.stage("compile", "Compiling the game" if a.target == "ps2EntryRunner" else "Building " + a.target)
-    if not tc.cmake_build(env, a.target, "build.log", a.verbose):
+    if not tc.cmake_build(env, a.target, "build.log", a.verbose, link=game_link_stage() if a.target == "ps2EntryRunner" else None):
         sys.exit(1)
     if a.target == "ps2EntryRunner":
         if not os.path.isfile(tc.VCS_EXE):
@@ -215,6 +217,18 @@ def remember_iso(given):
         f.write("\n".join(lines + ["iso=" + iso]) + "\n")
     print("[build] disc for vcs.exe: " + iso + " (iso= in " + tc.show(ini) + ")")
     return iso
+
+
+def game_link_stage():
+    """(kind, title) of the game's link when it is a step of its own (toolchain.cmake_build): with link-time
+    optimisation it is the longest step of a build. A quick build's link takes seconds: no stage."""
+    lto = tc.cached_value(tc.BUILD_DIR, "PS2X_LTO") or "OFF"
+    if lto.upper() not in ("THIN", "FULL"):
+        return None
+    pgo = tc.cached_value(tc.BUILD_DIR, "PS2X_PGO") or ""
+    if pgo and pgo != "GEN":
+        return "pgo", "Linking and optimising the game (ThinLTO + profile)"
+    return lto.lower(), "Linking and optimising the game (%s)" % ("ThinLTO" if lto.upper() == "THIN" else "LTO")
 
 
 def built_opt():

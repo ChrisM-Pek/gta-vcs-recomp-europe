@@ -60,6 +60,15 @@ namespace screens
             for (int i = 0; i < 60; ++i)
                 t.log.push_back("[build] [" + std::to_string(400 + i * 13) + "/3400] Building CXX object CMakeFiles/ps2EntryRunner.dir/generated/ps2_recomp_" +
                                 std::to_string(i) + ".cpp.obj");
+            if (demo == "link" || demo == "firstlink") // the ThinLTO link: timed against the last one, or not at all
+            {
+                t.stages.back().end = now - 62;
+                t.stages.push_back({"link", "Linking and optimising the game (ThinLTO)", now - 62, 0});
+                t.done = demo == "link" ? 62 : 0;
+                t.total = demo == "link" ? 133 : 0;
+                t.eta = demo == "link" ? 71 : -1;
+                t.note = "linking";
+            }
             if (demo == "error")
             {
                 t.finished = true;

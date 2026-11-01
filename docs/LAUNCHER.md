@@ -192,6 +192,17 @@ lines, `@vcs {...}` lines: `{"stage": id, "title": text}`, `{"progress": n, "tot
 `illegal_instruction`, `missing_dll` - and its log ends with how it ended, `describe_exit`), `{"result": "ok", ...}`.
 Everything else is log.
 
+**The game's link** (`toolchain._GameLink`, 2026-11-01): with ThinLTO the link of vcs.exe is the longest step of a
+build - the whole game is optimised and compiled to machine code there (133 s of a 5-minute rebuild on the dev PC),
+while Ninja's count stands at its last step ("423 of 425 steps, about 0s left"). Ninja prints a step when it *ends*
+(when its output is a pipe), so the link's start comes from a file it touches first: a PRE_LINK command of
+ps2EntryRunner writes `game_link.started` in the build folder, and build.py's progress timer looks for it every
+second. Then it sends a `link` stage ("Linking and optimising the game (ThinLTO)") and the link's own progress: the
+time so far against the last link of the same kind (`link_times.json` in the build folder, per `thin` / `full` /
+`pgo`), held at 99% until it ends, `"note": "linking"`; with no earlier link, `total` 0 (an endless bar and "one long
+step"). Past the last time's length the eta is null ("longer than the last time"). Quick builds (no LTO) link in
+seconds and get no stage.
+
 **State files**: `generated/recompile_stamp.json` (a hash of what the generated code depends on: game/vcs, the
 recompiler, the runtime headers it compiles in, the translate / sync scripts; `recompile.py --check`),
 `build/build_info.json` (source version, generated inputs, optimisation, disc; written by a successful game build),
@@ -218,8 +229,8 @@ The launcher's command line: `--check`, `--build [--iso X]`, `--play [--iso X]`,
 exe prints to the terminal that started it only through AttachConsole; `--out` for scripts and CI), and
 `--screenshot F.png`: the window rendered offscreen into a texture and saved - tests never put a window on the desktop.
 `--screen` picks what is shown (`setup:folder|disc|tools|game`, `home`, `task`, `sheet:saves|settings|help|folder`,
-`dialog:restore|quit|cancel`, `gallery` - every widget in its states), `--demo` a sample state (`running`, `error`,
-`done`, `playing`, `update`, `gameerror`), `--then S --at T` switches after T seconds and `--frames N` saves N
+`dialog:restore|quit|cancel`, `gallery` - every widget in its states), `--demo` a sample state (`running`, `link`,
+`firstlink`, `error`, `done`, `playing`, `update`, `gameerror`), `--then S --at T` switches after T seconds and `--frames N` saves N
 consecutive frames (a transition, frame by frame), `--scale K` / `--size WxH` the pixels per unit and the logical size;
 `--step N` (the old page numbers), `--action build --every S`, `--iso X`, `--wait S`, `--pick-build-dir PATH` as
 before. Screenshots run on a fixed 60 Hz clock, so the same arguments give the same picture. `--hidden --quit-after S`

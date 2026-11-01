@@ -120,6 +120,8 @@ namespace screens
                     line += "  \xC2\xB7  " + std::to_string(t.done) + " of " + std::to_string(t.total) + " steps";
                 if (t.eta >= 0)
                     line += "  \xC2\xB7  about " + duration(t.eta) + " left in this step";
+                else if (t.note == "linking") // the link's progress is its time against the last link's
+                    line += "  \xC2\xB7  longer than the last time";
                 ui::label(kFontBody, px(theme::kSmall), {tx, base - px(18), col.right() - tx, px(20)}, theme::kFaint, line);
                 y = base + m.descent + px(14);
                 ui::progressBar(ui::id("#bar"), {col.x, y, col.w, px(8)}, float(t.done) / float(t.total), theme::kPink, theme::kSunset);
@@ -128,7 +130,10 @@ namespace screens
             {
                 ui::label(kFontSemibold, px(22), {col.x, y, col.w, px(34)}, theme::kText, stageTitle);
                 y += px(42);
-                ui::label(kFontBody, px(theme::kSmall), {col.x, y, col.w, px(20)}, theme::kFaint, duration(elapsed) + " so far");
+                std::string line = duration(elapsed) + " so far";
+                if (t.note == "linking") // the first optimised link: nothing to estimate it from
+                    line += "  \xC2\xB7  one long step: the whole game is optimised at once";
+                ui::label(kFontBody, px(theme::kSmall), {col.x, y, col.w, px(20)}, theme::kFaint, line);
                 y += px(30);
                 ui::progressBar(ui::id("#bar"), {col.x, y, col.w, px(8)}, -1, theme::kPink, theme::kSunset);
             }

@@ -526,6 +526,13 @@ endif()
 
 ps2x_stage_ffmpeg_runtime_dlls(ps2EntryRunner)
 
+# [gta-recomp] marks the start of the game's link for tools/build.py's progress: Ninja prints a step when it ends, and
+# with ThinLTO the link is the longest step of a build (the whole game is optimised and compiled to machine code there)
+add_custom_command(TARGET ps2EntryRunner PRE_LINK
+    COMMAND "${CMAKE_COMMAND}" -E touch "${CMAKE_BINARY_DIR}/game_link.started"
+    VERBATIM
+)
+
 if(PS2X_IS_VITA)
     set(VITA_MKSFOEX_FLAGS "${VITA_MKSFOEX_FLAGS} -d PARENTAL_LEVEL=1") 
     set(VITA_MKSFOEX_FLAGS "${VITA_MKSFOEX_FLAGS} -d ATTRIBUTE2=12")

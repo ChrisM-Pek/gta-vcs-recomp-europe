@@ -306,6 +306,9 @@ class Progress:
         self.last_pct = -5
         self.stop = threading.Event()
         self.timer = threading.Thread(target=self._tick, daemon=True)
+        self.poll = None  # called every second from the timer (cmake_build: has the game's link started?)
+        self.step_eta = True  # False: the note says what is left (a link); Ninja's count says nothing about it
+        self.events = True  # False: someone else sends the launcher's progress events (the link's own)
 
     def __enter__(self):
         self.timer.start()
@@ -321,7 +324,7 @@ class Progress:
         elapsed = time.time() - self.start
         if self.total:
             text = "%s %d/%d %d%%  %s" % (self.label, self.done, self.total, 100 * self.done // self.total, _duration(elapsed))
-            if 0 < self.done < self.total and elapsed > 10:
+            if 0 < self.done < self.total and elapsed > 10 and self.step_eta:
                 text += ", ~%s left" % _duration(elapsed * (self.total - self.done) / self.done)
         else:
             text = "%s %s" % (self.label, _duration(elapsed))
@@ -352,6 +355,8 @@ class Progress:
 
     def _tick(self):
         while not self.stop.wait(1.0):
+            if self.poll:
+                self.poll()
             with self.lock:
                 self._draw()
 
@@ -369,7 +374,7 @@ class Progress:
     def _event(self):
         """A progress event for the launcher, at most 4 a second (Ninja steps come by the hundred)."""
         now = time.time()
-        if not json_progress() or (now - getattr(self, "_last_event", 0) < 0.25 and self.done < self.total):
+        if not json_progress() or not self.events or (now - getattr(self, "_last_event", 0) < 0.25 and self.done < self.total):
             return
         self._last_event = now
         elapsed = now - self.start
@@ -1254,13 +1259,71 @@ _INTERESTING = re.compile(r"error|FAILED|Linking|warning: unused")
 _NINJA_STEP = re.compile(r"^\[(\d+)/(\d+)\] (\S+)")
 
 
-def cmake_build(env, target, log_name, verbose=False, build_dir=BUILD_DIR):
+class _GameLink:
+    """The game's link as a step of its own: with ThinLTO it takes minutes after the last compile, while Ninja's count
+    stands at its last step or two. Ninja prints a step when it ends, so the start comes from a file the link touches
+    first (PRE_LINK in ps2xRuntime/CMakeLists.txt); the time it takes is guessed from the last link of the same kind
+    (link_times.json in the build folder; ThinLTO's cache makes a relink after a small change shorter than that)."""
+
+    def __init__(self, progress, build_dir, kind, title):
+        self.progress, self.kind, self.title = progress, kind, title
+        self.marker = os.path.join(build_dir, "game_link.started")
+        self.times_path = os.path.join(build_dir, "link_times.json")
+        self.start = None
+        try:
+            os.remove(self.marker)
+        except OSError:
+            pass
+        try:
+            with open(self.times_path, encoding="utf-8") as f:
+                self.times = json.load(f)
+        except (OSError, ValueError):
+            self.times = {}
+        last = self.times.get(kind) if isinstance(self.times, dict) else None
+        self.expected = last if isinstance(last, (int, float)) and last > 0 else None
+
+    def poll(self):
+        if self.start is None:
+            try:
+                self.start = min(os.path.getmtime(self.marker), time.time())  # the poll sees it up to a second late
+            except OSError:
+                return
+            stage("link", self.title)
+            self.progress.events = False
+            self.progress.step_eta = False
+            self.progress.message("[build] %s%s" % (self.title[0].lower() + self.title[1:], ", %s the last time" %
+                                                    _duration(self.expected) if self.expected else ""))
+        elapsed = time.time() - self.start
+        left = self.expected - elapsed if self.expected else 0
+        self.progress.update(note="linking" + (", ~%s left" % _duration(left) if left >= 1 else ""))
+        with self.progress.lock:
+            if self.expected:  # the time as the step's progress, held short of the end until the link is done
+                event(progress=int(min(elapsed, self.expected * 0.99)), total=max(1, int(self.expected)),
+                      eta=int(left) if left >= 1 else None, note="linking")
+            else:
+                event(progress=0, total=0, eta=None, note="linking")
+
+    def finish(self):
+        if self.start is None:
+            return
+        self.times[self.kind] = round(time.time() - self.start)
+        try:
+            with open(self.times_path, "w", encoding="utf-8") as f:
+                json.dump(self.times, f)
+        except OSError:
+            pass
+
+
+def cmake_build(env, target, log_name, verbose=False, build_dir=BUILD_DIR, link=None):
     """Builds `target` under a progress line (Ninja's [done/total]); prints errors and link steps (everything with
-    verbose). False on failure."""
+    verbose). link=(kind, title): the game's link becomes a stage of its own (_GameLink). False on failure."""
     log = os.path.join(BUILD, log_name)
     os.makedirs(BUILD, exist_ok=True)
     cmd = resolve(["cmake", "--build", build_dir, "--target", target], env)
     with open(log, "w", encoding="utf-8") as f, Progress("[build] " + target) as progress:
+        game_link = _GameLink(progress, build_dir, *link) if link else None
+        if game_link:
+            progress.poll = game_link.poll
         proc = subprocess.Popen(cmd, cwd=ROOT, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, errors="replace")
         for line in proc.stdout:
             f.write(line)
@@ -1272,6 +1335,9 @@ def cmake_build(env, target, log_name, verbose=False, build_dir=BUILD_DIR):
             if verbose or (_INTERESTING.search(line) and "Wdeprecated" not in line):
                 progress.message(line)
         ok = proc.wait() == 0
+        progress.poll = None
+    if ok and game_link:
+        game_link.finish()
     if ok:
         print(progress.summary() if progress.total else "[build] %s up to date" % target)
     else:

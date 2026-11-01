@@ -5,6 +5,7 @@
 #include "model/system.h"
 #include "platform/platform.h"
 
+#include <cctype>
 #include <cmath>
 
 namespace screens
@@ -80,7 +81,9 @@ namespace screens
 
         // the one thing to do next
         pushReveal(since, 3);
-        const std::string next = app.next();
+        // --demo stale: the build out of date, as after a change to the source (screenshots)
+        const bool staleDemo = shell.options.demo == "stale" && app.doctorDone && !app.doctorCached;
+        const std::string next = staleDemo ? "build" : app.next();
         const Rect big{left, y, px(232), px(56)};
         // the big button's label is the other place for Pricedown
         const float heroSize = fontFound(kFontBrand) ? px(31) : px(18); // Pricedown is small on its body
@@ -122,14 +125,19 @@ namespace screens
             primary = ui::button("Play", fit("Play", theme::icon::kPlay), ButtonStyle::Primary, theme::icon::kPlay, true, heroSize, kFontBrand);
             if (primary || (platform::input.key(platform::kKeyEnter) && !ui::state.focusVisible && ui::inputAllowed()))
                 play(app);
+            // the update says it is new with a badge; why, in its tooltip
             y += big.h + px(14);
-            if (ui::button("Update the build", {left, y, ui::buttonWidth("Update the build", theme::icon::kRepair), px(40)},
-                           ButtonStyle::Secondary, theme::icon::kRepair, !app.busy()))
+            constexpr const char *kUpdate = "Update the build";
+            const Rect update{left, y, ui::buttonWidth(kUpdate, theme::icon::kRepair, 0, kFontSemibold, "NEW"), px(40)};
+            if (ui::button(kUpdate, update, ButtonStyle::Secondary, theme::icon::kRepair, !app.busy(), 0, kFontSemibold, "NEW"))
                 app.startBuild();
-            y += px(40) - big.h; // the lines under it follow the smaller button
             const launcher::Json &reasons = app.doctor["build"]["reasons"];
-            below = reasons.size() ? "An update is ready: " + reasons[0].str() : "An update is ready.";
-            belowColor = theme::kAmber;
+            std::string why = staleDemo ? "the source changed since the last build" : reasons.size() ? reasons[0].str() : "";
+            if (!why.empty())
+                why[0] = char(std::toupper(static_cast<unsigned char>(why[0])));
+            ui::tooltip(ui::id(kUpdate), update, why.empty() ? "A newer build is ready to make." : why + ": updating builds the game again.");
+            y += px(40) - big.h; // the lines under it follow the smaller button
+            below = buildSummary(app);
         }
         else if (next == "play")
         {

@@ -99,14 +99,32 @@ namespace ui
     // what a label shows: the text before "##" (what follows only tells widgets with the same text apart)
     std::string_view shownText(std::string_view label) { return label.substr(0, label.find("##")); }
 
-    float buttonWidth(std::string_view label, char32_t icon, float size, Font font)
+    namespace
+    {
+        // a button's badge: small capitals on solid pink
+        constexpr float kBadgeText = 10.5f;
+        float badgeWidth(std::string_view badge)
+        {
+            return badge.empty() ? 0 : std::ceil(measure(kFontSemibold, px(kBadgeText), badge) + px(14));
+        }
+        void drawBadge(float x, float cy, std::string_view badge)
+        {
+            const Rect r{x, std::round(cy - px(9)), badgeWidth(badge), px(18)};
+            shadow(r.offset(0, px(2)), withAlpha(theme::kPink, 0.35f), px(4), r.h * 0.5f);
+            gradient(r, theme::kPinkHi, theme::kPink, r.h * 0.5f);
+            drawText(kFontSemibold, px(kBadgeText), r.x + px(7), centredBaseline(kFontSemibold, px(kBadgeText), r), theme::kOnPink, badge);
+        }
+    }
+
+    float buttonWidth(std::string_view label, char32_t icon, float size, Font font, std::string_view badge)
     {
         const std::string_view text = shownText(label);
         const float s = size > 0 ? size : px(theme::kBody);
-        return std::ceil(measure(font, s, text) + px(36) + (icon ? s + px(10) : 0));
+        return std::ceil(measure(font, s, text) + px(36) + (icon ? s + px(10) : 0) + (badge.empty() ? 0 : badgeWidth(badge) + px(10)));
     }
 
-    bool button(std::string_view label, Rect r, ButtonStyle style, char32_t icon, bool enabled, float size, Font font)
+    bool button(std::string_view label, Rect r, ButtonStyle style, char32_t icon, bool enabled, float size, Font font,
+                std::string_view badge)
     {
         const Interaction in = interact(id(label), r, true, enabled);
         const std::string_view text = shownText(label);
@@ -144,13 +162,16 @@ namespace ui
         }
         const float textW = measure(font, s, text);
         const float iconW = icon ? s + px(10) : 0;
-        float x = std::floor(box.cx() - (textW + iconW) * 0.5f);
+        const float badgeW = badge.empty() ? 0 : badgeWidth(badge) + px(10);
+        float x = std::floor(box.cx() - (textW + iconW + badgeW) * 0.5f);
         if (icon)
         {
             drawIcon(kFontIcons, s * 0.95f, x + s * 0.5f, box.cy(), textColor, icon);
             x += iconW;
         }
         drawText(font, s, x, centredBaseline(font, s, box), textColor, text);
+        if (!badge.empty())
+            drawBadge(x + textW + px(10), box.cy(), badge);
         render::popOpacity();
         focusRing(r, w.focus, radius);
         return in.clicked && enabled;

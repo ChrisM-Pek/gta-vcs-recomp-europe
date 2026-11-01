@@ -36,9 +36,11 @@ namespace ui
     void eyebrow(float x, float y, Color color, std::string_view text);
 
     // ---- controls -------------------------------------------------------------------------------------------------
-    float buttonWidth(std::string_view label, char32_t icon = 0, float size = 0, render::Font font = render::kFontSemibold);
+    // badge: a small solid pink tag after the label ("NEW"), counted in the width
+    float buttonWidth(std::string_view label, char32_t icon = 0, float size = 0, render::Font font = render::kFontSemibold,
+                      std::string_view badge = {});
     bool button(std::string_view label, Rect r, ButtonStyle style = ButtonStyle::Secondary, char32_t icon = 0,
-                bool enabled = true, float size = 0, render::Font font = render::kFontSemibold);
+                bool enabled = true, float size = 0, render::Font font = render::kFontSemibold, std::string_view badge = {});
     bool iconButton(std::string_view idLabel, char32_t icon, Rect r, std::string_view tooltip, bool enabled = true,
                     float iconSize = 0);
     bool segmented(std::string_view idLabel, Rect r, const std::vector<std::string> &options, int &selected,

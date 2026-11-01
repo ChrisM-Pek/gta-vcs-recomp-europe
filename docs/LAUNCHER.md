@@ -86,7 +86,7 @@ motion is (2026-11-01, the user's "rethink everything"; before, a sidebar of pag
   wavers - drawn at 30 frames a second (15 unfocused), only while Home shows, never while the game runs, and still with
   reduce motion on. In front of it,
   one big button for what's next (Play, or Check again when the check failed; with an update ready Play stays and a
-  smaller *Update the build* sits under it - offered, never forced), what was built under it ("Built 2 days ago ·
+  smaller *Update the build* sits under it with a pink NEW badge, why in its tooltip - offered, never forced), what was built under it ("Built 2 days ago ·
   Standard · AVX2"), and three cards along the bottom: Setup (opens it at any step), Saves, Updates. While the game runs
   the button is a "Playing · 12:34" panel (redrawn once a second, never continuously); a non-zero exit becomes a red
   card with `gameExitText()` and the log.
@@ -259,7 +259,8 @@ exe prints to the terminal that started it only through AttachConsole; `--out` f
 `--screenshot F.png`: the window rendered offscreen into a texture and saved - tests never put a window on the desktop.
 `--screen` picks what is shown (`setup:folder|disc|tools|game`, `home`, `task`, `sheet:saves|settings|help|folder`,
 `dialog:restore|quit|cancel`, `gallery` - every widget in its states), `--demo` a sample state (`running`, `link`,
-`firstlink`, `error`, `done`, `playing`, `update`, `gameerror`), `--then S --at T` switches after T seconds and `--frames N` saves N
+`firstlink`, `error`, `done`, `playing`, `update`, `gameerror`, `stale` - Home with the build out of
+date), `--then S --at T` switches after T seconds and `--frames N` saves N
 consecutive frames (a transition, frame by frame), `--scale K` / `--size WxH` the pixels per unit and the logical size,
 `--theme light|dark` the palette (dark when not given, whatever launcher.ini or Windows say), `--clock S` Home's moving
 scene S seconds further on (its jets, clouds and windows at a given moment: the stills otherwise land wherever the

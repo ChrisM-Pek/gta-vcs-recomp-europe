@@ -37,6 +37,8 @@ namespace screens
                 app.updateInfo = launcher::Json::parse(R"({"newer": true, "latest": "0.0.4", "url": "https://github.com"})");
                 return;
             }
+            if (demo == "stale")
+                return; // Home reads it: the build out of date
             if (demo == "gameerror")
             {
                 app.gameEnded = true;

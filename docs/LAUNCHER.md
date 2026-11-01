@@ -78,8 +78,8 @@ motion is (2026-11-01, the user's "rethink everything"; before, a sidebar of pag
   rail. The Folder step only stops Setup when doctor has a warning for it and nothing is built yet.
 - **Home** (`home.cpp`): the name over Vice City at dusk (`backdrop.cpp`, drawn by the renderer: the icon's striped sun
   behind the beach's art deco towers, a hazier row behind them with smaller, dimmer windows, the sea with their
-  reflection; stars at night). It moves, gently: the sun's stripes slide into the horizon, cloud streaks drift across
-  the sun, far-off jets cross high up, from either side at irregular times (each with its own height,
+  reflection; stars at night). It moves, gently: the sun's stripes slide into the horizon, cloud streaks come and go
+  across the sun (one every 10 s or so fades in somewhere around it, drifts and fades out: three to five at a time), far-off jets cross high up, from either side at irregular times (each with its own height,
   slant, pace and distance) drawing trails that spread, drift and fade over half a
   minute, windows go on and off and the tallest tower's light blinks, lines roll in on the water and the sun's reflection
   wavers - drawn at 30 frames a second (15 unfocused), only while Home shows, never while the game runs, and still with
@@ -178,7 +178,8 @@ static exe, 17 s from scratch. Layers, each using only those below it:
   (moving / resizing the window, a file dialog) draw through `platform::setModalFrame`; dialogs are only opened
   between frames (`screens::runPending`), never inside one.
 - **Rendering**: one instanced draw, no vertex or index buffer (`SV_VertexID`), clipped on the GPU by shrinking the
-  quad; the pixel shader evaluates distance functions (uppies' shading, with an arc added and horizontal gradients).
+  quad (out to whole pixels; the pixel shader covers the pixels a clip edge cuts by how much is inside, so a clip that
+  moves by fractions of a pixel moves smoothly); the pixel shader evaluates distance functions (uppies' shading, with an arc added and horizontal gradients).
   Flip-discard swap chain, latency 1, tearing when vsync is off, `WS_EX_NOREDIRECTIONBITMAP`, the first frame drawn
   before the window is shown; a lost device is recreated from CPU state (Ctrl+Shift+F10 simulates it); WARP when
   there is no GPU.

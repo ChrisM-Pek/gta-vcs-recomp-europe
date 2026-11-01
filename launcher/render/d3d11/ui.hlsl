@@ -49,12 +49,15 @@ struct VSOut
     nointerpolation uint kind : KIND;
     nointerpolation float4 params : PARAMS;
     nointerpolation float4 data : DATA; // the raw uv (lines, arcs)
+    nointerpolation float4 clip : CLIP;
 };
 
 VSOut vs_main(uint vertex_id : SV_VertexID, Instance inst)
 {
     // Grow the quad to hold the antialiased edge (a shadow: its blur), then clip it here: clipped pixels are never
-    // shaded and clipping never splits the batch.
+    // shaded and clipping never splits the batch. The clip is taken out to whole pixels; the pixel shader covers the
+    // pixels a clip edge cuts through by how much of them is inside, so a clip that moves by a fraction of a pixel
+    // moves smoothly (the sun's slices on Home) and one on pixel edges is exactly as before.
     float2 grow = 1.0;
     if (inst.kind == KIND_GLYPH || inst.kind == KIND_LINE || inst.kind == KIND_ARC)
         grow = 0.0; // their rects already hold their edges
@@ -63,8 +66,8 @@ VSOut vs_main(uint vertex_id : SV_VertexID, Instance inst)
     if (inst.kind == KIND_GLYPH && inst.params.y > 0.0)
         grow = inst.params.y + 1.0; // a blurred glyph spreads by its radius
 
-    float2 lo = max(inst.rect.xy - grow, inst.clip.xy);
-    float2 hi = min(inst.rect.zw + grow, inst.clip.zw);
+    float2 lo = max(inst.rect.xy - grow, floor(inst.clip.xy));
+    float2 hi = min(inst.rect.zw + grow, ceil(inst.clip.zw));
     hi = max(hi, lo); // fully clipped: a degenerate quad
 
     float2 corner = float2(vertex_id & 1, vertex_id >> 1); // triangle strip order
@@ -83,6 +86,7 @@ VSOut vs_main(uint vertex_id : SV_VertexID, Instance inst)
     o.kind = inst.kind;
     o.params = inst.params;
     o.data = inst.uv;
+    o.clip = inst.clip;
     return o;
 }
 
@@ -197,7 +201,7 @@ float sd_arc(float2 p, float start, float sweep, float r)
     return min(length(p - e0), length(p - e1));
 }
 
-float4 ps_main(VSOut i) : SV_Target
+float4 shade(VSOut i)
 {
     if (i.kind == KIND_LINE)
     {
@@ -271,4 +275,11 @@ float4 ps_main(VSOut i) : SV_Target
     float4 fill_pm = float4(fill.rgb * fill.a, fill.a);
     float4 border_pm = float4(i.border_color.rgb * i.border_color.a, i.border_color.a);
     return lerp(border_pm, fill_pm, border > 0 ? inner : 1.0) * outer;
+}
+
+float4 ps_main(VSOut i) : SV_Target
+{
+    // how much of this pixel is inside the clip (1 everywhere but where a clip edge falls inside a pixel)
+    float2 cover = saturate(min(i.pixel - i.clip.xy, i.clip.zw - i.pixel) + 0.5);
+    return shade(i) * (cover.x * cover.y);
 }

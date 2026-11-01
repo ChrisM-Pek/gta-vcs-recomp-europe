@@ -1,10 +1,10 @@
 // Behind everything: the sky and its glows, and on Home Vice City at dusk - a striped sun going down behind the towers
 // of the beach, over a sea that moves (the app icon's motif, launcher/make_icon.py), all drawn with the renderer's own
 // primitives. Alive while Home shows and the game isn't running: the sun's stripes slide toward the horizon, clouds
-// drift, far-off jets draw trails that spread and fade, windows go on and off, the sea's lines roll in and the sun's
-// reflection shimmers - at 30 frames a second (15 when the window isn't focused), slow enough to cost almost nothing, and still
-// with reduce motion on. Every other screen draws once and sleeps. (A later option: art from the player's own disc in
-// this slot - docs/LAUNCHER.md.)
+// come, drift and go, far-off jets draw trails that spread and fade, windows go on and off, the sea's lines roll in
+// and the sun's reflection shimmers - at 30 frames a second (15 when the window isn't focused), slow enough to cost
+// almost nothing; standing still with reduce motion on. Every other screen draws once and sleeps. (A later option: art
+// from the player's own disc in this slot - docs/LAUNCHER.md.)
 #include "shell.h"
 
 #include "platform/platform.h"
@@ -204,7 +204,7 @@ namespace screens
             // gaps between them widen toward it
             const Rect disc{cx - radius, cy - radius, radius * 2, radius * 2};
             const Color top = mix(theme::kPinkHi, theme::kOnPink, 0.22f), bottom = theme::kPink;
-            const float from = cy - radius * 0.05f, span = S.horizon - from;
+            const float from = std::round(cy - radius * 0.05f), span = S.horizon - from;
             pushClip({0, 0, S.w, S.horizon});
             pushClip({0, disc.y, S.w, from - disc.y});
             gradient(disc, top, bottom, radius);
@@ -226,33 +226,38 @@ namespace screens
             popClip();
         }
 
-        // wisps drifting right across the sun's side of the sky, fading in as they leave the words behind: dark with a lit
-        // edge at night, white by day
-        void clouds(const Scene &S)
+        // streaks across the sun, coming and going: one appears every 10 s or so at a random place around the sun,
+        // fades in, drifts right for 35-55 s and fades out, so three to five are in the sky at any time and the sky never
+        // runs out of them. Each has its own height, length, thickness, pace and maybe a thinner one riding above it
+        // (traits from its number, as the jets'). Dark with a lit edge at night, white by day; faded out over the words
+        void clouds(const Scene &S, float cx, float radius)
         {
-            struct Cloud
-            {
-                float y, len, thick, speed, offset;
-            };
-            static const Cloud kClouds[] = {
-                {0.385f, 0.30f, 0.0065f, 5.0f, 0.15f}, {0.455f, 0.20f, 0.005f, 7.5f, 0.70f},
-                {0.535f, 0.38f, 0.0075f, 4.0f, 0.42f}, {0.60f, 0.24f, 0.005f, 6.0f, 0.92f},
-            };
+            constexpr float kSlot = 10, kLongest = 55;
             const float dark = theme::darkness;
-            const float from = S.w * 0.46f;
-            for (const Cloud &c : kClouds)
+            const int last = int(std::floor(S.t / kSlot));
+            for (int k = last - int(kLongest / kSlot) - 1; k <= last; ++k)
             {
-                const float len = c.len * S.s, thick = std::max(c.thick * S.s, px(2.5f));
-                const float travel = S.w - from + len;
-                const float x = from - len + std::fmod(c.offset * travel + S.t * px(c.speed), travel);
-                const float a = smooth(S.w * 0.50f, S.w * 0.64f, x + len * 0.5f);
+                const float start = float(k) * kSlot + trait(k, 20) * kSlot;
+                const float life = 35.0f + 20.0f * trait(k, 21);
+                const float since = S.t - start;
+                if (since < 0 || since > life)
+                    continue;
+                const float shown = smooth(0.0f, 6.0f, since) * (1.0f - smooth(life - 9.0f, life, since));
+                const float len = S.s * (0.16f + 0.24f * trait(k, 22));
+                const float thick = std::max(S.s * (0.0045f + 0.0035f * trait(k, 23)), px(2.5f));
+                const float y = S.h * (0.36f + 0.25f * trait(k, 24));
+                const float x = cx - radius * 1.5f + radius * 2.3f * trait(k, 25) - len * 0.5f + since * px(3.0f + 5.0f * trait(k, 26));
+                const float a = shown * smooth(S.w * 0.50f, S.w * 0.64f, x + len * 0.5f);
                 if (a <= 0.01f)
                     continue;
-                const float y = c.y * S.h;
-                // a crisp streak with a thinner one riding above it, in a faint haze
+                // a crisp streak, maybe a thinner one riding above it, in a faint haze
                 shadow({x - len * 0.1f, y - thick, len * 1.2f, thick * 3}, withAlpha(theme::kCloud, 0.25f * a), thick * 1.2f, thick);
                 rect({x, y, len, thick}, withAlpha(theme::kCloud, 0.92f * a), thick * 0.5f);
-                rect({x + len * 0.22f, y - thick * 1.7f, len * 0.45f, thick * 0.7f}, withAlpha(theme::kCloud, 0.85f * a), thick * 0.35f);
+                if (trait(k, 27) < 0.6f)
+                {
+                    const float rx = x + len * (0.1f + 0.3f * trait(k, 28)), rw = len * (0.3f + 0.25f * trait(k, 29));
+                    rect({rx, y - thick * 1.7f, rw, thick * 0.7f}, withAlpha(theme::kCloud, 0.85f * a), thick * 0.35f);
+                }
                 if (dark > 0.01f)
                     rect({x + len * 0.08f, y + thick - px(1), len * 0.84f, px(1)}, withAlpha(theme::kPinkHi, 0.30f * dark * a), px(0.5f));
             }
@@ -391,7 +396,7 @@ namespace screens
         stars(S);
         jets(S);
         sun(S, cx, cy, radius);
-        clouds(S);
+        clouds(S, cx, radius);
         skyline(S, true);
         sea(S, cx, radius);
         popOpacity();

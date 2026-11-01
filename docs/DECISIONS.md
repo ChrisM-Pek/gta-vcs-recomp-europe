@@ -830,6 +830,15 @@ neighbouring numbers, which came out alike. Each trait is now a hash of the flig
 (24 s, a random moment in each, some left empty) pair up flying opposite ways in a random order, and each flight also
 has its own distance (a far one smaller, fainter, slower), trail life (22-40 s) and patchiness.
 
+Then (the user) the sun's slices looked choppy, and the streaks across it drifted off and never came back. The slices
+are the disc drawn through clip rectangles, and the renderer clipped by shrinking each quad to the clip: a clip edge at
+a fraction of a pixel snapped to whole pixels, so slices sliding a few pixels a second stepped. The vertex shader now
+takes the clip out to whole pixels and the pixel shader multiplies by the part of the pixel inside it - a moving clip
+edge is antialiased (checked: an edge pixel's value now changes a little every frame), and a clip on pixel edges, all
+the UI's, draws exactly as before. The slices' top edge sits on a whole pixel, where the disc's solid top meets the
+first slice, so the two never leave a half-covered seam. The streaks are now scheduled like the jets: one every ~10 s
+at a random place around the sun, fading in, drifting right for 35-55 s and fading out.
+
 Two frame-loop faults turned up on the way: a sleep that ended on its timeout set `needsRedraw`, which also books a
 settle frame, so every timed wake drew two frames (a timed wake now draws one); and minimized, a frame asked for at a
 time already past made the loop wake at once, again and again - a core spinning behind the game while the "Playing"

@@ -21,12 +21,13 @@ static const uint KIND_GLYPH = 1;
 static const uint KIND_SHADOW = 2;
 static const uint KIND_LINE = 3;
 static const uint KIND_ARC = 4;
+static const uint KIND_QUAD = 5;
 
 struct Instance
 {
     float4 rect : RECT;          // x0 y0 x1 y1
-    float4 uv : UV;              // glyph: atlas texels; line: endpoints; arc: start, sweep, radius, thickness
-    float4 radii : RADII;        // tl tr br bl
+    float4 uv : UV;              // glyph: atlas texels; line: endpoints; arc: start, sweep, radius, thickness; quad: 2 corners
+    float4 radii : RADII;        // tl tr br bl; quad: the other 2 corners
     float4 clip : CLIP;          // x0 y0 x1 y1
     float4 color0 : COLOR0;      // fill (gradient start), glyph, shadow, line, arc
     float4 color1 : COLOR1;      // gradient end
@@ -201,6 +202,26 @@ float4 ps_main(VSOut i) : SV_Target
     if (i.kind == KIND_LINE)
     {
         float d = sd_segment(i.pixel, i.data.xy, i.data.zw) - i.params.z * 0.5;
+        float a = saturate(0.5 - d) * i.color0.a;
+        return float4(i.color0.rgb * a, a);
+    }
+
+    if (i.kind == KIND_QUAD)
+    {
+        // a convex quadrilateral (corners in uv.xy, uv.zw, radii.xy, radii.zw): the distance to it is the largest
+        // distance outside any of its edges
+        float2 q[4] = {i.data.xy, i.data.zw, i.radii.xy, i.radii.zw};
+        float area = 0.0;
+        [unroll] for (int k = 0; k < 4; k++)
+            area += q[k].x * q[(k + 1) % 4].y - q[(k + 1) % 4].x * q[k].y;
+        float side = area > 0.0 ? 1.0 : -1.0;
+        float d = -1e9;
+        [unroll] for (int k = 0; k < 4; k++)
+        {
+            float2 e = q[(k + 1) % 4] - q[k];
+            float2 outward = side * float2(e.y, -e.x) / max(length(e), 1e-5);
+            d = max(d, dot(i.pixel - q[k], outward));
+        }
         float a = saturate(0.5 - d) * i.color0.a;
         return float4(i.color0.rgb * a, a);
     }

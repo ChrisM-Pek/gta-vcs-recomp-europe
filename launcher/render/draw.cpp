@@ -195,6 +195,28 @@ namespace render
         i->color0 = faded(color);
     }
 
+    void quad(const float corners[8], Color color)
+    {
+        float x0 = corners[0], y0 = corners[1], x1 = corners[0], y1 = corners[1];
+        for (int k = 1; k < 4; ++k)
+        {
+            x0 = std::min(x0, corners[k * 2]);
+            x1 = std::max(x1, corners[k * 2]);
+            y0 = std::min(y0, corners[k * 2 + 1]);
+            y1 = std::max(y1, corners[k * 2 + 1]);
+        }
+        Instance *i = add(kQuad, {x0, y0, x1 - x0, y1 - y0}, 1);
+        if (!i)
+            return;
+        float *slots[4] = {&i->uv[0], &i->uv[2], &i->radii[0], &i->radii[2]};
+        for (int k = 0; k < 4; ++k)
+        {
+            slots[k][0] = corners[k * 2] + draw.dx;
+            slots[k][1] = corners[k * 2 + 1] + draw.dy;
+        }
+        i->color0 = faded(color);
+    }
+
     void circle(float cx, float cy, float radius, Color color)
     {
         rect({cx - radius, cy - radius, radius * 2, radius * 2}, color, radius);

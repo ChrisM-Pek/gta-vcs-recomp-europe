@@ -28,6 +28,7 @@ namespace render
         kShadow = 2, // Gaussian-blurred rounded rectangle (shadows, glows)
         kLine = 3,   // antialiased segment with round caps
         kArc = 4,    // antialiased arc with round caps (spinners, rings)
+        kQuad = 5,   // a filled convex quadrilateral, antialiased (corners in uv and radii)
     };
 
     // Keep in sync with Instance in render/d3d11/ui.hlsl.
@@ -106,5 +107,7 @@ namespace render
     // angles in radians, 0 = right, clockwise (y points down)
     void arc(float cx, float cy, float radius, float thickness, float start, float sweep, Color color);
     void circle(float cx, float cy, float radius, Color color);
+    // a convex quadrilateral, corners in order around it (x0 y0 x1 y1 x2 y2 x3 y3)
+    void quad(const float corners[8], Color color);
     void glyph(Rect r, const float uv[4], Color color, float blur = 0); // blur: a radius in pixels
 }

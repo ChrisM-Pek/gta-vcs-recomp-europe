@@ -70,9 +70,10 @@ motion is (2026-11-01, the user's "rethink everything"; before, a sidebar of pag
   Build tools, Game) whose line fills in teal as they are done, and one step at a time below it in a large card - a
   pink label, a title, a line of explanation, the step, and a footer whose primary (sunset-gradient) button is the
   step's next thing. A step that turns good plays its check (a stroke that draws itself), holds 0.9 s, and the next
-  slides in from the side it comes from; a pink box around the step's badge, name and line slides along the rail to it,
-  fitted to each step's text so it changes shape from step to step (after Vice City's menus; its two edges are springs,
-  the leading one quicker, so it stretches a little on the way). Any step can be looked at from the
+  slides in from the side it comes from. Behind the step shown sits a solid pink box, as in Vice City's menus: each
+  step's is a quadrilateral of its own (its corners set off the step's text, each differently), and going to another
+  step carries the box there while its corners blend from the old shape into the new one (`render::quad`, a filled
+  convex quadrilateral). Any step can be looked at from the
   rail. The Folder step only stops Setup when doctor has a warning for it and nothing is built yet.
 - **Home** (`home.cpp`): the name over a striped sun setting into the sea (the icon's motif, drawn by the renderer),
   one big button for what's next (Play, or Check again when the check failed; with an update ready Play stays and a

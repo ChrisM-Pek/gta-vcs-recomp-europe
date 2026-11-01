@@ -3,6 +3,7 @@
 // a moment, and the next slides in. Any step can be looked at from the rail.
 #include "shell.h"
 
+#include "model/os.h"
 #include "model/system.h"
 #include "platform/platform.h"
 
@@ -138,7 +139,9 @@ namespace screens
             }
             else if (footerButton(footer, "Choose your .iso", ButtonStyle::Primary, theme::icon::kOpenFile))
                 chooseIso();
-            if (footerButton(footer, "Copy from a DVD drive", ButtonStyle::Ghost, theme::icon::kDisc, !app.busy(), false))
+            // tools/rip_disc.py is Windows only (for now)
+            if (launcher::os::kWindows &&
+                footerButton(footer, "Copy from a DVD drive", ButtonStyle::Ghost, theme::icon::kDisc, !app.busy(), false))
             {
                 app.drives = launcher::Json();
                 app.startRipList();
@@ -207,7 +210,7 @@ namespace screens
             {
                 ui::label(kFontSemibold, px(17), {tx, box.y + px(36), tw, px(26)}, theme::kText, "Drop your .iso onto this window");
                 ui::label(kFontBody, px(theme::kBody), {tx, box.y + px(66), tw, px(22)}, theme::kDim,
-                          "Or choose it, or copy it from a disc in a DVD drive.");
+                          launcher::os::kWindows ? "Or choose it, or copy it from a disc in a DVD drive." : "Or choose it.");
             }
             if (in.clicked)
                 chooseIso();
@@ -272,10 +275,19 @@ namespace screens
             {
                 if (needCompiler)
                 {
-                    const char *label = code == "no_clang" ? "Add the Clang tools" : code == "old_clang" ? "Update Visual Studio" : "Install build tools";
+                    const char *label = !launcher::os::kWindows ? "Install packages"
+                                        : code == "no_clang"   ? "Add the Clang tools"
+                                        : code == "old_clang"  ? "Update Visual Studio"
+                                                               : "Install build tools";
                     if (footerButton(footer, label, ButtonStyle::Primary, theme::icon::kDownload, !app.busy()))
                         app.startInstallTools();
-                    if (code != "no_clang" && code != "old_clang")
+                    if (!launcher::os::kWindows)
+                    {
+                        // the same command in a terminal: where there is no password prompt for pkexec to show
+                        if (footerButton(footer, "Install in a terminal", ButtonStyle::Ghost, theme::icon::kCode, !app.busy(), false))
+                            launcher::openTerminal(c["command"].str());
+                    }
+                    else if (code != "no_clang" && code != "old_clang")
                         ui::label(kFontBody, px(theme::kSmall), core::cutRight(footer, px(84)), theme::kFaint, "about 6 GB", ui::Align::Right);
                 }
                 else if (footerButton(footer, "Continue", ButtonStyle::Primary, theme::icon::kChevronRight, ready && !cpuUnsupported(app) && !cached))
@@ -286,8 +298,11 @@ namespace screens
             }
             float y = body.y;
             y = header({body.x, y, body.w, 0}, "STEP 3 OF 4", theme::kPink, "Build tools",
-                       "The game is compiled on your PC with Microsoft's free C++ tools and clang. Nothing of the game is "
-                       "downloaded - only the compiler.");
+                       launcher::os::kWindows
+                           ? "The game is compiled on your PC with Microsoft's free C++ tools and clang. Nothing of the game "
+                             "is downloaded - only the compiler."
+                           : "The game is compiled on your PC with clang and your distribution's packages. Nothing of the "
+                             "game is downloaded - only the compiler and libraries.");
             if (!app.doctorDone)
             {
                 checking(body, y);
@@ -301,10 +316,14 @@ namespace screens
             if (cpuUnsupported(app) && !cached)
                 callout(body, y, theme::kRed, launcher::errorHelp("cpu_unsupported").title,
                         cpu["message"].str() + ". " + launcher::errorHelp("cpu_unsupported").fix);
-            if (needCompiler)
+            if (needCompiler && launcher::os::kWindows)
                 callout(body, y, theme::kAmber, launcher::errorHelp(code).title,
                         c["message"].str() + ". The launcher can run Microsoft's installer with the right options ticked; "
                         "Windows asks for permission first, and the installer shows its own progress.");
+            else if (needCompiler)
+                callout(body, y, theme::kAmber, launcher::errorHelp(code).title,
+                        c["message"].str() + ". The launcher installs them with your distribution's package manager and "
+                        "asks for your password first. The command: " + c["command"].str());
             auto status = [&](bool good, bool bad) {
                 return cached ? (good ? ui::Status::Good : ui::Status::Checking) : good ? ui::Status::Good : bad ? ui::Status::Failed : ui::Status::Warning;
             };
@@ -318,7 +337,7 @@ namespace screens
                      d["python"]["version"].str() + (d["python"]["bundled"].boolean() ? "  (bundled)" : "  (" + app.pythonText + ")"));
             checkRow(body, y, "#memory", status(d["memory"]["ok"].boolean(), false), "Memory", d["memory"]["message"].str());
             y += px(12);
-            if (!dl["ok"].boolean() && !cached)
+            if (!dl["ok"].boolean() && !cached && launcher::os::kWindows) // Linux: git is one of the packages
             {
                 if (ui::button("Get Git", {body.x, y, ui::buttonWidth("Get Git", theme::icon::kOpen), px(38)}, ButtonStyle::Secondary, theme::icon::kOpen))
                     launcher::openUrl("https://git-scm.com/download/win");
@@ -352,7 +371,7 @@ namespace screens
             }
             float y = body.y;
             y = header({body.x, y, body.w, 0}, "STEP 4 OF 4", theme::kPink, "Build the game",
-                       "Recompiled from your disc and compiled into vcs.exe, on this PC.");
+                       std::string("Recompiled from your disc and compiled into ") + launcher::os::kGameExe + ", on this PC.");
             if (!app.doctorDone)
             {
                 checking(body, y);
@@ -584,7 +603,8 @@ namespace screens
                 y += row({body.x, y, body.w, 0}, "PC memory", m["message"].str(), m["ok"].boolean() ? theme::kText : theme::kAmber);
             }
             y += px(6);
-            if (ui::button("Open in Explorer", {body.x, y, ui::buttonWidth("Open in Explorer", theme::icon::kOpen), px(38)}, ButtonStyle::Ghost, theme::icon::kOpen))
+            const char *openLabel = launcher::os::kWindows ? "Open in Explorer" : "Open the folder";
+            if (ui::button(openLabel, {body.x, y, ui::buttonWidth(openLabel, theme::icon::kOpen), px(38)}, ButtonStyle::Ghost, theme::icon::kOpen))
                 launcher::openFolder(app.root);
             y += px(52);
         }

@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""HLSL -> SPIR-V for the Vulkan RHI backend (src/render/CMakeLists.txt runs it at build time). Standard library only.
+"""HLSL -> SPIR-V for the Vulkan RHI backend (src/render/CMakeLists.txt runs it at build time) and the launcher's
+Vulkan renderer (launcher/CMakeLists.txt). Standard library only.
 
     python tools/hlsl_spirv.py --glslang PATH --stage vert|frag --entry vs_main --name kGsDrawVS_spv
-                               --out gs_draw_vs.spv.h [-D NAME=VALUE ...] SOURCE.hlsl
+                               --out gs_draw_vs.spv.h [-D NAME=VALUE ...] [--target-env vulkan1.1] SOURCE.hlsl
 
 The same HLSL as fxc's DXBC (one source, docs/NATIVE_RENDERER.md). glslang compiles it; the bindings follow the D3D11
 registers (src/rhi/vulkan/rhi_vulkan.cpp has the layout): cbuffer bN -> binding N, texture tN -> 16 + N, sampler
@@ -90,6 +91,7 @@ def write_header(path, name, words, source):
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--glslang", default="glslangValidator")
+    ap.add_argument("--target-env", default="vulkan1.3", help="vulkan1.1 for the launcher (older drivers)")
     ap.add_argument("--stage", required=True, choices=("vert", "frag"))
     ap.add_argument("--entry", required=True)
     ap.add_argument("--name", required=True)
@@ -101,7 +103,7 @@ def main():
     fd, spv = tempfile.mkstemp(suffix=".spv", dir=os.path.dirname(os.path.abspath(a.out)))
     os.close(fd)
     try:
-        cmd = [a.glslang, "-D", "-V", "--target-env", "vulkan1.3", "--shift-texture-binding", "16",
+        cmd = [a.glslang, "-D", "-V", "--target-env", a.target_env, "--shift-texture-binding", "16",
                "--shift-sampler-binding", "32"]
         cmd += ["-DVCS_SPIRV=1"] + ["-D" + d for d in a.defines]
         # the entry point is called "main" in every module (the device needs no name per shader)

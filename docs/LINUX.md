@@ -24,6 +24,7 @@ Needed (the `--check-deps` list, Debian / Ubuntu names):
 | Movies | `libavcodec-dev libavformat-dev libavutil-dev libswscale-dev libswresample-dev` |
 | SDL3, built from source: window (X11, Wayland), audio, gamepads | `libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxi-dev libxfixes-dev libxss-dev libwayland-dev wayland-protocols libxkbcommon-dev libdecor-0-dev libpipewire-0.3-dev libpulse-dev libasound2-dev libudev-dev libdbus-1-dev` |
 | Optional: Vulkan validation (`PS2X_RHI_DEBUG=1`) | `vulkan-validationlayers` |
+| The launcher (`build.py --launcher`), on top of the above | `libvulkan-dev libfreetype-dev libfontconfig-dev` (X11, Wayland, xkbcommon, D-Bus: already listed) |
 
 Fedora / Arch get the right package names from `--check-deps`. A Vulkan 1.3 driver is needed to play (Mesa's RADV /
 ANV, NVIDIA's driver): `vulkaninfo --summary` shows it. The Vulkan headers, volk (the loader) and VMA come with the
@@ -42,6 +43,14 @@ build (FetchContent), so no Vulkan SDK is needed.
   cache override this.
 - The game is `build/vcs` and its settings are `build/vcs.ini`. Saves and caches go to `$XDG_DATA_HOME/VCSRecomp`
   (`~/.local/share/VCSRecomp`); `VCS_DATA_DIR` works as on Windows.
+
+## The launcher
+
+`python3 tools/build.py --launcher` builds `VCSLauncher` (repository root): the same launcher as on Windows - setup,
+build, play - native on X11 and Wayland, drawing with Vulkan and FreeType (docs/LAUNCHER.md "Linux"). Its build tools
+step installs missing packages through `pkexec` (`python3 tools/build.py --install-deps`, the desktop's password
+prompt) or opens a terminal with the command. `VCS_LAUNCHER_VIDEO=x11|wayland`, `VCS_LAUNCHER_VK_DEBUG=1` and
+`VCS_LAUNCHER_VK_DEVICE=<name>` are its switches.
 
 ## Running
 
@@ -105,4 +114,5 @@ build (FetchContent), so no Vulkan SDK is needed.
 | GPU timing (`PS2X_GPU_TIMING`) for Vulkan: timestamp queries | done (and `PS2X_RHI_GPU_TIME`) |
 | Vulkan optimisation pass: layout-based barriers, incremental push descriptors; spirv-opt measured (no gain) | done: 60 fps locked at a 60 cap on the HD 520 (PERFORMANCE.md 16) |
 | The rig on Linux: regress, tour, saves, trainer, controls, shakedown, finale, soundcheck, soak, framerate audit | to do |
+| The launcher: X11 + Wayland, Vulkan, FreeType, portal dialogs, `--install-deps`; CI job on Ubuntu 24.04 (lavapipe) | done (2026-11-01): checked in nested Xephyr / weston (docs/LAUNCHER.md "Checked (Linux)"); GNOME / KDE by hand to do; a Linux release to do |
 | Performance on this laptop (i5 Skylake, HD 520: the "modest hardware" target) in PERFORMANCE.md | 30 locked (original timing), 60 locked at a 60 cap, ~83 shown fps uncapped (frame-rate independent; PERFORMANCE.md 16-18) |

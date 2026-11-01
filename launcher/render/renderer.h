@@ -1,6 +1,6 @@
 // A graphics backend: turns the draw list and the glyph atlas into pixels. Five calls and a readback; every backend
-// draws the same instances with the same shading (render/d3d11 on Windows; a Vulkan or Metal one consumes the same
-// draw list).
+// draws the same instances with the same shading (render/d3d11 on Windows, render/vulkan on Linux; both compile the
+// one ui.hlsl).
 #pragma once
 
 #include "core/math.h"
@@ -15,12 +15,14 @@ namespace render
     {
         int instances = 0, drawCalls = 0;
         size_t uploadBytes = 0;
+        std::string api;     // "Direct3D 11", "Vulkan 1.3"
         std::string adapter;
         bool warp = false, tearing = false;
     };
     extern RendererStats rendererStats;
 
-    // window: the native handle to present to (an HWND), or null to draw into an offscreen texture of
+    // window: the native handle to present to (an HWND; Linux: a platform::NativeSurface), or null to draw into an
+    // offscreen texture of
     // width x height (tests: --screenshot, never a window on the desktop)
     bool rendererInit(void *window, int width, int height, std::string &error);
     void rendererShutdown();

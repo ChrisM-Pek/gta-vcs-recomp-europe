@@ -2,6 +2,7 @@
 
 #include "draw.h"
 #include "font_raster.h"
+#include "icons.h"
 
 #include <cmath>
 #include <cstdlib>
@@ -118,41 +119,54 @@ namespace render
             return face;
         }
 
+        // a bitmap into the atlas; false when it is full (cleared at the next frame, never mid-frame)
+        bool place(const raster::Bitmap &bitmap, Glyph &g)
+        {
+            if (bitmap.width <= 0 || bitmap.height <= 0)
+                return true;
+            int x = 0, y = 0;
+            if (!atlasPlace(bitmap.width, bitmap.height, x, y))
+            {
+                atlas.clearPending = true;
+                return false;
+            }
+            for (int row = 0; row < bitmap.height; ++row)
+                std::memcpy(&atlas.pixels[size_t(y + row) * size_t(atlas.size) + size_t(x)],
+                            &bitmap.coverage[size_t(row) * size_t(bitmap.width)], size_t(bitmap.width));
+            atlas.dirtyX0 = std::min(atlas.dirtyX0, x);
+            atlas.dirtyY0 = std::min(atlas.dirtyY0, y);
+            atlas.dirtyX1 = std::max(atlas.dirtyX1, x + bitmap.width);
+            atlas.dirtyY1 = std::max(atlas.dirtyY1, y + bitmap.height);
+            g.left = int16_t(bitmap.left);
+            g.top = int16_t(bitmap.top);
+            g.w = int16_t(bitmap.width);
+            g.h = int16_t(bitmap.height);
+            g.ax = uint16_t(x);
+            g.ay = uint16_t(y);
+            return true;
+        }
+
         const Glyph &glyphFor(Font font, int px, char32_t cp, int sub)
         {
             const uint64_t key = glyphKey(font, px, cp, sub);
             if (auto it = g_glyphs.find(key); it != g_glyphs.end())
                 return it->second;
             Glyph g;
+            raster::Bitmap bitmap;
+            if (font == kFontIcons && icons::rasterize(cp, px, bitmap))
+            {
+                // ours (render/icons.cpp): a square as wide as it advances
+                g.advance = float(bitmap.width);
+                place(bitmap, g);
+                return g_glyphs.emplace(key, g).first->second;
+            }
             uint16_t index = 0;
             const int face = faceFor(font, cp, index);
             if (face >= 0)
             {
                 const raster::FaceMetrics &m = raster::faceMetrics(face);
                 g.advance = raster::advance(face, index) * float(px) / m.unitsPerEm;
-                raster::Bitmap bitmap = raster::rasterize(face, index, float(px), sub);
-                int x = 0, y = 0;
-                if (bitmap.width > 0 && bitmap.height > 0)
-                {
-                    if (atlasPlace(bitmap.width, bitmap.height, x, y))
-                    {
-                        for (int row = 0; row < bitmap.height; ++row)
-                            std::memcpy(&atlas.pixels[size_t(y + row) * size_t(atlas.size) + size_t(x)],
-                                        &bitmap.coverage[size_t(row) * size_t(bitmap.width)], size_t(bitmap.width));
-                        atlas.dirtyX0 = std::min(atlas.dirtyX0, x);
-                        atlas.dirtyY0 = std::min(atlas.dirtyY0, y);
-                        atlas.dirtyX1 = std::max(atlas.dirtyX1, x + bitmap.width);
-                        atlas.dirtyY1 = std::max(atlas.dirtyY1, y + bitmap.height);
-                        g.left = int16_t(bitmap.left);
-                        g.top = int16_t(bitmap.top);
-                        g.w = int16_t(bitmap.width);
-                        g.h = int16_t(bitmap.height);
-                        g.ax = uint16_t(x);
-                        g.ay = uint16_t(y);
-                    }
-                    else
-                        atlas.clearPending = true; // full: start over next frame, never mid-frame
-                }
+                place(raster::rasterize(face, index, float(px), sub), g);
             }
             return g_glyphs.emplace(key, g).first->second;
         }
@@ -196,22 +210,35 @@ namespace render
         if (!raster::init(error))
             return false;
         using R = raster::FaceRequest;
-        const int ui = raster::loadFace({R{L"Segoe UI Variable Text", 400}, R{L"Segoe UI", 400}, R{L"Arial", 400}});
-        const int uiSemi = raster::loadFace({R{L"Segoe UI Variable Text", 600}, R{L"Segoe UI", 600}, R{L"Arial", 700}});
-        const int display = raster::loadFace({R{L"Bahnschrift", 600}, R{L"Segoe UI Variable Display", 600}, R{L"Segoe UI", 600}});
-        const int icons = raster::loadFace({R{L"Segoe Fluent Icons", 400}, R{L"Segoe MDL2 Assets", 400}});
-        const int mono = raster::loadFace({R{L"Cascadia Mono", 400}, R{L"Consolas", 400}, R{L"Courier New", 400}});
-        const int symbols = raster::loadFace({R{L"Segoe UI Symbol", 400}});
+#ifdef _WIN32
+        const int ui = raster::loadFace({R{"Segoe UI Variable Text", 400}, R{"Segoe UI", 400}, R{"Arial", 400}});
+        const int uiSemi = raster::loadFace({R{"Segoe UI Variable Text", 600}, R{"Segoe UI", 600}, R{"Arial", 700}});
+        const int display = raster::loadFace({R{"Bahnschrift", 600}, R{"Segoe UI Variable Display", 600}, R{"Segoe UI", 600}});
+        const int mono = raster::loadFace({R{"Cascadia Mono", 400}, R{"Consolas", 400}, R{"Courier New", 400}});
+        const int symbols = raster::loadFace({R{"Segoe UI Symbol", 400}});
+#else
+        // what Linux desktops have: the first one installed (fontconfig falls back to the generic family last)
+        const int ui = raster::loadFace({R{"Inter", 400}, R{"Cantarell", 400}, R{"Noto Sans", 400}, R{"Ubuntu", 400},
+                                         R{"DejaVu Sans", 400}, R{"sans-serif", 400}});
+        const int uiSemi = raster::loadFace({R{"Inter", 600}, R{"Cantarell", 600}, R{"Noto Sans", 600}, R{"Ubuntu", 500},
+                                             R{"DejaVu Sans", 700}, R{"sans-serif", 600}});
+        const int display = raster::loadFace({R{"Bahnschrift", 600}, R{"Barlow Semi Condensed", 600},
+                                              R{"Noto Sans Display", 600}, R{"Noto Sans", 600}, R{"Cantarell", 700}});
+        const int mono = raster::loadFace({R{"Cascadia Mono", 400}, R{"JetBrains Mono", 400}, R{"Noto Sans Mono", 400},
+                                           R{"DejaVu Sans Mono", 400}, R{"monospace", 400}});
+        const int symbols = raster::loadFace({R{"Noto Sans Symbols 2", 400}, R{"DejaVu Sans", 400}});
+#endif
+        const int icons = symbols; // the icons themselves are drawn by render/icons.cpp, not a font
         // Pricedown's licence (Typodermic's desktop EULA) lets each person install it on their own PC, not ship it in
         // software: it is used when installed, never bundled (DECISIONS.md 2026-11-01). VCS_BRAND_FONT: a font file of
         // the player's own instead of an installed one (tests).
-        int brand = raster::loadFace({R{L"Pricedown", 900}, R{L"Pricedown Black", 400}, R{L"Pricedown Bl", 400}});
-        if (const wchar_t *file = _wgetenv(L"VCS_BRAND_FONT"); brand < 0 && file && *file)
+        int brand = raster::loadFace({R{"Pricedown", 900}, R{"Pricedown Black", 400}, R{"Pricedown Bl", 400}});
+        if (const char *file = std::getenv("VCS_BRAND_FONT"); brand < 0 && file && *file)
             brand = raster::loadFaceFile(file);
         g_brandFound = brand >= 0;
         if (ui < 0)
         {
-            error = "no usable system font (Segoe UI)";
+            error = "no usable system font";
             return false;
         }
         const int faces[kFontCount][3] = {
@@ -233,6 +260,8 @@ namespace render
         g_ready = true;
         return true;
     }
+
+    const char *fontRasterizer() { return raster::backendName(); }
 
     void fontsShutdown()
     {

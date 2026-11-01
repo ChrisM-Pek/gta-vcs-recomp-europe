@@ -183,7 +183,7 @@ namespace theme
     constexpr float kRadiusSmall = 8;  // buttons, controls
     constexpr float kTitleBar = 44;
 
-    // Segoe Fluent Icons / Segoe MDL2 Assets code points
+    // the icons render/icons.cpp draws (their Segoe Fluent Icons code points, kept as identifiers)
     namespace icon
     {
         constexpr char32_t kPlay = 0xE768;

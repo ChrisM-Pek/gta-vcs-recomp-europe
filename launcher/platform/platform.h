@@ -1,9 +1,9 @@
 // The platform layer: one window, its input, and the OS services the UI needs (time, waiting, cursors, file dialogs,
-// drag and drop). The OS-independent state lives here; platform_win32.cpp implements it for Windows. Another OS is
-// another implementation file (docs/LAUNCHER.md, "Other platforms").
+// drag and drop). The OS-independent state lives here; platform_win32.cpp implements it for Windows, platform_linux.cpp
+// (+ x11.cpp, wayland.cpp: picked at startup) for Linux (docs/LAUNCHER.md, "Linux").
 //
 // Sizes are physical pixels; `window.dpiScale` converts logical units. Keys are Windows virtual-key values on every
-// platform (others translate to them).
+// platform (others translate to them). Text is UTF-8.
 #pragma once
 
 #include "core/math.h"
@@ -99,11 +99,26 @@ namespace platform
 
     // A window of logical size, centred on the monitor it lands on, created hidden: show() once the first frame is
     // drawn, so it never flashes empty.
-    bool init(const wchar_t *title, int logicalWidth, int logicalHeight, int minLogicalWidth, int minLogicalHeight,
+    bool init(const char *title, int logicalWidth, int logicalHeight, int minLogicalWidth, int minLogicalHeight,
               std::string &error);
     void show();
     void shutdown();
+    // What a renderer presents to. Windows: the HWND. Linux: a NativeSurface.
     void *nativeHandle();
+    struct NativeSurface
+    {
+        enum System
+        {
+            X11,     // display: Display*, window: the X window id
+            Wayland, // display: wl_display*, surface: wl_surface*
+        } system;
+        void *display;
+        void *surface;
+        unsigned long window;
+    };
+    // An error before (or instead of) the window: a message box; Linux: stderr, and a zenity / kdialog box when no
+    // terminal shows it
+    void errorBox(const std::string &text);
 
     void pumpEvents();                       // every pending OS message, without blocking
     void waitForEvents(double timeoutSeconds); // sleep until input, a wake() or the timeout (negative: none)
@@ -128,11 +143,14 @@ namespace platform
     // frames, never from inside one. False when cancelled.
     struct FileType
     {
-        const wchar_t *name;
-        const wchar_t *pattern; // "*.iso"
+        const char *name;
+        const char *pattern; // "*.iso"
     };
-    bool openFileDialog(std::filesystem::path &out, const wchar_t *title, const std::vector<FileType> &types);
-    bool saveFileDialog(std::filesystem::path &out, const wchar_t *title, const std::filesystem::path &suggested,
-                        const std::vector<FileType> &types, const wchar_t *defaultExtension);
-    bool openFolderDialog(std::filesystem::path &out, const wchar_t *title, const std::filesystem::path &start);
+    bool openFileDialog(std::filesystem::path &out, const char *title, const std::vector<FileType> &types);
+    bool saveFileDialog(std::filesystem::path &out, const char *title, const std::filesystem::path &suggested,
+                        const std::vector<FileType> &types, const char *defaultExtension);
+    bool openFolderDialog(std::filesystem::path &out, const char *title, const std::filesystem::path &start);
 }
+
+// The program (main.cpp), called by the platform's entry point (wWinMain / main) with the arguments in UTF-8.
+int launcherMain(const std::vector<std::string> &args);

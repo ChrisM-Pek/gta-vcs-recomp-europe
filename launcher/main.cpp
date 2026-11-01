@@ -39,10 +39,9 @@
 #include "ui/theme.h"
 #include "ui/ui.h"
 
-#include <windows.h>
-#include <shellapi.h>
-
+#include <algorithm>
 #include <cstdio>
+#include <cstdlib>
 #include <string>
 #include <vector>
 
@@ -67,7 +66,7 @@ namespace
         return false;
     }
 
-    int runInConsole(const std::vector<std::wstring> &argv, const fs::path &cwd)
+    int runInConsole(const std::vector<std::string> &argv, const fs::path &cwd)
     {
         Process p;
         Process::Options options;
@@ -101,8 +100,8 @@ namespace
         if (!iso.empty())
             app.chooseDisc(pathFrom(iso));
         auto tool = [&](const char *name) {
-            std::vector<std::wstring> argv = app.python;
-            argv.insert(argv.end(), {L"-I", (app.root / "tools" / name).wstring()});
+            std::vector<std::string> argv = app.python;
+            argv.insert(argv.end(), {"-I", pathText(app.root / "tools" / name)});
             return argv;
         };
         if (hasArg(args, "--check"))
@@ -110,9 +109,9 @@ namespace
         if (hasArg(args, "--build"))
         {
             auto argv = tool("build.py");
-            argv.push_back(L"--recompile-if-needed");
+            argv.push_back("--recompile-if-needed");
             if (app.disc.ok)
-                argv.push_back(app.iso.wstring());
+                argv.push_back(pathText(app.iso));
             return runInConsole(argv, app.root);
         }
         if (hasArg(args, "--play"))
@@ -139,11 +138,11 @@ namespace
             };
             check(fs::is_regular_file(app.root / "tools" / "build.py"), "repository: " + pathText(app.root));
             check(!app.python.empty(), "python: " + app.pythonText);
-            check(app.toolsProblem.empty(), app.toolsProblem.empty() ? "scripts: all in tools\\" : app.toolsProblem);
+            check(app.toolsProblem.empty(), app.toolsProblem.empty() ? "scripts: all in tools" : app.toolsProblem);
             for (int i = 0; i < 6000 && (app.doctorRunning || !app.doctorDone || app.doctorCached); ++i)
             {
                 app.update(i * 0.01);
-                Sleep(10);
+                platform::sleepFor(0.01);
             }
             check(app.doctor.isObject(), "doctor.py --json" + (app.doctorError.empty() ? "" : ": " + app.doctorError));
             check(!app.doctor["next"].str().empty(), "doctor's next step: " + app.doctor["next"].str());
@@ -156,7 +155,8 @@ namespace
             // the renderer and the fonts, offscreen (a GPU, or WARP without one)
             std::string renderError;
             const bool rendered = render::rendererInit(nullptr, 64, 64, renderError) && render::fontsInit(renderError);
-            check(rendered, rendered ? "renderer: Direct3D 11 (" + render::rendererStats.adapter + "), DirectWrite"
+            check(rendered, rendered ? "renderer: " + render::rendererStats.api + " (" + render::rendererStats.adapter +
+                                           "), " + render::fontRasterizer()
                                      : "renderer: " + renderError);
             render::fontsShutdown();
             render::rendererShutdown();
@@ -191,9 +191,9 @@ namespace
         int settleFrames = 0;
         bool stats = false;
         double fixedTime = 0;    // screenshots: a fixed 60 Hz clock
-        float cpuMs = 0, intervalMs = 0;
+        float cpuMs = 0, intervalMs = 0, renderMs = 0; // the frame, and the renderer's part of it (upload + submit)
         long long frames = 0;
-        double cpuTotalMs = 0, cpuMaxMs = 0;
+        double cpuTotalMs = 0, cpuMaxMs = 0, renderTotalMs = 0;
     };
     Loop g_loop;
 
@@ -205,7 +205,8 @@ namespace
         const core::Rect box{draw.width - 236 * s, 52 * s, 220 * s, 92 * s};
         rect(box, core::rgb(0x000000, 190), 8 * s);
         char lines[4][96];
-        std::snprintf(lines[0], sizeof(lines[0]), "frame %.2f ms CPU, %.1f ms apart", g_loop.cpuMs, g_loop.intervalMs);
+        std::snprintf(lines[0], sizeof(lines[0]), "frame %.2f ms (%.2f render), %.1f apart", g_loop.cpuMs, g_loop.renderMs,
+                      g_loop.intervalMs);
         std::snprintf(lines[1], sizeof(lines[1]), "%d instances, %d draw, %zu B up", rendererStats.instances,
                       rendererStats.drawCalls, rendererStats.uploadBytes);
         std::snprintf(lines[2], sizeof(lines[2]), "atlas %d, %s", atlas.size, rendererStats.warp ? "WARP" : "GPU");
@@ -260,19 +261,15 @@ namespace
         ui::endFrame();
         platform::endFrame();
         render::endFrame();
+        const double renderStart = platform::now();
         render::rendererRender(screens::clearColor(), platform::window.width, platform::window.height);
-        L.cpuMs = float((platform::now() - start) * 1000.0);
+        const double end = platform::now();
+        L.renderMs = float((end - renderStart) * 1000.0);
+        L.renderTotalMs += L.renderMs;
+        L.cpuMs = float((end - start) * 1000.0);
         L.frames++;
         L.cpuTotalMs += L.cpuMs;
         L.cpuMaxMs = std::max(L.cpuMaxMs, double(L.cpuMs));
-    }
-
-    double processCpuSeconds()
-    {
-        FILETIME created, exited, kernel, user;
-        GetProcessTimes(GetCurrentProcess(), &created, &exited, &kernel, &user);
-        auto seconds = [](const FILETIME &f) { return double((uint64_t(f.dwHighDateTime) << 32) | f.dwLowDateTime) / 1e7; };
-        return seconds(kernel) + seconds(user);
     }
 
     bool wantsFrame()
@@ -320,7 +317,7 @@ namespace
             if (shots)
                 std::fprintf(stderr, "error: %s\n", error.c_str());
             else
-                MessageBoxW(nullptr, widen(error).c_str(), L"VCS Launcher", MB_ICONERROR);
+                platform::errorBox(error);
             return 1;
         }
         g_loop.app = &app;
@@ -338,19 +335,26 @@ namespace
             if (!shots->iso.empty())
                 app.chooseDisc(pathFrom(shots->iso));
         }
-        else if (!platform::init(L"GTA: Vice City Stories - Launcher", kWidth, kHeight, kMinWidth, kMinHeight, error))
+        else if (!platform::init("GTA: Vice City Stories - Launcher", kWidth, kHeight, kMinWidth, kMinHeight, error))
         {
-            MessageBoxW(nullptr, widen(error).c_str(), L"VCS Launcher", MB_ICONERROR);
+            platform::errorBox(error);
             return 1;
         }
-        if (!render::rendererInit(shots ? nullptr : platform::nativeHandle(), platform::window.width,
+        // Linux: a hidden run draws offscreen - presenting to a window that is never shown can block forever (Wayland's
+        // FIFO waits for a frame callback that never comes); Windows presents to its hidden window as before
+#ifdef _WIN32
+        void *target = shots ? nullptr : platform::nativeHandle();
+#else
+        void *target = shots || hidden ? nullptr : platform::nativeHandle();
+#endif
+        if (!render::rendererInit(target, platform::window.width,
                                   platform::window.height, error) ||
             !render::fontsInit(error))
         {
             if (shots)
                 std::fprintf(stderr, "error: %s\n", error.c_str());
             else
-                MessageBoxW(nullptr, widen(error).c_str(), L"VCS Launcher", MB_ICONERROR);
+                platform::errorBox(error);
             return 1;
         }
         Process::setWakeHook(platform::wake);
@@ -471,6 +475,16 @@ namespace
                     g_loop.timedWake = true;
                 continue;
             }
+#ifndef _WIN32
+            // a hidden run draws offscreen, where nothing paces frames: the display's rate, as a window would have
+            if (hidden)
+            {
+                static double nextFrame = 0;
+                const double t = platform::now();
+                platform::sleepFor(nextFrame - t);
+                nextFrame = std::max(nextFrame, t) + 1.0 / platform::window.refreshHz;
+            }
+#endif
             // every wait is paired with a present, or the swap chain's latency budget drifts
             render::rendererWaitForFrame();
             platform::pumpEvents(); // input that arrived while waiting makes this frame
@@ -483,8 +497,10 @@ namespace
         if (quitAfter > 0)
         {
             const long long frames = g_loop.frames - framesAtStart;
-            std::printf("frames drawn: %lld in %.1f s; frame CPU %.3f ms average, %.3f ms worst; process CPU %.0f ms (doctor.py ran %s)\n",
-                        frames, platform::now() - timeAtStart, g_loop.cpuTotalMs / double(std::max(g_loop.frames, 1LL)), g_loop.cpuMaxMs,
+            std::printf("frames drawn: %lld in %.1f s; frame %.3f ms average (renderer %.3f), %.3f ms worst; process CPU %.0f ms "
+                        "(doctor.py ran %s)\n",
+                        frames, platform::now() - timeAtStart, g_loop.cpuTotalMs / double(std::max(g_loop.frames, 1LL)),
+                        g_loop.renderTotalMs / double(std::max(g_loop.frames, 1LL)), g_loop.cpuMaxMs,
                         (processCpuSeconds() - cpuAtStart) * 1000.0, app.doctorCached ? "on" : "to the end");
         }
         const int code = shots && app.task && app.task->finished && !app.task->ok() ? 1 : 0;
@@ -498,15 +514,8 @@ namespace
     }
 }
 
-int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
+int launcherMain(const std::vector<std::string> &args)
 {
-    int argc = 0;
-    wchar_t **argvW = CommandLineToArgvW(GetCommandLineW(), &argc);
-    std::vector<std::string> args;
-    for (int i = 1; i < argc; ++i)
-        args.push_back(narrow(argvW[i]));
-    LocalFree(argvW);
-
     if (hasArg(args, "--screenshot"))
     {
         if (const std::string out = argValue(args, "--out"); !out.empty())

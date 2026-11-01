@@ -878,3 +878,37 @@ the ANSI code page of the process is UTF-8 - `path::string()`, `getenv`, `argv` 
 all speak UTF-8 and round-trip any name. A resource, not `/MANIFESTINPUT`: lld-link merges manifests only when LLVM
 was built with libxml2 (else it calls mt.exe), which a player's clang may not be. Older Windows 10 ignores the setting
 and behaves as before.
+
+## 2026-11-01 - The launcher on Linux: native X11 and Wayland, Vulkan, FreeType (docs/LAUNCHER.md "Linux")
+
+The user asked for the launcher to support Linux as well - native, fast, high performance, drawing with Vulkan - and
+approved the plan with three choices: **both window systems natively** (picked at startup), **our own icons on both
+OSes**, and **CI on Linux now, a Linux release later**.
+
+- **Same launcher, other files.** The launcher was layered for this (2026-11-01 above): `screens/`, `ui/`, the draw
+  list, the glyph atlas and the model are shared; Linux adds `platform/platform_linux.cpp` + `platform/linux/` (X11,
+  Wayland, D-Bus), `render/vulkan/`, `render/font_freetype.cpp`, `model/process_posix.cpp`, `model/system_linux.cpp`.
+  The shared interfaces became UTF-8 (`std::string` argv, `const char *` titles and font names); only the Windows
+  files widen. One `ui.hlsl` for both renderers: glslang compiles it (`tools/hlsl_spirv.py --target-env vulkan1.1`),
+  its frame constants are push constants under `VCS_SPIRV`, and a flipped viewport keeps its D3D clip space.
+- **No toolkit, no SDL** (the 2026-11-01 reasons stand: idle cost, build time, control). Xlib and libwayland-client
+  directly, each with what makes it feel native: `_NET_WM_MOVERESIZE` / `xdg_toplevel.move` / `resize` so the window
+  manager moves, snaps and tiles; fractional-scale + viewporter (exact scale); cursor-shape (the compositor's theme);
+  XDND and `wl_data_device` for dropped discs; XSETTINGS and the portal for dark / light, animations, double-click.
+  Wayland is chosen when `WAYLAND_DISPLAY` is set, X11 otherwise (`VCS_LAUNCHER_VIDEO=x11|wayland`).
+- **Vulkan opened at run time** (`dlopen("libvulkan.so.1")`, our own table of entry points): a PC without a Vulkan
+  driver gets a message instead of a launcher that doesn't start, and nothing links against the loader. Vulkan 1.1 is
+  the floor (old GPUs, VMs; lavapipe in CI). Integrated GPUs are preferred: a launcher shouldn't wake a laptop's dGPU.
+  Present wait (`VK_KHR_present_wait`) gives DXGI's one-frame latency where the driver has it.
+- **Our own icons, both OSes**: Linux has no Segoe Fluent Icons, and bundling an icon font would be a third-party asset.
+  `render/icons.cpp` draws each icon from signed-distance shapes on a 24-unit grid into the glyph atlas (one glyph to
+  draw, overlapping strokes never darker, 1-pixel strokes snapped to pixel centres at small sizes). Windows' icons
+  change with it (same design language, slightly different drawings).
+- **System libraries only**: FreeType + fontconfig, libdbus-1, Xlib / Xcursor / Xrandr, libwayland-client / -cursor,
+  xkbcommon - every desktop has them, so the launcher stays "no third-party code" in the repository and builds offline.
+- **File dialogs through the desktop portal** (the desktop's own dialog, right on Wayland and in sandboxes), else
+  zenity, else kdialog. **Packages through `pkexec`** (`build.py --install-deps`: the desktop's own password prompt, the
+  logic in Python per AGENTS.md); without a polkit agent the launcher opens a terminal with the same command.
+- **Hidden runs on Linux draw offscreen**: presenting to a window that is never shown can block forever under Wayland
+  (FIFO waits for a frame callback); the frame loop is paced at the display's rate instead.
+- Update checks and copying a DVD are hidden on Linux until there are Linux releases and a Linux `rip_disc.py`.

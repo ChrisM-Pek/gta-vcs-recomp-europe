@@ -4,7 +4,8 @@
 // whole pixels, and drawing cached text costs one hash lookup per character.
 //
 // The atlas, the cache and the layout are platform independent (font.cpp); rasterising is the OS's (font_dwrite.cpp:
-// DirectWrite on Windows). Sizes are physical pixels.
+// DirectWrite on Windows; font_freetype.cpp: FreeType + fontconfig on Linux). Icons are no font: render/icons.cpp draws
+// them from the renderer's own shapes. Sizes are physical pixels.
 #pragma once
 
 #include "core/math.h"
@@ -50,6 +51,7 @@ namespace render
     };
 
     bool fontsInit(std::string &error);
+    const char *fontRasterizer(); // "DirectWrite", "FreeType"
     void fontsShutdown();
     void fontsBeginFrame();  // a full atlas is cleared here, never mid-frame
     void fontsClearCache();  // the DPI changed: everything rasterises again at the new sizes

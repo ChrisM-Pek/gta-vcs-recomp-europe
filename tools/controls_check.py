@@ -14,8 +14,8 @@ hits a man on the aim line and not one beside it, Vic strafes while aiming, the 
 and free aim off still lock on, the gamepad's RB and right stick, the sniper scope turned 1:1 and zoomed by the wheel,
 the wheel changing weapons; in a car, the game's drive-by free aim as in Jive Drive: the left stick with free aim off,
 the mouse / right stick with it on, the height limits, a shot through the circle, leaving the car; on foot, the game's
-forced free aim as in Phil's shooting range: the same, the right button keeping it, the side and height limits, the
-script's end); a mouse wheel binding; a menu key
+forced free aim as in Phil's shooting range: the same, the gamepad's R1 firing, the right button keeping it, the side
+and height limits, the script's end); a mouse wheel binding; a menu key
 refuses a key a control has; the presets and Reset all settings; the screenshot key (F8) saves a PNG; screenshots of the settings menu's pages; Audio >
 Music / Sound effects are the game's own levels (set here, shown in its pause menu, changed there, kept by a save
 load) (src/game/vcs_volume.cpp). Results: OUT/summary.txt; screenshots OUT/*.png. Default
@@ -619,8 +619,8 @@ class Check:
     def forced_free_aim(self):
         """The forced free aim on foot (SET_PLAYER_FORCE_FREE_AIMING, as Phil's shooting range sets it: a pistol, Vic
         standing): the left stick turns it with free aim off (the PS2), the mouse with it on (the left stick then not),
-        the right button pressed and let go keeps it (our own free aim's R1 + L3 used to end it), the gamepad's R1 stays
-        R1, the game's limits (110 degrees either side, 40 up), shots through the circle, the script's end ends it."""
+        the right button pressed and let go keeps it (our own free aim's R1 + L3 used to end it), the gamepad's R1
+        fires, the game's limits (110 degrees either side, 40 up), shots through the circle, the script's end ends it."""
         g = self.g
         S = rig.Scm
         g.teleport(575.0, 175.0, -100.0, 0.0)
@@ -684,7 +684,7 @@ class Check:
         self.ok("forced free aim: the right button keeps it", after[0] == 1 and after[1] and abs(after[2] - 1.0) < 0.05,
                 "active %d aiming %d, mouse %+.3f" % after)
 
-        # the gamepad: the right stick aims, R1 stays R1 (it fires only in a car)
+        # the gamepad: the right stick aims, R1 (RB) fires as Circle (the right thumb is on the stick), as in the car
         g.cmd("gamepad on")
         h0 = self.aim_heading()
         g.cmd("gamepad rx 1")
@@ -692,14 +692,17 @@ class Check:
         g.cmd("gamepad rx 0")
         time.sleep(0.3)
         pad = turned(h0)
+        shots0 = self.aim()[1]
         g.cmd("gamepad rb 1")
         rb = self.pad()["buttons"]
+        time.sleep(1.0)
         g.cmd("gamepad rb 0")
         time.sleep(0.5)
+        fired = self.aim()[1] - shots0
         g.cmd("gamepad off")
         mouse_turn(round(pad * 400))  # back to where it was
-        self.ok("forced free aim: the right stick aims, R1 is R1", -1.4 < pad < -0.6 and rb == R1 and aiming(),
-                "aim %+.3f, buttons %04x" % (pad, rb))
+        self.ok("forced free aim: the right stick aims, R1 fires", -1.4 < pad < -0.6 and rb == CIRCLE and fired >= 1 and aiming(),
+                "aim %+.3f, buttons %04x, %d shot(s)" % (pad, rb, fired))
 
         # the game's limits on foot: 110 degrees either side of Vic's heading, 40 above level
         fx, fy = g.peekf(ped + 0x10, 2)

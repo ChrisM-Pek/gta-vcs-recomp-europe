@@ -763,8 +763,8 @@ from them: Vic moves while free aiming exactly when he can move locked on with t
   round. A free aim a script forces is now taken over like the car's (one path, `scripted` in vcs_aim.cpp): the mouse /
   right stick, no button, the left stick centred (Vic stands still there anyway), R1 left to the game (it does nothing
   there). The game's on-foot limits are kept: 110 deg either side of Vic's heading, 40 up, 20 down (the game applies
-  them only while its own stick moves the dummy, so the host clamps). The gamepad's R1 still fires only in the car (the
-  user asked for Jive Drive only; the range has the same reach problem - theirs to decide).
+  them only while its own stick moves the dummy, so the host clamps). Asked, the user chose the gamepad's R1 firing
+  there too (the same reach problem as the car): it fires in any free aim a script starts, and is R1 everywhere else.
 
 ## 2026-11-01 - The launcher draws itself (docs/LAUNCHER.md)
 

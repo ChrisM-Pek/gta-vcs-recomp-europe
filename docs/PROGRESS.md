@@ -644,7 +644,7 @@ dropped on uploads (lazy render-target patching).
   go keeps it, the left stick nothing; aimed at the pop-up targets with the mouse, 400 points (the targets' own
   HAS_OBJECT_BEEN_DAMAGED). controls_check `forced_free_aim` (the command on foot with a pistol): free aim off the left
   stick turns it and the mouse not; on - the mouse 1.000 rad per 400 counts, the right button kept, the right stick
-  aims and R1 stays R1, 107.6 deg to the side at most (110 less the line test's pull), 40.0 up, a man under the
+  aims and the gamepad's R1 fires (Circle; the user's choice, as in the car), 107.6 deg to the side at most (110 less the line test's pull), 40.0 up, a man under the
   circle hit and one beside him not, the script's end ends it. (Starting the range from the trainer's mission list
   drops Vic through the floor: the range is an interior the door's script loads - the game's, with or without free
   aim.)

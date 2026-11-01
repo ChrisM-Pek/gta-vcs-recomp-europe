@@ -338,8 +338,8 @@ namespace vcs::aim
         // stick centred), within the same limits (the game's apply only while its stick moves it), placed at the gun's
         // range from Vic as the game keeps it, and the lock-on camera is turned by the same amount first, as on foot.
         // No button: the game aims all the time in this mode, and the fire button shoots (through the circle: the shot
-        // line as on foot). R1 is left to the game (it does nothing here) - our own free aim's R1 + L3 would end the
-        // script's.
+        // line as on foot). The gamepad's R1 fires too; the keyboard / mouse R1 is left to the game (it does nothing
+        // here) - our own free aim's R1 + L3 would end the script's.
         Output scripted(uint32_t ped, const Input &in)
         {
             Output out;
@@ -359,8 +359,8 @@ namespace vcs::aim
                              car ? "a car's drive-by" : "forced by a script", g_dummy);
             }
             g_dummy = rd32(ped + kPedTarget);
-            out.camera = out.leftStick = true;
-            out.padR1Fires = car; // the user's ask: R1 fires in the car only (Jive Drive)
+            // the gamepad's R1 fires (the user's ask: Jive Drive, then the range - the right thumb is on the stick)
+            out.camera = out.leftStick = out.padR1Fires = true;
 
             const float dt = std::clamp(rdf(kTimeStep), 0.05f, 3.4f) / 50.0f;
             float turn = in.turn + in.turnRate * kStickRate * dt;

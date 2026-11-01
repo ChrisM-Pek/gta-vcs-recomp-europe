@@ -157,10 +157,17 @@ namespace screens
             {
                 const Rect line{r.x, y, r.w, px(30)};
                 ui::label(kFontBody, px(theme::kBody), {line.x, line.y, line.w - px(60), line.h}, theme::kText, "Reduce motion");
-                changed |= ui::toggle("#reduce-motion", {line.right() - px(44), line.y, px(44), line.h}, app.settings.reduceMotion);
+                bool reduce = reduceMotion(app);
+                if (ui::toggle("#reduce-motion", {line.right() - px(44), line.y, px(44), line.h}, reduce))
+                {
+                    app.settings.reduceMotion = reduce;
+                    app.settings.reduceMotionSet = true;
+                    changed = true;
+                }
                 y += px(34);
-                text(r, y, platform::window.reducedMotion ? "Windows' animations are off, so the launcher's are too."
-                                                         : "Everything moves at once instead of animating.", theme::kFaint);
+                text(r, y, app.settings.reduceMotionSet ? "Everything moves at once instead of animating."
+                                                        : "Follows Windows' \"Animate controls and elements inside windows\" until you change it.",
+                     theme::kFaint);
             }
             if (action(r, y, "Add a shortcut to the desktop", ButtonStyle::Secondary, theme::icon::kLink))
             {

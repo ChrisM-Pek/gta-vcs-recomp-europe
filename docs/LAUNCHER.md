@@ -88,8 +88,10 @@ motion is (2026-11-01, the user's "rethink everything"; before, a sidebar of pag
   task, quit during a task, the chosen build folder's check) scale up and fade in; **toasts** rise at the bottom and
   leave after 6 s.
 - Keyboard: Enter is the highlighted action, Escape closes the top sheet or dialog, F1 Help, Ctrl+L the log, Tab /
-  Shift+Tab walk the controls with a focus ring. Reduced motion (Windows' "Show animations" off, or *Reduce motion* in
-  Settings): everything snaps.
+  Shift+Tab walk the controls with a focus ring. *Reduce motion* in Settings: everything snaps. It alone decides;
+  until the player sets it, it starts as Windows' "Animate controls and elements inside windows" (2026-11-01: that
+  setting is off on many PCs tuned for speed - the dev machine's too - and had made the launcher snap with its own
+  setting off; `reduce_motion` is written to launcher.ini only once set).
 - The first frame: the last doctor answer (`build/launcher_state.json`) gives the right mode at once; while this run's
   check is out, only "fine" is believed (anything else shows as checking) and the big button waits.
 

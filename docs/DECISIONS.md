@@ -781,6 +781,8 @@ bar, disc art behind Home later.
 - **Zero cost when idle**: the frame loop sleeps in the OS; tool output and process exit wake it (Process's reader
   thread and a thread-pool wait); clocks on screen ask for a frame once a second; nothing animates continuously except
   while a task runs (spinners, the bar's sheen) - never while the game plays (the game wants the GPU).
-- **Motion is optional**: Windows' "Show animations" and the launcher's own *Reduce motion* make everything snap.
+- **Motion is optional**: the launcher's own *Reduce motion* makes everything snap. (Later the same day, the user:
+  panels opened instantly with it off. Windows' "Animate controls and elements inside windows" was off on the PC and
+  also turned motion off. Now the launcher's setting alone decides; Windows' only gives its value until it is set.)
 - **Tests stay hidden**: `--screenshot` renders offscreen on a fixed clock (same arguments, same picture), with
   `--frames` for transitions; `--hidden --quit-after` runs the real window loop unshown and reports its cost.

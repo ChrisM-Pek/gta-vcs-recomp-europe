@@ -120,6 +120,7 @@ namespace screens
     std::string gigabytes(double bytes);
     std::string buildSummary(const App &app); // "Standard · built 2 days ago"
     bool canPlay(const App &app);
+    bool reduceMotion(const App &app); // the launcher's setting, else (never set) Windows' animations setting
 
     // ---- actions shared by several screens -------------------------------------------------------------------------
     void chooseIso();                        // the file dialog

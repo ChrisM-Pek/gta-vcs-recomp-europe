@@ -51,7 +51,8 @@ namespace launcher
         std::string afterLaunch = "minimize"; // minimize, close, stay
         std::string opt;                      // "" (keep the build's), lto, none, pgo
         bool checkUpdates = false;            // ask GitHub for a newer release when the launcher starts
-        bool reduceMotion = false;            // the launcher's animations off (Windows' own setting also turns them off)
+        bool reduceMotion = false;            // the launcher's animations off; this alone decides
+        bool reduceMotionSet = false;         // reduce_motion is in launcher.ini; else it starts as Windows' setting
     };
 
     class App

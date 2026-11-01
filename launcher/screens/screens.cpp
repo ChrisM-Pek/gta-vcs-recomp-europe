@@ -326,6 +326,11 @@ namespace screens
         return out;
     }
 
+    bool reduceMotion(const App &app)
+    {
+        return app.settings.reduceMotionSet ? app.settings.reduceMotion : platform::window.reducedMotion;
+    }
+
     bool canPlay(const App &app) { return app.next() == "play" && !app.doctorCached && !app.gameRunning; }
 
     // ---- actions -------------------------------------------------------------------------------------------------
@@ -547,8 +552,9 @@ namespace screens
         shell.app = &app;
         const platform::Input &in = platform::input;
         const Rect window{0, 0, float(platform::window.width), float(platform::window.height)};
-        if (app.settings.reduceMotion)
-            ui::state.motion = 0;
+        // the launcher's own setting decides, both ways (Windows' "Animate controls and elements inside windows" is
+        // off on many PCs tuned for speed - it only gives the starting value)
+        ui::state.motion = reduceMotion(app) ? 0.0f : 1.0f;
 
         // files dropped on the window: a disc
         for (const fs::path &file : in.dropped)

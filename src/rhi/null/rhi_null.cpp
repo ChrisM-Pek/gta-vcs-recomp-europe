@@ -58,6 +58,10 @@ namespace rhi
             void copyTexture(Texture &, uint32_t, uint32_t, Texture &, uint32_t, uint32_t, uint32_t, uint32_t) override {}
             void resolveTexture(Texture &, Texture &) override {}
             void generateMips(Texture &) override {}
+            std::unique_ptr<Texture> createTextureLevels(const TextureDesc &desc, const void *const *levels, uint32_t) override
+            {
+                return createTexture(desc, levels ? levels[0] : nullptr, 0);
+            }
 
             std::unique_ptr<Buffer> createBuffer(const BufferDesc &desc, const void *) override
             {

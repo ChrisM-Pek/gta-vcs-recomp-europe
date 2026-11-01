@@ -274,6 +274,14 @@ namespace rhi
         virtual void resolveTexture(Texture &dst, Texture &src) = 0;
         // the mip chain of a texture made with mipLevels 0, from level 0
         virtual void generateMips(Texture &texture) = 0;
+        // A sampled RGBA8 texture with its mip chain given: `levels[i]` is level i (max(1, width >> i) x max(1, height >>
+        // i), tightly packed), `levelCount` of them. Not a render target and no generateMips: a burst of new textures
+        // costs one plain creation each (PERFORMANCE.md 21).
+        virtual std::unique_ptr<Texture> createTextureLevels(const TextureDesc &desc, const void *const *levels, uint32_t levelCount) = 0;
+        // True when createTexture (one level, with data, not a target) and createTextureLevels may be called from any
+        // thread while the owner draws (D3D11: device creation calls are free-threaded). Vulkan records first contents
+        // into the frame's set-up commands: false.
+        virtual bool freeThreadedCreation() const { return false; }
 
         virtual std::unique_ptr<Buffer> createBuffer(const BufferDesc &desc, const void *data = nullptr) = 0;
         virtual void updateBuffer(Buffer &buffer, const void *data, size_t size) = 0; // from offset 0, the rest discarded

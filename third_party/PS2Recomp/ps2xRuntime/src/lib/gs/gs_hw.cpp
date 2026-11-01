@@ -23,6 +23,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <deque>
+#include <thread>
 #include <mutex>
 #include <map>
 #include <string>
@@ -267,12 +268,82 @@ namespace
         float hudPivot = 0.0f, hudSqueeze = 1.0f;
     };
 
+    // [gta-recomp] A texture made on a helper thread (a free-threaded device: D3D11; HwBackend::makeTextureEarly): its
+    // pixels go there, the texture comes back; the main thread takes it when it executes the TexCreate.
+    struct EarlyTexture
+    {
+        uint32_t w = 0, h = 0;
+        bool mipChain = false; // anisotropic filtering: buildMipChain there
+        std::vector<uint32_t> pixels, mips;
+        size_t bytes = 0;
+        std::unique_ptr<rhi::Texture> made;
+        std::atomic<bool> done{false};
+    };
+
     struct TexCreate
     {
         uint64_t key;
         uint32_t w, h;
         std::vector<uint32_t> pixels;
+        std::vector<uint32_t> mips; // [gta-recomp] anisotropic filtering: levels 1.. after each other (buildMipChain)
+        std::shared_ptr<EarlyTexture> early; // [gta-recomp] being made on a helper thread (pixels moved there)
     };
+
+    // [gta-recomp] The levels of a texture: level 0 (pixels) then its mips, as createTextureLevels takes them.
+    uint32_t mipLevels(const std::vector<uint32_t> &pixels, const std::vector<uint32_t> &mips, uint32_t w, uint32_t h,
+                       const void *(&levels)[16])
+    {
+        uint32_t count = 0;
+        levels[count++] = pixels.data();
+        size_t at = 0;
+        for (uint32_t lw = w, lh = h; (lw > 1u || lh > 1u) && count < 16u;)
+        {
+            lw = std::max(1u, lw >> 1), lh = std::max(1u, lh >> 1);
+            levels[count++] = mips.data() + at;
+            at += size_t(lw) * lh;
+        }
+        return count;
+    }
+
+    // [gta-recomp] The mip chain of a w x h RGBA8 texture, levels 1.. down to 1x1 one after the other: each texel the
+    // rounded mean of the 2x2 texels above it (edge texels repeated where a level is 1 wide or high) - what
+    // GenerateMips / linear blits made on the GPU before, built on the GS stage instead (PERFORMANCE.md 21: a burst of new
+    // textures was a burst of render-target textures and mip passes on the main thread).
+    void buildMipChain(const std::vector<uint32_t> &base, uint32_t w, uint32_t h, std::vector<uint32_t> &out)
+    {
+        out.clear();
+        size_t total = 0;
+        for (uint32_t lw = w, lh = h; lw > 1u || lh > 1u;)
+        {
+            lw = std::max(1u, lw >> 1), lh = std::max(1u, lh >> 1);
+            total += size_t(lw) * lh;
+        }
+        out.resize(total);
+        const uint32_t *src = base.data();
+        uint32_t *dst = out.data();
+        for (uint32_t sw = w, sh = h; sw > 1u || sh > 1u;)
+        {
+            const uint32_t dw = std::max(1u, sw >> 1), dh = std::max(1u, sh >> 1);
+            for (uint32_t y = 0; y < dh; ++y)
+            {
+                const uint32_t *r0 = src + size_t(std::min(2u * y, sh - 1u)) * sw;
+                const uint32_t *r1 = src + size_t(std::min(2u * y + 1u, sh - 1u)) * sw;
+                for (uint32_t x = 0; x < dw; ++x)
+                {
+                    const uint32_t x0 = std::min(2u * x, sw - 1u), x1 = std::min(2u * x + 1u, sw - 1u);
+                    const uint32_t a = r0[x0], b = r0[x1], c = r1[x0], d = r1[x1];
+                    // two channels at a time in 16-bit lanes: (a + b + c + d + 2) >> 2 per channel
+                    const uint32_t lo = ((a & 0x00FF00FFu) + (b & 0x00FF00FFu) + (c & 0x00FF00FFu) + (d & 0x00FF00FFu) + 0x00020002u) >> 2;
+                    const uint32_t hi = (((a >> 8) & 0x00FF00FFu) + ((b >> 8) & 0x00FF00FFu) + ((c >> 8) & 0x00FF00FFu) +
+                                         ((d >> 8) & 0x00FF00FFu) + 0x00020002u) >> 2;
+                    dst[size_t(y) * dw + x] = (lo & 0x00FF00FFu) | ((hi & 0x00FF00FFu) << 8);
+                }
+            }
+            src = dst;
+            dst += size_t(dw) * dh;
+            sw = dw, sh = dh;
+        }
+    }
 
     struct RtUpload
     {
@@ -821,7 +892,23 @@ namespace
                     d.usage = rhi::UsageSampled;
                     d.name = "gs texture";
                     d.mipLevels = m_anisotropy ? 0u : 1u; // [gta-recomp] anisotropic filtering samples a mip chain
-                    m_textures[t.key] = m_dev.createTexture(d, t.pixels.data(), t.w * 4u);
+                    const auto createStart = std::chrono::steady_clock::now(); // [gta-recomp] tex_create_us / tex_kb
+                    if (t.early) // [gta-recomp] made on a helper thread (makeTextureEarly): usually done long before
+                    {
+                        t.early->done.wait(false);
+                        m_textures[t.key] = std::move(t.early->made);
+                    }
+                    else if (!t.mips.empty()) // [gta-recomp] the chain built on the GS stage: one plain creation (buildMipChain)
+                    {
+                        const void *levels[16];
+                        m_textures[t.key] = m_dev.createTextureLevels(d, levels, mipLevels(t.pixels, t.mips, t.w, t.h, levels));
+                    }
+                    else
+                        m_textures[t.key] = m_dev.createTexture(d, t.pixels.data(), t.w * 4u);
+                    ps2perf::add(ps2perf::Counter::TexCreateUs, static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(
+                                                                    std::chrono::steady_clock::now() - createStart).count()));
+                    ps2perf::add(ps2perf::Counter::TexKBytes,
+                                 ((t.early ? t.early->bytes : (t.pixels.size() + t.mips.size()) * 4u) + 1023u) / 1024u);
                     // [gta-recomp] PS2X_HW_DUMP_TEX=<key hex>: write that decoded texture (hw_tex_<key>.ppm, alpha dropped)
                     static const uint64_t dumpTex = std::getenv("PS2X_HW_DUMP_TEX") ? std::strtoull(std::getenv("PS2X_HW_DUMP_TEX"), nullptr, 16) : 0u;
                     if (dumpTex && t.key == dumpTex)
@@ -838,8 +925,13 @@ namespace
                     break;
                 }
                 case CmdType::TexDelete:
+                {
+                    const auto deleteStart = std::chrono::steady_clock::now(); // [gta-recomp] tex_create_us: releases too
                     m_textures.erase(f.texDeletes[c.index]);
+                    ps2perf::add(ps2perf::Counter::TexCreateUs, static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(
+                                                                    std::chrono::steady_clock::now() - deleteStart).count()));
                     break;
+                }
                 case CmdType::RtDrop:
                     endPass();
                     dropRt(f.rtDrops[c.index]);
@@ -1503,7 +1595,15 @@ namespace
                 d.depth.write = depthTest && zwrite;
                 d.depth.func = ztst == 1 ? rhi::Compare::Always : ztst == 2 ? rhi::Compare::GreaterEqual : rhi::Compare::Greater;
                 d.name = "gs draw";
+                const auto made = std::chrono::steady_clock::now();
                 p = m_dev.createPipeline(d);
+                // [gta-recomp] PS2X_HW_LOG_PIPELINES=1: each draw pipeline as it is made, with the time it took (a first
+                // use mid-game is a main-thread stall)
+                static const bool logPipelines = std::getenv("PS2X_HW_LOG_PIPELINES") != nullptr;
+                if (logPipelines)
+                    std::fprintf(stderr, "[gs-hw] pipeline %08x (sample %u, mode %u) made in %.2f ms, %zu so far\n", key, sample, mode,
+                                 std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - made).count(),
+                                 m_drawPipelines.size());
             }
             return *p;
         }
@@ -2345,6 +2445,7 @@ namespace
         {
             m_frame = std::make_unique<Frame>();
         }
+        ~HwBackend() override { stopTextureMakers(); } // [gta-recomp]
 
         // ---- GSRasterBackend (game thread) ----------------------------------------------------------------
         void Initialize(uint8_t *vram, uint32_t vramSize) override { m_cpu.Initialize(vram, vramSize); }
@@ -4028,6 +4129,12 @@ namespace
             }
             if (!m_rhi->ready())
                 return false;
+            static const bool early = [] {
+                const char *e = std::getenv("PS2X_HW_EARLY_TEXTURES");
+                return !(e && *e == '0');
+            }();
+            if (early && !m_earlyDevice.load(std::memory_order_relaxed) && device.freeThreadedCreation()) // [gta-recomp]
+                m_earlyDevice.store(&device, std::memory_order_release);
             if (m_nativeFrame) // [gta-recomp] the picture's targets follow the window (gsHwSetFrameSize)
             {
                 // PS2X_HW_FRAME=WxH (testing): a full-screen window's frame size whatever the window
@@ -4466,6 +4573,7 @@ namespace
             tc.key = key;
             tc.w = d.textureWidth;
             tc.h = d.textureHeight;
+            const auto decodeStart = std::chrono::steady_clock::now(); // [gta-recomp] tex_decode_us
             if (!decodeFromQueuedUpload(d, tc.pixels)) // [gta-recomp] step 3c
             {
                 if (materializeRectKeepTransfer(t.psm, t.tbp0, t.tbw, 0u, 0u, d.textureWidth, d.textureHeight))
@@ -4479,12 +4587,105 @@ namespace
                                  d.textureHeight, m_pendingUploads.empty() ? "nothing queued" : "not one queued upload's");
 
             }
+            // [gta-recomp] anisotropic filtering samples a mip chain: built here, on the GS stage, not on the main thread's
+            // GPU queue (PS2X_HW_CPU_MIPS=0: a render-target texture and GenerateMips each, as before)
+            static const bool cpuMips = [] {
+                const char *e = std::getenv("PS2X_HW_CPU_MIPS");
+                return !(e && *e == '0');
+            }();
+            const bool mipChain = m_anisotropy > 1u && cpuMips && tc.w <= 4096u && tc.h <= 4096u &&
+                                  tc.pixels.size() == size_t(tc.w) * tc.h;
+            if (!makeTextureEarly(tc, mipChain) && mipChain)
+                buildMipChain(tc.pixels, tc.w, tc.h, tc.mips);
+            ps2perf::add(ps2perf::Counter::TexDecodeUs, static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(
+                                                            std::chrono::steady_clock::now() - decodeStart).count()));
             f.cmds.push_back({CmdType::TexCreate, static_cast<uint32_t>(f.textures.size())});
             f.textures.push_back(std::move(tc));
             m_texLru[key] = m_frameIndex;
             if (m_texLru.size() > kMaxTextures)
                 evictTextures();
             return true;
+        }
+
+        // [gta-recomp] With a free-threaded device (D3D11) a new texture is made by helper threads, right after its decode:
+        // the driver's creation and first upload ran on the main thread between its draws, and a burst of new textures
+        // (driving into a new area: 100-600 in a frame) held the picture back there (PERFORMANCE.md 21, issue #29); made
+        // on the GS stage itself, the burst held back the frame being built. The helpers (two) make it - with its mip
+        // chain for anisotropic filtering - while the GS stage goes on; the main thread takes it when it executes the
+        // TexCreate (waiting only if it is not done yet). True when handed off (tc.pixels moved there).
+        // PS2X_HW_EARLY_TEXTURES=0: made on the main thread, as before.
+        bool makeTextureEarly(TexCreate &tc, bool mipChain)
+        {
+            rhi::Device *dev = m_earlyDevice.load(std::memory_order_acquire);
+            if (!dev || tc.pixels.size() != size_t(tc.w) * tc.h)
+                return false;
+            if (m_anisotropy > 1u && !mipChain)
+                return false; // a chain by GenerateMips (PS2X_HW_CPU_MIPS=0): the immediate context, main thread only
+            static const bool dumping = std::getenv("PS2X_HW_DUMP_TEX") != nullptr; // the executor writes t.pixels
+            if (dumping)
+                return false;
+            auto job = std::make_shared<EarlyTexture>();
+            job->w = tc.w;
+            job->h = tc.h;
+            job->mipChain = mipChain;
+            job->pixels = std::move(tc.pixels);
+            tc.pixels.clear();
+            tc.early = job;
+            {
+                std::lock_guard<std::mutex> lock(m_makeMutex);
+                if (m_makers.empty())
+                    for (int i = 0; i < 2; ++i)
+                        m_makers.emplace_back([this, dev] { textureMaker(*dev); });
+                m_makeQueue.push_back(std::move(job));
+            }
+            m_makeCv.notify_one();
+            return true;
+        }
+
+        void textureMaker(rhi::Device &dev)
+        {
+            for (;;)
+            {
+                std::shared_ptr<EarlyTexture> job;
+                {
+                    std::unique_lock<std::mutex> lock(m_makeMutex);
+                    m_makeCv.wait(lock, [&] { return m_makeStop || !m_makeQueue.empty(); });
+                    if (m_makeQueue.empty())
+                        return;
+                    job = std::move(m_makeQueue.front());
+                    m_makeQueue.pop_front();
+                }
+                rhi::TextureDesc d;
+                d.width = job->w;
+                d.height = job->h;
+                d.usage = rhi::UsageSampled;
+                d.name = "gs texture";
+                if (job->mipChain)
+                {
+                    buildMipChain(job->pixels, job->w, job->h, job->mips);
+                    const void *levels[16];
+                    job->made = dev.createTextureLevels(d, levels, mipLevels(job->pixels, job->mips, job->w, job->h, levels));
+                }
+                else
+                    job->made = dev.createTexture(d, job->pixels.data(), job->w * 4u);
+                job->bytes = (job->pixels.size() + job->mips.size()) * 4u;
+                std::vector<uint32_t>().swap(job->pixels); // the memory back now, not when the frame is recycled
+                std::vector<uint32_t>().swap(job->mips);
+                job->done.store(true, std::memory_order_release);
+                job->done.notify_all();
+            }
+        }
+
+        void stopTextureMakers()
+        {
+            {
+                std::lock_guard<std::mutex> lock(m_makeMutex);
+                m_makeStop = true;
+            }
+            m_makeCv.notify_all();
+            for (std::thread &t : m_makers)
+                t.join();
+            m_makers.clear();
         }
 
         void evictTextures()
@@ -4775,6 +4976,12 @@ namespace
         uint32_t m_scale;
         bool m_nativeFrame = false; // [gta-recomp] GSHwOptions::nativeFrame
         uint32_t m_msaa = 1, m_anisotropy = 0; // [gta-recomp] GSHwOptions
+        std::atomic<rhi::Device *> m_earlyDevice{nullptr}; // [gta-recomp] makeTextureEarly: set by the main thread
+        std::mutex m_makeMutex;                             // [gta-recomp] makeTextureEarly's helper threads
+        std::condition_variable m_makeCv;
+        std::deque<std::shared_ptr<EarlyTexture>> m_makeQueue;
+        std::vector<std::thread> m_makers;
+        bool m_makeStop = false;
         GSCpuBackend m_cpu;
         GSTransferCommand m_transfer{};
         std::unique_ptr<Frame> m_frame;

@@ -421,6 +421,42 @@ namespace rhi
                     m_context->GenerateMips(t.srv.Get());
             }
 
+            bool freeThreadedCreation() const override { return true; } // only m_device: no immediate-context calls there
+
+            std::unique_ptr<Texture> createTextureLevels(const TextureDesc &desc, const void *const *levels, uint32_t levelCount) override
+            {
+                TextureDesc sized = desc;
+                sized.width = std::max(1u, desc.width);
+                sized.height = std::max(1u, desc.height);
+                sized.mipLevels = std::max(1u, levelCount);
+                auto t = std::make_unique<D3DTexture>(sized);
+                D3D11_TEXTURE2D_DESC td{};
+                td.Width = sized.width;
+                td.Height = sized.height;
+                td.MipLevels = sized.mipLevels;
+                td.ArraySize = 1;
+                td.Format = resourceFormat(Format::RGBA8);
+                td.SampleDesc.Count = 1;
+                td.Usage = D3D11_USAGE_IMMUTABLE; // written once: the driver may place it as it likes
+                td.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+                D3D11_SUBRESOURCE_DATA init[16]{};
+                for (uint32_t i = 0; i < td.MipLevels && i < 16u; ++i)
+                    init[i] = {levels[i], std::max(1u, td.Width >> i) * 4u, 0};
+                td.MipLevels = std::min(td.MipLevels, 16u);
+                if (FAILED(m_device->CreateTexture2D(&td, init, &t->texture)))
+                {
+                    std::fprintf(stderr, "[rhi] CreateTexture2D %ux%u (%u levels) failed\n", td.Width, td.Height, td.MipLevels);
+                    return nullptr;
+                }
+                setName(t->texture.Get(), desc.name);
+                D3D11_SHADER_RESOURCE_VIEW_DESC sv{};
+                sv.Format = shaderViewFormat(Format::RGBA8);
+                sv.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
+                sv.Texture2D.MipLevels = td.MipLevels;
+                m_device->CreateShaderResourceView(t->texture.Get(), &sv, &t->srv);
+                return t;
+            }
+
             std::unique_ptr<Buffer> createBuffer(const BufferDesc &desc, const void *data) override
             {
                 auto b = std::make_unique<D3DBuffer>(desc);

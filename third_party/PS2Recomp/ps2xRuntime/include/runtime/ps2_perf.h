@@ -48,6 +48,11 @@ namespace ps2perf
         PostDraws,
         PackedDraws,    // draws recorded from whole packets of the C++ VU1 reproductions (GS::submitPackedKick)
         PackedVertices, // ... and their vertices
+        // [gta-recomp] textures made on the GPU side: the main thread's time creating (and releasing) them, the
+        // kilobytes uploaded (issue #29: hitches after texture bursts)
+        TexCreateUs,
+        TexKBytes,
+        TexDecodeUs, // [gta-recomp] the GS stage decoding them (mip chains and, D3D11, their creation: makeTextureEarly)
         Count
     };
 

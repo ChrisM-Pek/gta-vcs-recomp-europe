@@ -852,7 +852,7 @@ Python scripts still usable on their own. docs/LAUNCHER.md has the whole of it; 
 | `VCS_DUMP_RAM=s,s,...` | write EE RAM to ram_<s>.bin at those seconds |
 | `PS2X_DMA_HIST=1` | VIF1 payload per MB of RAM every 5 s |
 | `VCS_TRACE_PACKETS=1` | peak use of the game's DMA packet buffer |
-| F3 / F4, `PS2X_PERF_LOG=f.csv` | perf overlay / CSV recording (see CONTROLS.md); `python tools/perf_report.py f.csv` |
+| F3 / F4, `PS2X_PERF_LOG=f.csv` | perf overlay / CSV recording (see CONTROLS.md); `python tools/perf_report.py f.csv`; since 2026-11-02 also `tex_create_us` (main thread making / releasing textures), `tex_kb`, `tex_decode_us` (the GS stage's decodes) and `host_max_ms` (the longest host frame within the game frame) |
 | `PS2X_HLE_CLIPPED=1` | draw world packets that cross the clip planes with GPU clipping (wrong in places, game-internals.md 6h) |
 | `PS2X_HLE_CLIPPER=0` | clipped world packets on the VU1 instead of the C++ clipper |
 | `PS2X_HLE_ENV=0` | the environment-map pass (stage table 0x13) on the VU1 |
@@ -925,6 +925,13 @@ Python scripts still usable on their own. docs/LAUNCHER.md has the whole of it; 
 | `VCS_NATIVE_MODEL_INDEX=0` | MAIN.SCM's model-id search (`FUN_00255188`) recompiled as before |
 | `PS2X_VAG_DECODE=1` | the upstream VAG-to-PCM decode of sound files read through fio (for an unused playback path) as before |
 | `PS2X_HW_DECODE_FAST=0` | textures decoded from their upload through the GS swizzle per texel even when the upload has the texture's own layout |
+| `PS2X_HW_PALETTE_TABLE=0` | paletted textures decoded with the CLUT lookup per texel instead of a 256-entry table (PERFORMANCE.md 21) |
+| `PS2X_HW_CPU_MIPS=0` | anisotropic filtering's mip chains by a render-target texture and `GenerateMips` on the main thread, as before 2026-11-02 |
+| `PS2X_HW_EARLY_TEXTURES=0` | new textures made on the main thread at their `TexCreate` instead of by the helper threads (D3D11) |
+| `VCS_MUSIC_STOP_WAIT=1` | a playing music stream's stop waits for the next refill IRQ, as on the IOP (the level swap stood up to 448 ms for it; game-internals.md 9a) |
+| `PS2X_WAIT_LOG_MAX=<n>` | with `PS2X_WAIT_LOG`: log up to n waits (300) |
+| `PS2X_FRAME_STATS=0` | the brightness probe off even with the control channel (its GPU read-back each host frame hides GPU-side hitches; tools/cruise.py) |
+| `python tools/cruise.py run OUT [ENV=VAL ...]` | the stutter rig: the car along a fixed route at 144 km/h, the per-frame CSV and a hitch report (PERFORMANCE.md 21) |
 | `VCS_PROFILE_CALLERS=name[,name]` | with `VCS_PROFILE`: for samples in host functions whose name contains one of these, the unwound call chain up to the first guest function (`called from <sampled function> < <caller> ...`; an unwind fault ends the chain, not the process) |
 | `VCS_RSL_NATIVE=0`, `VCS_RSL_NATIVE_VERIFY=1`, `VCS_RSL_NATIVE_LOG=1` | the original RSL state flush instead of the native one; the original runs and the native bytes are compared with it; counts every 10 s (`[rsl-native]`) |
 | `PS2X_HLE_PACKED=0`, `PS2X_HW_PACKED_VERIFY=1` | the C++ reproductions' strips / fans through the GS front end; check the packed recording against it per packet |

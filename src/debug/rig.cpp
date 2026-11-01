@@ -435,6 +435,149 @@ namespace vcs::rig
         }
     }
 
+    namespace
+    {
+        // ---- Cruise: the player's car moved along a recorded route at a fixed speed (tools/cruise.py) ----------------
+        // Every game frame the car is put at the route's point a distance `speed * step` further on, facing along the
+        // route, with the move speed of that pace: streaming, the camera and the renderer see a car driving the same
+        // roads at the same speed every run - repeatable stutter measurements. The route is the car's own positions from
+        // an AI drive (so on roads, z included).
+        constexpr uint32_t kPedVehicle = 0x480u;     // CPed: the vehicle it is in (game_info.cpp)
+        constexpr uint32_t kMoveSpeed = 0x140u;      // CPhysical: move speed, units per 1/50 s (game-internals.md 4)
+        constexpr uint32_t kTimeStep = 0x004CD110u;  // CTimer::ms_fTimeStep (1/50 s units)
+
+        struct Cruise
+        {
+            std::vector<float> x, y, z, s; // the route; s: distance along it
+            float speed = 0.0f;            // m/s
+            float at = 0.0f;               // distance done
+            bool loop = false, active = false, done = false;
+            uint64_t frames = 0;
+        };
+        Cruise g_cruise; // game thread (commands go through runOnGameThread)
+
+        void cruisePoint(float d, float &x, float &y, float &z)
+        {
+            const auto &c = g_cruise;
+            const size_t n = c.s.size();
+            if (d <= 0.0f)
+                d = 0.0f;
+            const size_t i = std::min<size_t>(n - 1, static_cast<size_t>(std::upper_bound(c.s.begin(), c.s.end(), d) - c.s.begin()));
+            if (i == 0 || d >= c.s[n - 1])
+            {
+                const size_t j = d >= c.s[n - 1] ? n - 1 : 0;
+                x = c.x[j], y = c.y[j], z = c.z[j];
+                return;
+            }
+            const float len = c.s[i] - c.s[i - 1], t = len > 0.0f ? (d - c.s[i - 1]) / len : 0.0f;
+            x = c.x[i - 1] + (c.x[i] - c.x[i - 1]) * t;
+            y = c.y[i - 1] + (c.y[i] - c.y[i - 1]) * t;
+            z = c.z[i - 1] + (c.z[i] - c.z[i - 1]) * t;
+        }
+
+        void cruiseFrame(uint8_t *ram)
+        {
+            auto &c = g_cruise;
+            if (!c.active)
+                return;
+            const uint32_t ped = rd32(ram, kPlayerPed);
+            const uint32_t veh = ped ? rd32(ram, ped + kPedVehicle) : 0;
+            if (!veh)
+                return; // not in a car (yet): wait
+            float step;
+            std::memcpy(&step, ram + kTimeStep, 4);
+            const float total = c.s.back();
+            c.at += c.speed * std::clamp(step, 0.0f, 3.0f) / 50.0f;
+            if (c.at >= total)
+            {
+                if (!c.loop)
+                {
+                    c.at = total, c.active = false, c.done = true;
+                    return;
+                }
+                c.at = std::fmod(c.at, total);
+            }
+            ++c.frames;
+            float x, y, z, ax, ay, az;
+            cruisePoint(c.at, x, y, z);
+            cruisePoint(c.at + 8.0f, ax, ay, az); // facing a few metres ahead: smooth through the recorded corners
+            float fx = ax - x, fy = ay - y, fz = az - z;
+            const float fl = std::sqrt(fx * fx + fy * fy + fz * fz);
+            if (fl < 1e-3f)
+                return;
+            fx /= fl, fy /= fl, fz /= fl;
+            const float hl = std::sqrt(fx * fx + fy * fy);
+            const float rx = hl > 1e-4f ? fy / hl : 1.0f, ry = hl > 1e-4f ? -fx / hl : 0.0f; // right = forward x up
+            const float ux = ry * fz, uy = -rx * fz, uz = rx * fy - ry * fx;                  // up = right x forward
+            const float m[16] = {rx, ry, 0.0f, 0.0f, fx, fy, fz, 0.0f, ux, uy, uz, 0.0f, x, y, z + 0.05f, 1.0f};
+            for (int i = 0; i < 15; ++i)
+                if ((i & 3) != 3)
+                    std::memcpy(ram + ((veh + i * 4) & kRamMask), &m[i], 4);
+            const float v = c.speed / 50.0f, mv[3] = {fx * v, fy * v, fz * v};
+            std::memcpy(ram + ((veh + kMoveSpeed) & kRamMask), mv, sizeof(mv));
+        }
+
+        void registerCruiseCommands()
+        {
+            // cruise start <route file: "x y z" per line> <speed m/s> [loop] [from <metres>] -> ok <points> <metres>
+            // cruise stop -> ok; cruise status -> ok <active 0|1> <done 0|1> <metres done> <metres total> <frames>
+            ps2control::addCommand("cruise", [](const std::string &args, ps2control::Reply reply) {
+                const auto w = words(args);
+                if (w.empty())
+                    return reply("error usage: cruise start <file> <speed> [loop] [from <m>] | stop | status");
+                if (w[0] == "start" && w.size() >= 3)
+                {
+                    Cruise c;
+                    FILE *f = std::fopen(w[1].c_str(), "r");
+                    if (!f)
+                        return reply("error cannot read " + w[1]);
+                    for (float px, py, pz; std::fscanf(f, "%f %f %f", &px, &py, &pz) == 3;)
+                    {
+                        if (!c.x.empty())
+                        {
+                            const float dx = px - c.x.back(), dy = py - c.y.back(), dz = pz - c.z.back();
+                            const float d = std::sqrt(dx * dx + dy * dy + dz * dz);
+                            if (d < 0.25f)
+                                continue;
+                            c.s.push_back(c.s.back() + d);
+                        }
+                        else
+                            c.s.push_back(0.0f);
+                        c.x.push_back(px), c.y.push_back(py), c.z.push_back(pz);
+                    }
+                    std::fclose(f);
+                    if (c.x.size() < 2)
+                        return reply("error the route needs two points or more");
+                    c.speed = std::strtof(w[2].c_str(), nullptr);
+                    for (size_t i = 3; i < w.size(); ++i)
+                        if (w[i] == "loop")
+                            c.loop = true;
+                        else if (w[i] == "from" && i + 1 < w.size())
+                            c.at = std::strtof(w[++i].c_str(), nullptr);
+                    c.active = true;
+                    const std::string ok = fmt("ok %zu %.0f", c.x.size(), c.s.back());
+                    runOnGameThread([c = std::move(c), ok, reply](uint8_t *, R5900Context *, PS2Runtime *) mutable {
+                        g_cruise = std::move(c);
+                        reply(ok);
+                    });
+                    return;
+                }
+                if (w[0] == "stop")
+                    return runOnGameThread([reply](uint8_t *, R5900Context *, PS2Runtime *) {
+                        g_cruise.active = false;
+                        reply("ok");
+                    });
+                if (w[0] == "status")
+                    return runOnGameThread([reply](uint8_t *, R5900Context *, PS2Runtime *) {
+                        const auto &c = g_cruise;
+                        reply(fmt("ok %d %d %.1f %.1f %llu", c.active ? 1 : 0, c.done ? 1 : 0, c.at, c.s.empty() ? 0.0f : c.s.back(),
+                                  static_cast<unsigned long long>(c.frames)));
+                    });
+                reply("error usage: cruise start <file> <speed> [loop] [from <m>] | stop | status");
+            });
+        }
+    }
+
     uint32_t startScriptAt(uint8_t *ram, uint32_t ip, const char *name, uint32_t returnIp)
     {
         if (!rd32(ram, kScriptSpacePtr) || !rd32(ram, kIdleScripts))
@@ -518,6 +661,7 @@ namespace vcs::rig
         g_rdram = runtime.memory().getRDRAM();
         registerMemoryCommands();
         registerScriptCommands();
+        registerCruiseCommands();
         // watch <lo>,<hi>[,<value>[,<mask>]] -> ok: arm the guest write watch now (debug/watch.cpp; VCS_WATCH at start)
         ps2control::addCommand("watch", [](const std::string &args, ps2control::Reply reply) {
             const std::string spec = args;
@@ -551,6 +695,7 @@ namespace vcs::rig
         g_rdram = rdram;
         g_frames.fetch_add(1, std::memory_order_relaxed);
         checkPendingScripts(rdram);
+        cruiseFrame(rdram);
         if (g_trace)
         {
             std::fprintf(g_trace, "%llu %u %.6g", static_cast<unsigned long long>(g_frames.load()), rd32(rdram, 0x4CD104u),

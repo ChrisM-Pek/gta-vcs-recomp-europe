@@ -33,7 +33,7 @@ namespace ps2perf
         constexpr const char *kCounterNames[kCounters] = {"draws", "verts", "tex_uploads", "dma_tags", "vu1_programs",
                                                           "gs_draws", "gs_verts", "gs_vu1", "gs_hle", "gs_path2", "gs_path3",
                                                           "native_draws", "hud_draws", "post_draws", "packed_draws",
-                                                          "packed_verts"};
+                                                          "packed_verts", "tex_create_us", "tex_kb", "tex_decode_us"};
         constexpr size_t kFirstSourceCounter = static_cast<size_t>(Counter::GsDraws); // [gta-recomp] summaryLine
 
         uint64_t nowNs()
@@ -50,6 +50,7 @@ namespace ps2perf
             uint32_t vblanks = 0;
             uint32_t counters[kCounters]{};
             float hostFps = 0.0f, hostMs = 0.0f, glMs = 0.0f; // host frames presented during this game frame
+            float hostMaxMs = 0.0f; // [gta-recomp] the longest host frame among them (a presentation stall)
             float audioMs = 0.0f;
             uint32_t underruns = 0;
             float workerMs = 0.0f; // [gta-recomp] render submission worker busy
@@ -61,6 +62,7 @@ namespace ps2perf
         std::atomic<uint64_t> g_gsStageNs{0}; // [gta-recomp]
         std::atomic<uint64_t> g_counters[kCounters];
         std::atomic<uint64_t> g_hostFrames{0}, g_hostNs{0}, g_glNs{0};
+        std::atomic<uint64_t> g_hostMaxNs{0}; // [gta-recomp]
         thread_local PhaseScope *t_current = nullptr;
 
         // EE thread
@@ -95,7 +97,7 @@ namespace ps2perf
                 std::fprintf(g_csv, ",%s_ms", p);
             for (const char *c : kCounterNames)
                 std::fprintf(g_csv, ",%s", c);
-            std::fprintf(g_csv, ",host_fps,host_ms,gl_ms,audio_ms,underruns\n");
+            std::fprintf(g_csv, ",host_fps,host_ms,gl_ms,audio_ms,underruns,host_max_ms\n"); // [gta-recomp] host_max_ms
             std::fprintf(stderr, "[perf] recording to %s\n", name.c_str());
         }
 
@@ -236,6 +238,7 @@ namespace ps2perf
             const uint64_t hostFrames = g_hostFrames.exchange(0, std::memory_order_relaxed);
             const uint64_t hostNs = g_hostNs.exchange(0, std::memory_order_relaxed);
             const uint64_t glNs = g_glNs.exchange(0, std::memory_order_relaxed);
+            s.hostMaxMs = static_cast<float>(g_hostMaxNs.exchange(0, std::memory_order_relaxed) / 1e6);
             if (hostFrames)
             {
                 s.hostMs = static_cast<float>(hostNs / 1e6 / hostFrames);
@@ -264,7 +267,7 @@ namespace ps2perf
                 std::fprintf(g_csv, ",%.3f", p);
             for (uint32_t c : s.counters)
                 std::fprintf(g_csv, ",%u", c);
-            std::fprintf(g_csv, ",%.1f,%.3f,%.3f,%.1f,%u\n", s.hostFps, s.hostMs, s.glMs, s.audioMs, s.underruns);
+            std::fprintf(g_csv, ",%.1f,%.3f,%.3f,%.1f,%u,%.3f\n", s.hostFps, s.hostMs, s.glMs, s.audioMs, s.underruns, s.hostMaxMs);
             if (s.t - g_lastSummaryT >= 5.0)
             {
                 // one line per 5 s on stderr, for logs of scripted runs
@@ -609,6 +612,10 @@ namespace ps2perf
         if (g_lastHostNs)
         {
             g_hostNs.fetch_add(now - g_lastHostNs, std::memory_order_relaxed);
+            for (uint64_t gap = now - g_lastHostNs, seen = g_hostMaxNs.load(std::memory_order_relaxed);
+                 gap > seen && !g_hostMaxNs.compare_exchange_weak(seen, gap, std::memory_order_relaxed);)
+            {
+            }
             g_glNs.fetch_add(static_cast<uint64_t>(glMs * 1e6), std::memory_order_relaxed);
             g_hostFrames.fetch_add(1, std::memory_order_relaxed);
         }

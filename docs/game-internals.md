@@ -1349,6 +1349,18 @@ below are module offsets (CDSTREAM loads at IOP 0x1D600 on the emulated IOP); "d
 - **Timing the game relies on**: after opening a radio station the EE sends the station's volume 3 samples later;
   on the IOP the preload's four 8 KB DMAs take ~22 samples, so the volume is in before key-on. A preload done
   instantly started the radio at the old volume (0) for one refill period (found by the replay comparison).
+- **The level swap waits for the music to stop** (found 2026-11-02 with `tools/cruise.py`: the longest hitches of a
+  drive across the bay, 150-410 ms, all game-thread idle; `PS2X_WAIT_LOG`, then `VCS_TRACE_DELAY=1`, which also logs
+  the music manager's mode changes now). **FUN_003C6D08** swaps the level when the one wanted (`*0x488C60`) differs from
+  the current (`0x4CD118`, CGame::currLevel: Beach / Mainland): FUN_002FA908(0x520D60, 2) - the music manager
+  FUN_001891A0(0x4E41E0, mode); mode 2 stops the stream (0x80700) and then loops `while (state poll 0x80E00 != 0)
+  DelayThread(1000)` (return address 0x1892B0) -, the level's sound banks, **FUN_0023BAF0** (the level loader, .LVZ),
+  then mode 1 (music back on). The IRX's stop handler (0x200C) only sets the request flag; the music thread sees it at
+  its next step, which for a playing stream is the next refill IRQ - up to 448 ms. So the whole game stood until then,
+  on the IOP as well (and each `DelayThread(1000)` took 3-6 ms of host time here, so ~100 calls per stop). The native
+  driver now runs that step at once for a stop while playing (`VCS_MUSIC_STOP_WAIT=1` = at the IRQ; the sound replay
+  comparison keeps the IRQ timing): the swap went from 150-410 ms to the load's own ~40 ms game frame. Other
+  FUN_002FA908 callers: cutscenes and menus (modes 1 / 3; mode 2 at 0x3C6DA8 is the level swap).
 - **libsd** (LIBSD.IRX, `src/sound/libsd.cpp`): entries are `core | voice << 1 | param << 8` (+0x80 for per-core
   volumes, core stride 0x28 instead of 0x400); the register table is data 0x4CA0. `sceSdSetCoreAttr` 2 / 4 / 6 =
   ATTR bit 7 / 6 / 14, 8 = noise clock, 10 = SPDIF. VoiceTrans mode 0 = TSA, ATTR DMA-write mode (0x20), DMA; the

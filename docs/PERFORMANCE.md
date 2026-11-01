@@ -33,6 +33,8 @@ bounded by the world; predates this work).
   was ~20-30% faster on the game thread before this work, ~5-10% after it). Since section 5 the floor is 50/240 by
   default: `VCS_TIMING=1 --fps 0` alone is the user-facing "Unlimited (up to 240)".
 - `VCS_TIMING=1 VCS_FPS=0 tools/tour.py OUT --every 3 --limit 40`: the world tour uncapped (perf per point).
+- Stutters: `tools/cruise.py run OUT [ENV=VAL ...]` - the car along a fixed route at 144 km/h, every frame in a CSV,
+  then a hitch report (section 21). A/B by the switches of a change, or two builds; two runs each.
 - At the default cap (`tools/bench.py` with no options: 60 fps, original timing) `game` is the game thread's work
   per frame, the rest of the frame is waiting.
 - Game-thread / worker profiles: `VCS_PROFILE=5` (+ `VCS_PROFILE_THREAD=RenderWorker`, `VCS_PROFILE_CALLERS=name,...`
@@ -491,6 +493,62 @@ three queued frames might add delay when GPU bound there - to measure (the delay
   by clearing the whole process's page tables at every fold.
 - What is left for the game thread is guest code (64-80% of it, flat): deeper code generation in the recompiler
   (guest registers held in host registers across calls) - a project of its own.
+
+### 21. Stutters while driving: the stutter rig, texture bursts, the level swap (2026-11-02)
+
+**The reports.** Issue #29 (GTX 1060, 2560x1080, MSAA 4x, anisotropic 8x, 60 fps cap): hitches up to 150 ms driving
+fast through the city, with the logs to show it - every episode had a burst of texture uploads (38-630 in a frame),
+`wait_ms` carried the time, the stall often a frame or two after the burst. Issue #16 (RTX 4070): micro-stutter
+whatever the timing and cap, gone under DXVK. Nothing more was found online.
+
+**The rig: `tools/cruise.py`** (the user asked for one that travels through the city at driving speed). The rig's
+`cruise` command (src/debug/rig.cpp) puts the player's car, every game frame, at the point of a route `speed x step`
+further on, facing along it, with that move speed - streaming, the camera and the renderer get the same load every
+run. The default route (tools/routes/city.txt) is a low flight, 35 m over the roofs, through the busiest cells of the
+world tour on both sides of the bay: ~6 km at 40 m/s (144 km/h), 140 s, seven Beach / Mainland swaps. Routes from AI
+drives were the plan (`cruise.py record`), but the AI cars the rig makes stood more than they drove. The game writes
+its per-frame CSV; the report counts hitches (a frame over twice the running median and 8 ms over it), frames over
+25 / 33 / 50 / 100 ms, and gives each hitch's texture uploads, decode / create times and the main thread's longest
+host frame (new CSV columns `tex_create_us`, `tex_kb`, `tex_decode_us`, `host_max_ms`). The control channel's
+brightness probe is off for it (`PS2X_FRAME_STATS=0`): its read-back waits for the GPU every host frame.
+
+**What the hitches were** (the rig, then `VCS_PROFILE_SPIKES`, `PS2X_WAIT_LOG`, `VCS_TRACE_DELAY`):
+- **Texture bursts**: a new area brings 100-400 new textures in one frame. The GS stage decoded each - a paletted one
+  through the CLUT addressing and TEXA per texel - and the main thread made each one between its draws; with
+  anisotropic filtering each was a render-target texture with a `GenerateMips` pass. A 399-texture burst: 52 ms of
+  texture creation on the main thread, its longest host frame 77 ms, the game frame 144 ms.
+- **The level swap** (the largest, 150-450 ms, all of it the game thread idle): crossing between Beach and Mainland,
+  FUN_003C6D08 stops the music and waits in `DelayThread(1000)` steps until the stream says stopped - which the IOP's
+  music thread only sees at its next refill IRQ, up to 448 ms later (game-internals.md 9a). The PS2 stood just as long.
+
+**What was done** (each with a switch back):
+- Paletted textures decode through a 256-entry table of the converted texels (`GSCpuBackend::paletteTable`; the same
+  values - `PS2X_HW_PALETTE_TABLE=0`).
+- Anisotropic filtering's mip chain is built on the CPU and the texture made with all its levels in one creation
+  (`createTextureLevels`, immutable, no render target; `PS2X_HW_CPU_MIPS=0`).
+- D3D11: new textures are made by two helper threads (the device is free-threaded), the mip chain with them; the main
+  thread takes each at its `TexCreate` (`PS2X_HW_EARLY_TEXTURES=0`). Vulkan keeps its creation on the main thread (its
+  first contents go into the frame's set-up commands).
+- The native music driver runs the music thread's step at once for a stop while the stream plays, so the level swap no
+  longer waits up to 448 ms for an IRQ (`VCS_MUSIC_STOP_WAIT=1`; the sound replay comparison keeps the IRQ timing).
+
+**Result** (the cruise, `--opt none`, frame-rate independent timing at the 60 cap; all four switches off vs on,
+GTX 1080 Ti / i7-7700K):
+
+| | fps | p99.9 ms | max ms | frames > 33 / 50 / 100 ms | hitch time lost a minute |
+|---|---|---|---|---|---|
+| 3x 16:9, MSAA 4x, AF 8x, before (two runs) | 59.1 / 59.2 | 68.3 / 67.3 | 400 / 365 | 27 / 11 / 5, 23 / 12 / 6 | 799 / 779 ms |
+| 3x 16:9, MSAA 4x, AF 8x, now | 59.9 / 59.9 | 33.4 / 33.0 | **46 / 48** | 9 / 0 / 0, 9 / 0 / 0 | **86 / 72 ms** |
+| defaults (1x 4:3), before | 59.4 | 35.8 | 448 | 15 / 4 / 4 | 567 ms |
+| defaults, now | 59.9 | 31.7 | **45** | 6 / 0 / 0 | **51 ms** |
+
+Pictures: reference scenes with the four switches off vs on - the static scenes identical (0.00), the moving ones
+within run-to-run noise; anisotropic 8x, mip chains by `GenerateMips` vs on the CPU: static scenes 0.00, the moving
+ones 0.00-0.5 apart from the flyover's tower (timing).
+
+**What is left on the route**: the level swap's own load, one game frame of ~36-46 ms (the .LVZ, its inflate and setup)
+per crossing; the largest texture bursts still cost the GS stage ~10-20 ms of decoding (the frame ~45 ms); the rest
+of the drive holds 16.7 ms.
 
 ## Next
 

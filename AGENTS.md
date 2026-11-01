@@ -63,6 +63,8 @@ python tools/build.py --quick               # no LTO (= --opt none): fast relink
 python tools/build.py --check-deps          # Linux: missing packages and the command that installs them
 python tools/build.py --opt none|lto|pgo    # game optimisation, kept until changed (lto: the default; pgo: ThinLTO + profile, trains if needed)
 python tools/bench.py [OUT]                  # game-thread benchmark: fixed city spots + an AI drive (game / worker ms)
+python tools/cruise.py run [OUT] [ENV=VAL]   # stutter rig: the car along a fixed route at 144 km/h, every frame timed;
+                                             # hitches with their texture / main-thread / game-thread cause (PERFORMANCE.md 21)
 python tools/clean.py [--apply] [--keep-days 7]   # delete test output in build/ (lists first; builds, saves, baselines kept)
 python tools/build.py --launcher             # the launcher (VCSLauncher(.exe) in the root; no disc, ~20 s the first time)
 python3 tools/build.py --install-deps        # Linux: the missing packages through pkexec (what the launcher's button runs)

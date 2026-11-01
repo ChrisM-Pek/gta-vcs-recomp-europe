@@ -222,6 +222,14 @@ namespace
         FUN_00468318_0x468318(rdram, ctx, runtime);
     }
 
+    // VCS_TRACE_DELAY=1 also: FUN_002FA908(_, mode) - the music manager's mode change (FUN_001891A0 on 0x4E41E0; mode 2
+    // stops the stream and waits for it in DelayThread(1000) steps) - with who asked
+    PS2_GUEST_CC void traceMusicMode(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
+    {
+        std::fprintf(stderr, "[delay] music mode %u ra=0x%08x\n", GPR_U32(ctx, 5) & 0xFFu, GPR_U32(ctx, 31));
+        FUN_002fa908_0x2fa908(rdram, ctx, runtime);
+    }
+
     // VCS_TRACE_SOUND=1: the EE sound driver's RPC commands (FUN_0010E970(cmd, arg) -> client 0x4D3D40, sid 0x65686579)
     PS2_GUEST_CC void traceSoundCmd(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
     {
@@ -984,7 +992,10 @@ namespace
             runtime.replaceFunction(0x0010D868u, &traceSoundInit);
         }
         if (std::getenv("VCS_TRACE_DELAY"))
+        {
             runtime.replaceFunction(0x00468318u, &traceDelay);
+            runtime.replaceFunction(0x002FA908u, &traceMusicMode);
+        }
         runtime.replaceFunction(0x004604F0u, &traceAbort);
         runtime.replaceFunction(0x004672C0u, &traceAbort); // _Exit
         for (const Binding &b : kBindings)

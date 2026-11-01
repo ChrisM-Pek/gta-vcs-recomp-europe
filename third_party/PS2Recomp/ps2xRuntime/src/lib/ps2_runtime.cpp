@@ -3250,8 +3250,12 @@ void PS2Runtime::run()
         const int srcHeight = static_cast<int>(std::max<uint32_t>(1u, presentHeight));
         // [gta-recomp] brightness probe (black-frame detector for the automation rig)
         static const bool frameStats = [] {
+            // PS2X_FRAME_STATS=0 turns it off with the control channel on: its read-back waits for the GPU every host
+            // frame, which hides GPU-side hitches from a stutter measurement (tools/cruise.py)
             const char *a = std::getenv("PS2X_FRAME_STATS"), *b = std::getenv("PS2X_CONTROL");
-            return (a && *a && *a != '0') || (b && *b && *b != '0');
+            if (a && *a)
+                return *a != '0';
+            return b && *b && *b != '0';
         }();
         if (frameStats)
         {

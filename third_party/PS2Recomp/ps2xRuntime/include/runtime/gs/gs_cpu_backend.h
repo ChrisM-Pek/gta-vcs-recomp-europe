@@ -66,6 +66,7 @@ private:
     uint32_t SampleTexture(const GSDrawState &state, float s, float t, float q, uint16_t u, uint16_t v);
     uint32_t LookupCLUT(const GSDrawState &state, uint8_t index, uint8_t cpsm, uint8_t csm, uint8_t csa, uint8_t sourcePsm);
     uint32_t convertTexel(const GSDrawState &state, uint32_t raw); // [gta-recomp] DecodeTexture's per-texel step
+    bool paletteTable(const GSDrawState &state, uint32_t (&table)[256]); // [gta-recomp] convertTexel for every index
 
     void PerformLocalToLocalTransfer();
     void PerformLocalToHostTransfer();

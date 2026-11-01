@@ -669,6 +669,27 @@ namespace rhi
                 barrier(m_cmd, t, homeLayout(t));
             }
 
+            std::unique_ptr<Texture> createTextureLevels(const TextureDesc &desc, const void *const *levels, uint32_t levelCount) override
+            {
+                // the image with its chain (created empty, then every level from the data in the set-up commands)
+                TextureDesc d = desc;
+                d.usage = UsageSampled;
+                d.mipLevels = std::max(1u, levelCount);
+                auto base = createTexture(d, nullptr, 0);
+                if (!base)
+                    return nullptr;
+                auto &t = static_cast<VkTexture &>(*base);
+                VkCommandBuffer cmd = initCmd();
+                barrier(cmd, t, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+                for (uint32_t i = 0; i < t.mips && i < levelCount; ++i)
+                {
+                    const uint32_t w = std::max(1u, t.desc().width >> i), h = std::max(1u, t.desc().height >> i);
+                    uploadRegion(cmd, t, 0, 0, w, h, levels[i], w * 4u, i);
+                }
+                barrier(cmd, t, t.resting);
+                return base;
+            }
+
             std::unique_ptr<Buffer> createBuffer(const BufferDesc &desc, const void *data) override
             {
                 auto b = std::make_unique<VkBuf>(m_core, desc);
@@ -2101,7 +2122,8 @@ namespace rhi
             }
 
             // ---- copies -------------------------------------------------------------------------------------------
-            void uploadRegion(VkCommandBuffer cmd, VkTexture &t, uint32_t x, uint32_t y, uint32_t w, uint32_t h, const void *data, uint32_t pitch)
+            void uploadRegion(VkCommandBuffer cmd, VkTexture &t, uint32_t x, uint32_t y, uint32_t w, uint32_t h, const void *data, uint32_t pitch,
+                              uint32_t level = 0)
             {
                 const uint32_t row = w * 4u;
                 const Slice s = ringAlloc(static_cast<VkDeviceSize>(row) * h);
@@ -2109,7 +2131,7 @@ namespace rhi
                     std::memcpy(s.data + static_cast<size_t>(i) * row, static_cast<const uint8_t *>(data) + static_cast<size_t>(i) * pitch, row);
                 VkBufferImageCopy copy{};
                 copy.bufferOffset = s.offset;
-                copy.imageSubresource = {t.aspect, 0, 0, 1};
+                copy.imageSubresource = {t.aspect, level, 0, 1};
                 copy.imageOffset = {static_cast<int32_t>(x), static_cast<int32_t>(y), 0};
                 copy.imageExtent = {w, h, 1};
                 vkCmdCopyBufferToImage(cmd, s.buffer, t.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copy);

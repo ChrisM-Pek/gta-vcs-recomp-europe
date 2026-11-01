@@ -936,3 +936,20 @@ before writing it, and its whole save folder after a failed write, so any crash 
   works unchanged; newest 10 kept (a card is ~0.5-1 MB, stored). In vcs.exe, not the launcher: players start vcs.exe on
   its own too, and only the card layer knows when a change comes. Saving into an empty slot changes nothing old and
   makes none. `PS2X_MC_BACKUP=0` turns it off.
+
+## 2026-11-02 - Stutter work: the music stop no longer holds the level swap; textures made off the main thread
+
+The user asked for stutters first (issues #16, #29), the game to behave as the original (PERFORMANCE.md 21).
+
+- **The level swap's music stop happens at once.** Crossing between Beach and Mainland the game stops the radio stream
+  and waits until it says stopped; CDSTREAM's music thread only sees the stop at its next refill IRQ, up to 448 ms - the
+  PS2 stood just as long (game-internals.md 9a). Only that wait changes: the commands, their order and every reply the
+  game reads are the IOP's; the stream just ends that much sooner (it is being stopped anyway, and the swap restarts
+  the radio after the load - the stations it picks are the same as with the wait). Kept as `VCS_MUSIC_STOP_WAIT=1`;
+  the sound replay comparison keeps the IRQ timing, since it checks the driver against recorded IOP times.
+- **Textures are made by helper threads on D3D11** and, with anisotropic filtering, their mip chains built on the CPU:
+  what the GPU gets is the same (static reference scenes identical), only who does the work and when. Vulkan keeps
+  creation on the main thread: its first contents go into the frame's set-up commands, not thread-safe.
+- **The stutter rig flies over the roofs** rather than drives the roads: the AI drivers the rig can make stood more
+  than they drove, and the route has to be the same every run to compare builds. Streaming, texture bursts and level
+  swaps come from the camera crossing new ground at speed, which the flight does.

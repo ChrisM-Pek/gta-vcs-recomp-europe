@@ -1221,17 +1221,46 @@ void GSCpuBackend::DecodeTexture(const GSDrawState &state, std::vector<uint32_t>
     const auto &tex = state.context.tex0;
     const int w = state.textureWidth, h = state.textureHeight;
     out.resize(static_cast<size_t>(w) * h);
+    uint32_t table[256];
+    const bool paletted = paletteTable(state, table);
     for (int y = 0; y < h; ++y)
         for (int x = 0; x < w; ++x)
-            out[static_cast<size_t>(y) * w + x] = convertTexel(state, ReadTextureVramUnlocked(tex.psm, tex.tbp0, tex.tbw, x, y));
+        {
+            const uint32_t v = ReadTextureVramUnlocked(tex.psm, tex.tbp0, tex.tbw, x, y);
+            out[static_cast<size_t>(y) * w + x] = paletted ? table[v & 0xFFu] : convertTexel(state, v);
+        }
 }
 
 void GSCpuBackend::DecodeTextureFromTexels(const GSDrawState &state, const std::vector<uint32_t> &texels, std::vector<uint32_t> &out)
 {
     std::lock_guard<std::mutex> lock(m_mutex);
     out.resize(texels.size());
+    uint32_t table[256];
+    if (paletteTable(state, table))
+    {
+        for (size_t i = 0; i < texels.size(); ++i)
+            out[i] = table[texels[i] & 0xFFu];
+        return;
+    }
     for (size_t i = 0; i < texels.size(); ++i)
         out[i] = convertTexel(state, texels[i]);
+}
+
+// [gta-recomp] A paletted texture's 256 possible texels converted once (convertTexel's LookupCLUT for every index):
+// decoding then costs a table read per texel instead of the CLUT addressing and TEXA per texel - the same values.
+// Texture bursts while driving decode hundreds of these in a frame (PERFORMANCE.md 21). False for other formats.
+bool GSCpuBackend::paletteTable(const GSDrawState &state, uint32_t (&table)[256])
+{
+    static const bool off = [] { // PS2X_HW_PALETTE_TABLE=0: per texel, as before
+        const char *e = std::getenv("PS2X_HW_PALETTE_TABLE");
+        return e && *e == '0';
+    }();
+    const auto &tex = state.context.tex0;
+    if (off || (!isFourBitIndexedPsm(tex.psm) && !isEightBitIndexedPsm(tex.psm)))
+        return false;
+    for (uint32_t i = 0; i < 256u; ++i)
+        table[i] = LookupCLUT(state, static_cast<u8>(i), tex.cpsm, tex.csm, tex.csa, tex.psm);
+    return true;
 }
 
 uint32_t GSCpuBackend::convertTexel(const GSDrawState &state, uint32_t v)

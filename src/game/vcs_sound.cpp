@@ -137,6 +137,12 @@ namespace vcs
             return sizes == 0x63C0u + 0x1A70u + 0x370u; // SLUS-21590's module: .text + .rodata + .data
         }
 
+        // A playing stream's stop waits for the next refill IRQ, as on the IOP (Engine::musicCommand 0x80700)
+        bool g_stopAtIrq = [] {
+            const char *e = std::getenv("VCS_MUSIC_STOP_WAIT");
+            return e && *e == '1';
+        }();
+
         class Engine
         {
         public:
@@ -702,6 +708,10 @@ namespace vcs
             void musicCommand(uint32_t command, int32_t first)
             {
                 const uint32_t index = command & 0xFF;
+                // VCS_MUSIC_LOG=1: the music commands other than the frequent polls / volume steps, with the state found
+                static const bool log = std::getenv("VCS_MUSIC_LOG") != nullptr;
+                if (log && (command & 0xFFF00) != 0x80E00 && (command & 0xFFF00) != 0x00B00 && (command & 0xFFF00) != 0x90100)
+                    std::fprintf(stderr, "[music] cmd 0x%05x arg %d (state 0x%x, file %d)\n", command, first, m_state, m_file);
                 switch (command & 0xFFF00)
                 {
                 case 0x00100: musicShutdown(); break;
@@ -714,7 +724,17 @@ namespace vcs
                 case 0x7FF00: break;
                 case 0x80000: m_musicReply = musicInit(); break;
                 case 0x80200: m_musicReply = openStream(static_cast<int32_t>(index), first) ? 1u : 0u; break;
-                case 0x80700: m_musicReply = static_cast<uint32_t>(requestStop()); break;
+                case 0x80700:
+                    m_musicReply = static_cast<uint32_t>(requestStop());
+                    // A stop while the stream plays is seen at the music thread's next step - on the IOP the next refill
+                    // IRQ, up to 448 ms away (the handler 0x200C only sets the flag). The game waits for it: the level swap
+                    // (FUN_003C6D08, Beach <-> Mainland) stops the music and polls the state in DelayThread(1000) steps,
+                    // the whole game frozen meanwhile (PERFORMANCE.md 21). Here the step runs at once, so the swap does
+                    // not wait on the stream; the music only ends that much sooner. VCS_MUSIC_STOP_WAIT=1 (and the
+                    // replay comparison): at the IRQ, as the IOP.
+                    if (m_stopRequest && m_state == 0x5000 && !g_stopAtIrq)
+                        musicSignal();
+                    break;
                 case 0x80E00: m_musicReply = static_cast<uint32_t>(m_state); break;
                 case 0x90000: m_musicReply = streamLength(static_cast<uint32_t>(first)); break;
                 case 0x90100: m_musicReply = static_cast<uint32_t>(streamPosition()); break;
@@ -1337,6 +1357,7 @@ namespace vcs
 
         void replay(const char *recordPath)
         {
+            g_stopAtIrq = true; // the IOP's timing: the recording was made against it
             std::FILE *in = std::fopen(recordPath, "rb");
             const char *outPath = std::getenv("VCS_SOUND_REPLAY_OUT");
             std::FILE *out = outPath ? std::fopen(outPath, "wb") : nullptr;

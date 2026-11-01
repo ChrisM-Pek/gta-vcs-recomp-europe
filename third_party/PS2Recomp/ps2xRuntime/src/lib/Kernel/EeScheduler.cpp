@@ -2077,7 +2077,8 @@ void EeScheduler::writeGuestU32(uint32_t address, uint32_t value)
 void EeScheduler::logLongWait(const char *where, double ms) const
 {
     static int logged = 0;
-    if (logged++ >= 300)
+    static const int most = std::getenv("PS2X_WAIT_LOG_MAX") ? std::atoi(std::getenv("PS2X_WAIT_LOG_MAX")) : 300;
+    if (logged++ >= most)
         return;
     std::fprintf(stderr, "[ee-wait] %s %.1f ms:", where, ms);
     static const char *const status[] = {"running", "ready", "waiting", "waiting-suspended", "suspended", "dormant"};

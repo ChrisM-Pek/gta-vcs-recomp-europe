@@ -108,7 +108,7 @@ namespace screens
 
         // Each step is drawn twice a frame: its body inside the card's scroll area (returns where it ended), then its
         // footer's buttons under it (footer pass: body not drawn).
-        float stepFolder(App &app, Rect body, Rect footer, bool footerPass)
+        float stepFolder(App &app, Rect body, Rect &footer, bool footerPass)
         {
             if (footerPass)
             {
@@ -126,7 +126,7 @@ namespace screens
             return y;
         }
 
-        void discFooter(App &app, Rect footer)
+        void discFooter(App &app, Rect &footer)
         {
             const bool ok = app.discChecked && app.disc.ok;
             if (ok)
@@ -152,7 +152,7 @@ namespace screens
             }
         }
 
-        float stepDisc(App &app, Rect body, Rect footer, bool footerPass)
+        float stepDisc(App &app, Rect body, Rect &footer, bool footerPass)
         {
             if (footerPass)
             {
@@ -260,7 +260,7 @@ namespace screens
             rect({body.x + px(40), y - 1, body.w - px(40), 1}, withAlpha(rgb(0xFFFFFF), 0.05f));
         }
 
-        float stepTools(App &app, Rect body, Rect footer, bool footerPass)
+        float stepTools(App &app, Rect body, Rect &footer, bool footerPass)
         {
             const launcher::Json &d = app.doctor;
             const launcher::Json &c = d["compiler"], &cpu = d["cpu"], &dl = d["downloads"];
@@ -336,7 +336,7 @@ namespace screens
             return "Optimised (ThinLTO). What most players want.";
         }
 
-        float stepGame(App &app, Rect body, Rect footer, bool footerPass)
+        float stepGame(App &app, Rect body, Rect &footer, bool footerPass)
         {
             const launcher::Json &b = app.doctor["build"];
             const bool built = b["built"].boolean(), current = b["current"].boolean();
@@ -408,13 +408,20 @@ namespace screens
             const Rect footer = core::cutBottom(body, px(72));
             rect({card.x, footer.y, card.w, 1}, withAlpha(rgb(0xFFFFFF), 0.05f));
             const ui::Id scrollId = ui::id("#setup-scroll", step);
-            using StepFn = float (*)(App &, Rect, Rect, bool);
+            using StepFn = float (*)(App &, Rect, Rect &, bool);
             const StepFn fn = step == kStepFolder ? stepFolder : step == kStepDisc ? stepDisc : step == kStepTools ? stepTools : stepGame;
             ui::beginScroll(scrollId, {card.x, body.y, card.w, body.h - px(6)});
-            const float bottom = fn(app, body, footer, false);
+            Rect unused = footer;
+            const float bottom = fn(app, body, unused, false);
             ui::endScroll(scrollId, bottom + px(16));
             Rect row = footer.inset(0, px(14));
             fn(app, body, row, true);
+            // everything ready and Setup opened from Home: a way back, beside the step's own buttons
+            if (shell.setupOpen && !setupNeeded(app) && footerButton(row, "Close##setup", ButtonStyle::Secondary))
+            {
+                shell.setupOpen = false;
+                shell.pinnedStep = -1;
+            }
         }
 
         void drawRail(App &app, Rect r, int shown)
@@ -614,18 +621,5 @@ namespace screens
             drawStep(app, shell.step, area);
         render::popClip();
         popReveal();
-
-        // everything ready and Setup opened from Home: a way back. Drawn last: the widget drawn last takes the mouse,
-        // and the rail's last step sits beside it
-        if (shell.setupOpen && !setupNeeded(app))
-        {
-            const float w = ui::buttonWidth("Done", theme::icon::kCheck);
-            const Rect back{r.right() - px(40) - w, r.y + px(18), w, px(36)};
-            if (ui::button("Done##setup", back, ButtonStyle::Secondary, theme::icon::kCheck))
-            {
-                shell.setupOpen = false;
-                shell.pinnedStep = -1;
-            }
-        }
     }
 }

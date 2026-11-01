@@ -414,6 +414,8 @@ namespace screens
             Rect unused = footer;
             const float bottom = fn(app, body, unused, false);
             ui::endScroll(scrollId, bottom + px(16));
+            // the step's state, in the card's top right corner (it stays put while the card scrolls)
+            ui::statusBadge(ui::id("#stepbadge", step), card.right() - px(40), card.y + px(40), px(15), stepStatus(app, step), step + 1);
             Rect row = footer.inset(0, px(14));
             fn(app, body, row, true);
             // everything ready and Setup opened from Home: a way back, beside the step's own buttons
@@ -424,17 +426,21 @@ namespace screens
             }
         }
 
-        // The rail: the four steps on a line that fills in teal as they are done, and a solid box behind the step shown,
-        // as in Vice City's menus: each step has a box of its own shape (four corners set off its text a little,
-        // each differently), and moving to another step carries the box there while its corners travel from the old
-        // shape into the new one.
+        // The rail: the four steps' titles (Pricedown when the player has it) on a line that fills in teal as they
+        // are done, and a solid box behind the step shown, as in Vice City's menus: each step has a box of its own
+        // shape (four corners set off its text a little, each differently), and moving to another step carries the
+        // box there while its corners travel from the old shape into the new one. The step's state is a badge on its
+        // card, not here.
         void drawRail(App &app, Rect r, int shown)
         {
             const int n = kStepCount;
             const float x0 = r.x + px(40), x1 = r.right() - px(40);
             const float gap = (x1 - x0) / float(n - 1);
-            const float cy = r.y + px(20);
-            const float nameSize = px(theme::kSmall), lineSize = px(12);
+            const bool brand = fontFound(kFontBrand);
+            const Font titleFont = brand ? kFontBrand : kFontSemibold;
+            const float titleSize = brand ? px(23) : px(15.5f), lineSize = px(12);
+            const float titleY = r.y + px(6), lineY = r.y + px(34);
+            const float titleMid = titleY + px(13);
 
             // done steps fill the line in teal, on a spring
             int done = 0;
@@ -445,7 +451,7 @@ namespace screens
                 w.spring.snap(float(std::max(done - 1, 0)));
             ui::spring(w.spring, float(std::max(done - 1, 0)), 120, 0.9f);
 
-            // each step's box: around its badge, name and line, then its corners pushed in or out (logical units:
+            // each step's box: around its title and line, then its corners pushed in or out (logical units:
             // x, y of top-left, top-right, bottom-right, bottom-left; + is right / down)
             static const float kShapes[kStepCount][8] = {
                 {-6, 3, 8, -4, 4, 5, -9, -2},
@@ -455,29 +461,33 @@ namespace screens
             };
             std::string lines[kStepCount];
             Rect boxes[kStepCount];
+            float textW[kStepCount];
             float shapes[kStepCount][8];
             for (int i = 0; i < n; ++i)
             {
                 lines[i] = stepLine(app, i);
-                const float textW = std::max({measure(kFontSemibold, nameSize, stepName(i)), measure(kFontBody, lineSize, lines[i]), px(36)});
-                const float bw = std::min(textW + px(40), gap * 0.9f);
-                boxes[i] = {x0 + gap * float(i) - bw * 0.5f, r.y - px(6), bw, px(88)};
+                textW[i] = std::max(measure(titleFont, titleSize, stepName(i)), measure(kFontBody, lineSize, lines[i]));
+                const float bw = std::min(textW[i] + px(44), gap * 0.9f);
+                boxes[i] = {x0 + gap * float(i) - bw * 0.5f, r.y - px(6), bw, px(66)};
                 const Rect &b = boxes[i];
                 const float corners[8] = {b.x, b.y, b.right(), b.y, b.right(), b.bottom(), b.x, b.bottom()};
                 for (int k = 0; k < 8; ++k)
                     shapes[i][k] = corners[k] + px(kShapes[i][k]);
             }
 
-            // the line, in pieces between the badges
+            // the line, in pieces between the steps' text, at the titles' height
             const float lineH = px(2);
             const float fillTo = x0 + gap * w.spring.value;
             for (int i = 0; i + 1 < n; ++i)
             {
-                const float a = x0 + gap * float(i) + px(22), b = x0 + gap * float(i + 1) - px(22);
-                rect({a, cy - lineH * 0.5f, b - a, lineH}, withAlpha(rgb(0xFFFFFF), 0.08f), lineH * 0.5f);
+                const float a = x0 + gap * float(i) + textW[i] * 0.5f + px(18);
+                const float b = x0 + gap * float(i + 1) - textW[i + 1] * 0.5f - px(18);
+                if (b <= a)
+                    continue;
+                rect({a, titleMid - lineH * 0.5f, b - a, lineH}, withAlpha(rgb(0xFFFFFF), 0.08f), lineH * 0.5f);
                 if (done > 0 && fillTo > a)
-                    gradient({a, cy - lineH * 0.5f, std::min(b, fillTo) - a, lineH}, theme::kTeal, mix(theme::kTeal, rgb(0xFFFFFF), 0.2f),
-                             lineH * 0.5f, Gradient::Horizontal);
+                    gradient({a, titleMid - lineH * 0.5f, std::min(b, fillTo) - a, lineH}, theme::kTeal,
+                             mix(theme::kTeal, rgb(0xFFFFFF), 0.2f), lineH * 0.5f, Gradient::Horizontal);
             }
 
             // the box: where it is along the rail (a spring, no overshoot past a step), its corners blended between
@@ -508,21 +518,15 @@ namespace screens
                     if (i == kStepFolder)
                         shell.folderSeen = true;
                 }
-                // how far inside the moving box this step is: on the box, its badge gets a dark seat and its text
-                // turns white
+                // how far inside the moving box this step is: on the box its text turns white
                 const float inside = core::clamp01(1.0f - std::fabs(boxCx - cx) / (gap * 0.5f));
                 if (i != target && in.w->hover > 0.01f)
-                {
-                    const float *s = shapes[i];
-                    quad(s, withAlpha(rgb(0xFFFFFF), 0.05f * in.w->hover * (1 - inside)));
-                }
+                    quad(shapes[i], withAlpha(rgb(0xFFFFFF), 0.05f * in.w->hover * (1 - inside)));
                 const ui::Status status = stepStatus(app, i);
-                circle(cx, cy, px(16), withAlpha(theme::kNight, 0.55f * inside));
-                ui::statusBadge(ui::id("#railbadge", i), cx, cy, px(13) * (1.0f + 0.06f * in.w->hover), status, i + 1);
-                const Color nameColor = mix(mix(theme::kDim, theme::kText, in.w->hover), rgb(0xFFFFFF), inside);
-                ui::label(kFontSemibold, nameSize, {cx - gap * 0.5f, cy + px(22), gap, px(20)}, nameColor, stepName(i), ui::Align::Centre);
+                const Color titleColor = mix(mix(theme::kDim, theme::kText, in.w->hover), rgb(0xFFFFFF), inside);
+                ui::label(titleFont, titleSize, {cx - gap * 0.5f, titleY, gap, px(26)}, titleColor, stepName(i), ui::Align::Centre);
                 const Color lineColor = mix(status == ui::Status::Warning ? theme::kAmber : theme::kFaint, rgb(0xFFFFFF, 225), inside);
-                ui::label(kFontBody, lineSize, {cx - gap * 0.5f, cy + px(40), gap, px(18)}, lineColor, lines[i], ui::Align::Centre);
+                ui::label(kFontBody, lineSize, {cx - gap * 0.5f, lineY, gap, px(18)}, lineColor, lines[i], ui::Align::Centre);
                 if (in.w->focus > 0.01f)
                     outline(hit.inset(-px(4)), withAlpha(theme::kText, in.w->focus), px(2), px(6));
             }
@@ -642,7 +646,7 @@ namespace screens
         area = {area.cx() - width * 0.5f, area.y, width, area.h};
 
         pushReveal(since, 0, 10);
-        drawRail(app, core::cutTop(area, px(84)), shell.step);
+        drawRail(app, core::cutTop(area, px(64)), shell.step);
         popReveal();
         core::cutTop(area, px(14));
 

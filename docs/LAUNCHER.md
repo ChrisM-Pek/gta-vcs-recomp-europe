@@ -67,8 +67,9 @@ One window with a title bar the launcher draws itself, and always one of three m
 motion is (2026-11-01, the user's "rethink everything"; before, a sidebar of pages - DECISIONS.md 2026-11-01).
 
 - **Setup** (`launcher/screens/setup.cpp`), until the game can be played: a rail of the four steps (Folder, Disc,
-  Build tools, Game) whose line fills in teal as they are done, and one step at a time below it in a large card - a
-  pink label, a title, a line of explanation, the step, and a footer whose primary (sunset-gradient) button is the
+  Build tools, Game: their titles in Pricedown when installed, each with a line under it) whose line fills in teal as
+  they are done, and one step at a time below it in a large card - a pink label, a title, a line of explanation, the
+  step, its state as a badge in the card's top right corner, and a footer whose primary (sunset-gradient) button is the
   step's next thing. A step that turns good plays its check (a stroke that draws itself), holds 0.9 s, and the next
   slides in from the side it comes from. Behind the step shown sits a solid pink box, as in Vice City's menus: each
   step's is a quadrilateral of its own (its corners set off the step's text, each differently), and going to another

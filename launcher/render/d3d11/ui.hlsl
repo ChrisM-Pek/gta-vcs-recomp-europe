@@ -32,7 +32,7 @@ struct Instance
     float4 color1 : COLOR1;      // gradient end
     float4 border_color : COLOR2;
     uint kind : KIND;
-    float4 params : PARAMS;      // x border width, y shadow sigma, z line thickness, w gradient direction
+    float4 params : PARAMS;      // x border width, y shadow sigma / glyph blur radius, z line thickness, w gradient direction
 };
 
 struct VSOut
@@ -59,6 +59,8 @@ VSOut vs_main(uint vertex_id : SV_VertexID, Instance inst)
         grow = 0.0; // their rects already hold their edges
     if (inst.kind == KIND_SHADOW)
         grow = 3.0 * inst.params.y + 1.0;
+    if (inst.kind == KIND_GLYPH && inst.params.y > 0.0)
+        grow = inst.params.y + 1.0; // a blurred glyph spreads by its radius
 
     float2 lo = max(inst.rect.xy - grow, inst.clip.xy);
     float2 hi = min(inst.rect.zw + grow, inst.clip.zw);
@@ -156,6 +158,29 @@ float sd_segment(float2 p, float2 a, float2 b)
     return length(pa - ba * h);
 }
 
+// A glyph's coverage blurred by a Gaussian of about `radius` pixels: a 7x7 grid of weighted atlas samples (glyphs are
+// rasterised at the size they are drawn, so a pixel is a texel). Samples outside the glyph's own texels count as empty,
+// so its neighbours in the atlas never bleed in.
+float blurred_glyph(float2 texel, float4 glyph_texels, float radius)
+{
+    const float sigma = radius * 0.5;
+    const float step = radius / 3.0;
+    float sum = 0.0, weights = 0.0;
+    [unroll] for (int y = -3; y <= 3; y++)
+    {
+        [unroll] for (int x = -3; x <= 3; x++)
+        {
+            float2 o = float2(x, y) * step;
+            float w = exp(-dot(o, o) / (2.0 * sigma * sigma));
+            float2 t = texel + o;
+            float inside = all(t >= glyph_texels.xy) && all(t <= glyph_texels.zw) ? 1.0 : 0.0;
+            sum += w * inside * glyph_atlas.SampleLevel(atlas_sampler, t * atlas_inv_size, 0);
+            weights += w;
+        }
+    }
+    return sum / weights;
+}
+
 // Distance to an arc of a circle (radius r, from angle `start` clockwise by `sweep`), round caps.
 float sd_arc(float2 p, float start, float sweep, float r)
 {
@@ -190,7 +215,11 @@ float4 ps_main(VSOut i) : SV_Target
 
     if (i.kind == KIND_GLYPH)
     {
-        float a = glyph_atlas.Sample(atlas_sampler, i.uv);
+        float a;
+        if (i.params.y > 0.0)
+            a = blurred_glyph(i.uv / atlas_inv_size, i.data, i.params.y);
+        else
+            a = glyph_atlas.Sample(atlas_sampler, i.uv);
         a = text_coverage(a, i.color0.rgb) * i.color0.a;
         return float4(i.color0.rgb * a, a);
     }

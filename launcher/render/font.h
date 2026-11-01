@@ -55,8 +55,9 @@ namespace render
 
     FontMetrics metrics(Font font, float px);
     float measure(Font font, float px, std::string_view utf8);
-    // draws with the baseline at `baseline`; returns the pen position after the last glyph
-    float drawText(Font font, float px, float x, float baseline, core::Color color, std::string_view utf8);
+    // draws with the baseline at `baseline`; returns the pen position after the last glyph. blur: a Gaussian radius in
+    // pixels (0: sharp)
+    float drawText(Font font, float px, float x, float baseline, core::Color color, std::string_view utf8, float blur = 0);
     // one glyph, its ink centred on (cx, cy): icons
     void drawIcon(Font font, float px, float cx, float cy, core::Color color, char32_t codepoint);
 

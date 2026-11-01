@@ -15,7 +15,7 @@ namespace launcher
 namespace screens
 {
     // what --screenshot shows: "" (what's next), setup:folder|disc|tools|game, home, task, sheet:saves|settings|help|
-    // folder, dialog:restore|quit|cancel, gallery; demo: running|error|done|playing|update
+    // folder, dialog:restore|quit|cancel, gallery; demo: running|count|error|done|playing|update
     struct Options
     {
         std::string screen, demo;

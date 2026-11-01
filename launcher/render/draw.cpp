@@ -200,12 +200,13 @@ namespace render
         rect({cx - radius, cy - radius, radius * 2, radius * 2}, color, radius);
     }
 
-    void glyph(Rect r, const float uv[4], Color color)
+    void glyph(Rect r, const float uv[4], Color color, float blur)
     {
-        Instance *i = add(kGlyph, r, 0);
+        Instance *i = add(kGlyph, r, blur > 0 ? blur + 1 : 0);
         if (!i)
             return;
         std::memcpy(i->uv, uv, sizeof(i->uv));
         i->color0 = faded(color);
+        i->params[1] = std::max(blur, 0.0f);
     }
 }

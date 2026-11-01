@@ -443,7 +443,7 @@ namespace ui
         Widget &w = widget(wid);
         if (w.fresh)
             w.t = float(value);
-        animate(w.t, float(value), 7);
+        animate(w.t, float(value), 4.5f); // unhurried: a change of one takes about half a second to settle
         const float v = std::max(0.0f, w.t);
         const int shownMax = std::max(value, int(std::ceil(v)));
         int digits = 1;
@@ -456,8 +456,10 @@ namespace ui
         float digitW = 0;
         for (char c = '0'; c <= '9'; ++c)
             digitW = std::max(digitW, measure(font, size, std::string(1, c)));
-        // the strip of each digit is clipped to one line
-        pushClip({x - px(2), baseline - cap - cap * 0.16f, digitW * float(digits) + px(4), cap * 1.32f});
+        // A digit leaving rises, blurs and fades; the one arriving comes up from below out of a blur into focus. The
+        // fades do the edges; the clip (with room for the blur) only keeps the strip's far digits out.
+        const float maxBlur = cap * 0.16f;
+        pushClip({x - maxBlur - px(2), baseline - cap - cap * 0.5f, digitW * float(digits) + 2 * maxBlur + px(4), cap * 2.4f});
         for (int i = 0; i < digits; ++i)
         {
             const float place = std::pow(10.0f, float(digits - 1 - i));
@@ -473,9 +475,12 @@ namespace ui
             const float alpha = leading ? core::clamp01(v / place) : 1.0f;
             const std::string a(1, char('0' + d0)), b(1, char('0' + (d0 + 1) % 10));
             const float ca = (digitW - measure(font, size, a)) * 0.5f, cb = (digitW - measure(font, size, b)) * 0.5f;
-            drawText(font, size, dx + ca, baseline - frac * step, fade(color, alpha), a);
+            // smooth in, smooth out: the blur and the fade lead a little at both ends of the move
+            const float s = frac * frac * (3 - 2 * frac);
+            // the one leaving is gone before the motion's slow tail, so no ghost lingers above
+            drawText(font, size, dx + ca, baseline - frac * step, fade(color, alpha * (1 - s) * (1 - s)), a, maxBlur * std::sqrt(frac));
             if (frac > 0.001f)
-                drawText(font, size, dx + cb, baseline + (1 - frac) * step, fade(color, alpha), b);
+                drawText(font, size, dx + cb, baseline + (1 - frac) * step, fade(color, alpha * s), b, maxBlur * std::sqrt(1 - frac));
         }
         popClip();
         return digitW * float(digits);

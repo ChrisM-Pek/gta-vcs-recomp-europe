@@ -8,7 +8,7 @@
 //   ... --out FILE                      the output to a file instead (scripts, CI)
 //   VCSLauncher.exe --screenshot F.png  the window rendered offscreen and saved (tests, docs; never a window):
 //       [--screen S] [--demo D]         what is shown (screens/screens.h: setup:disc, home, task, sheet:saves,
-//                                       dialog:quit, gallery...; demo: running, link, firstlink, error, done,
+//                                       dialog:quit, gallery...; demo: running, count (1% every 0.8 s), link, firstlink, error, done,
 //                                       playing, update)
 //       [--then S --at T]               switch to S after T seconds (transitions)
 //       [--frames N]                    N consecutive frames from the start (or from --then): F-000.png...

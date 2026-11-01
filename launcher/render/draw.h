@@ -41,7 +41,7 @@ namespace render
         Color color1;    // gradient end
         Color border;
         uint32_t kind;
-        float params[4]; // x = border width, y = shadow sigma, z = line thickness, w = gradient (0 vertical, 1 horizontal)
+        float params[4]; // x = border width, y = shadow sigma / glyph blur radius, z = line thickness, w = gradient (0 vertical, 1 horizontal)
     };
     static_assert(sizeof(Instance) == 96, "Instance is 96 bytes");
 
@@ -106,5 +106,5 @@ namespace render
     // angles in radians, 0 = right, clockwise (y points down)
     void arc(float cx, float cy, float radius, float thickness, float start, float sweep, Color color);
     void circle(float cx, float cy, float radius, Color color);
-    void glyph(Rect r, const float uv[4], Color color);
+    void glyph(Rect r, const float uv[4], Color color, float blur = 0); // blur: a radius in pixels
 }

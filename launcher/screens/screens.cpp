@@ -602,6 +602,14 @@ namespace screens
                 openDialog(Dialog::BuildDir);
         }
         keyboard(app);
+        // --demo count: the sample build gains 1% every 0.8 s (the rolling percentage, frame by frame)
+        if (shell.options.demo == "count" && app.task && !app.task->finished)
+        {
+            launcher::Task &t = *app.task;
+            const int steps = int(ui::state.wall / 0.8);
+            t.done = std::min(t.total, 1180 + steps * t.total / 100);
+            ui::wakeAt((steps + 1) * 0.8);
+        }
 
         if (g_forcedMode == 100)
         {

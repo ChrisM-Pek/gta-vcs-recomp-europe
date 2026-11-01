@@ -270,7 +270,7 @@ namespace render
         return x;
     }
 
-    float drawText(Font font, float px, float x, float baseline, core::Color color, std::string_view text)
+    float drawText(Font font, float px, float x, float baseline, core::Color color, std::string_view text, float blur)
     {
         if (!g_ready)
             return x;
@@ -296,7 +296,7 @@ namespace render
             if (g.w > 0)
             {
                 const float uv[4] = {float(g.ax), float(g.ay), float(g.ax + g.w), float(g.ay + g.h)};
-                glyph({whole - draw.dx + float(g.left), base + float(g.top), float(g.w), float(g.h)}, uv, color);
+                glyph({whole - draw.dx + float(g.left), base + float(g.top), float(g.w), float(g.h)}, uv, color, blur);
             }
             pen += g.advance;
         }

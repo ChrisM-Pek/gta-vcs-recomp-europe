@@ -78,7 +78,8 @@ motion is (2026-11-01, the user's "rethink everything"; before, a sidebar of pag
   the button is a "Playing · 12:34" panel (redrawn once a second, never continuously); a non-zero exit becomes a red
   card with `gameExitText()` and the log.
 - **Task** (`task.cpp`): a build, the installer, a disc copy, an update, a report or a restore takes the window: a
-  large percentage whose digits roll like an odometer, a bar with a sheen, the time so far and left, the stages as a
+  large percentage whose digits roll like an odometer (the one leaving blurs and fades as it rises, the one arriving
+  comes up out of a blur into focus), a bar with a sheen, the time so far and left, the stages as a
   timeline (spinners that turn into checks or a cross), Cancel (asks first), the log in a drawer that rises from the
   bottom (Ctrl+L, or *Show details*; it opens by itself on a failure). A failure slides in a card with a red edge that
   shakes once: the code's title and fix (`errorHelp` in `launcher/model/tasks.cpp`), *Try again*, *Open the log*,
@@ -142,7 +143,7 @@ static exe, 17 s from scratch. Layers, each using only those below it:
 | `launcher/main.cpp` | entry, the command-line forms, the frame loop, `--screenshot` |
 | `launcher/screens/` | the window: `screens.cpp` (which mode, transitions, the model's readings), `titlebar`, `backdrop`, `setup`, `home`, `task`, `sheets`, `overlays` (dialogs, toasts), `gallery` |
 | `launcher/ui/` | immediate-mode widgets with retained animation state (`ui.cpp`: ids, hover / press / focus, input layers, `animate` / `spring`, `wakeAt`, tooltips; `widgets.cpp`: buttons, segmented control, toggle, choice rows, cards, pills, status badges that morph, progress bar, rolling numbers, scroll areas, the log view), `theme.h` (every colour and size) |
-| `launcher/render/` | `draw.cpp`: the draw list - one 96-byte instance per primitive (rounded rect with gradient and border, glyph, Gaussian shadow, line, arc), base and overlay layers, clip / opacity / offset stacks; `font.cpp`: the glyph atlas (R8, shelf-packed, grows 1024 -> 4096 without moving glyphs, quarter-pixel variants), layout, ellipsis, wrapping; `font_dwrite.cpp`: DirectWrite rasterises; `renderer.h` and `d3d11/` (`ui.hlsl`, compiled by fxc at build time) |
+| `launcher/render/` | `draw.cpp`: the draw list - one 96-byte instance per primitive (rounded rect with gradient and border, glyph - sharp or Gaussian-blurred, sampled only inside its own texels -, Gaussian shadow, line, arc), base and overlay layers, clip / opacity / offset stacks; `font.cpp`: the glyph atlas (R8, shelf-packed, grows 1024 -> 4096 without moving glyphs, quarter-pixel variants), layout, ellipsis, wrapping; `font_dwrite.cpp`: DirectWrite rasterises; `renderer.h` and `d3d11/` (`ui.hlsl`, compiled by fxc at build time) |
 | `launcher/platform/` | `platform.h` (window, input, time, wake, dialogs); `platform_win32.cpp` |
 | `launcher/core/` | `math.h` (rects and rect cutting, sRGB colours, `damp`, a sub-stepped `Spring`, easings), `png.cpp` |
 | `launcher/model/` | the state and the tools it runs: `tasks.cpp` (App, Task, the `@vcs` events, `errorHelp`, settings), `process.cpp` (Job Objects; output and exit wake the UI), `disc_check.cpp`, `system.cpp`, `json.cpp` |

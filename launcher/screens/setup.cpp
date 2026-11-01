@@ -486,7 +486,7 @@ namespace screens
             const int target = std::clamp(shown, 0, n - 1);
             if (box.fresh)
                 box.spring.snap(float(target));
-            ui::spring(box.spring, float(target), 170, 1.0f);
+            ui::spring(box.spring, float(target), 600, 1.0f); // there in about a quarter of a second
             const float pos = std::clamp(box.spring.value, 0.0f, float(n - 1));
             const int from = std::min(int(pos), n - 2);
             const float t = pos - float(from);

@@ -99,14 +99,14 @@ namespace ui
     // what a label shows: the text before "##" (what follows only tells widgets with the same text apart)
     std::string_view shownText(std::string_view label) { return label.substr(0, label.find("##")); }
 
-    float buttonWidth(std::string_view label, char32_t icon, float size)
+    float buttonWidth(std::string_view label, char32_t icon, float size, Font font)
     {
         const std::string_view text = shownText(label);
         const float s = size > 0 ? size : px(theme::kBody);
-        return std::ceil(measure(kFontSemibold, s, text) + px(36) + (icon ? s + px(10) : 0));
+        return std::ceil(measure(font, s, text) + px(36) + (icon ? s + px(10) : 0));
     }
 
-    bool button(std::string_view label, Rect r, ButtonStyle style, char32_t icon, bool enabled, float size)
+    bool button(std::string_view label, Rect r, ButtonStyle style, char32_t icon, bool enabled, float size, Font font)
     {
         const Interaction in = interact(id(label), r, true, enabled);
         const std::string_view text = shownText(label);
@@ -142,7 +142,7 @@ namespace ui
             textColor = mix(rgb(0xFFC9C9), rgb(0xFFFFFF), w.hover);
             break;
         }
-        const float textW = measure(kFontSemibold, s, text);
+        const float textW = measure(font, s, text);
         const float iconW = icon ? s + px(10) : 0;
         float x = std::floor(box.cx() - (textW + iconW) * 0.5f);
         if (icon)
@@ -150,7 +150,7 @@ namespace ui
             drawIcon(kFontIcons, s * 0.95f, x + s * 0.5f, box.cy(), textColor, icon);
             x += iconW;
         }
-        drawText(kFontSemibold, s, x, centredBaseline(kFontSemibold, s, box), textColor, text);
+        drawText(font, s, x, centredBaseline(font, s, box), textColor, text);
         render::popOpacity();
         focusRing(r, w.focus, radius);
         return in.clicked && enabled;

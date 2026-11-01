@@ -163,7 +163,11 @@ static exe, 17 s from scratch. Layers, each using only those below it:
 - **Text**: DirectWrite (grayscale, natural symmetric, grid-fitted at text sizes), cached per font / pixel size /
   code point / quarter pixel; kerning from the font. Fonts from Windows: Segoe UI Variable Text (Windows 11) else
   Segoe UI, Bahnschrift for the name and the big numbers, Segoe Fluent Icons else Segoe MDL2 Assets, Cascadia Mono else
-  Consolas for the log. Nothing bundled.
+  Consolas for the log. Nothing bundled. **Pricedown** (GTA's lettering, Typodermic) for the few prominent things - the
+  name on Home, Home's big button, the build percentage - when the player has it installed (`render::kFontBrand`,
+  `fontFound`), else the display font. Its desktop EULA lets each person install it, not ship it in software or in
+  open-source projects (4.1, 4.3, 4.6), so it is looked up by name and never in the repository or the exe
+  (DECISIONS.md 2026-11-01). `VCS_BRAND_FONT=<file>` uses a font file of the player's own instead (tests).
 - **Chrome**: an ordinary overlapped window whose whole area is client (`WM_NCCALCSIZE`), `WM_NCHITTEST` for the
   resize edges, the caption (drag, double-click, system menu, snapping) and `HTMAXBUTTON` over the maximise button
   (Windows 11's snap layouts); dark mode, Windows 11 corners and border through DWM attributes; the DWM shadow from a

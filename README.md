@@ -32,6 +32,8 @@ The launcher also backs up and restores your saves, makes a desktop shortcut, ch
 ask, or at start if you turn that on in *Settings*), and zips the logs into a report for bug reports. Windows may warn
 that the launcher is from an unknown publisher (it isn't signed): *More info > Run anyway*. How it works:
 [docs/LAUNCHER.md](docs/LAUNCHER.md). Everything it does is a script in `tools/` you can also run yourself (below).
+If the *Pricedown* font (GTA's lettering, free for personal desktop use from Typodermic) is installed on your PC, the
+launcher uses it for its title and Play button; its licence doesn't allow including it, so it isn't.
 
 ## Install by hand (Windows and Linux)
 

@@ -4,6 +4,7 @@
 #include "font_raster.h"
 
 #include <cmath>
+#include <cstdlib>
 #include <cstring>
 #include <unordered_map>
 
@@ -30,6 +31,7 @@ namespace render
         };
 
         Face g_fonts[kFontCount];
+        bool g_brandFound = false;
         std::unordered_map<uint64_t, Glyph> g_glyphs;
         bool g_ready = false;
 
@@ -200,6 +202,13 @@ namespace render
         const int icons = raster::loadFace({R{L"Segoe Fluent Icons", 400}, R{L"Segoe MDL2 Assets", 400}});
         const int mono = raster::loadFace({R{L"Cascadia Mono", 400}, R{L"Consolas", 400}, R{L"Courier New", 400}});
         const int symbols = raster::loadFace({R{L"Segoe UI Symbol", 400}});
+        // Pricedown's licence (Typodermic's desktop EULA) lets each person install it on their own PC, not ship it in
+        // software: it is used when installed, never bundled (DECISIONS.md 2026-11-01). VCS_BRAND_FONT: a font file of
+        // the player's own instead of an installed one (tests).
+        int brand = raster::loadFace({R{L"Pricedown", 900}, R{L"Pricedown Black", 400}, R{L"Pricedown Bl", 400}});
+        if (const wchar_t *file = _wgetenv(L"VCS_BRAND_FONT"); brand < 0 && file && *file)
+            brand = raster::loadFaceFile(file);
+        g_brandFound = brand >= 0;
         if (ui < 0)
         {
             error = "no usable system font (Segoe UI)";
@@ -211,6 +220,7 @@ namespace render
             {display >= 0 ? display : uiSemi, ui, symbols},
             {icons, symbols, ui},
             {mono >= 0 ? mono : ui, ui, symbols},
+            {brand >= 0 ? brand : display >= 0 ? display : uiSemi, display >= 0 ? display : ui, ui},
         };
         for (int f = 0; f < kFontCount; ++f)
         {
@@ -245,6 +255,8 @@ namespace render
         g_glyphs.clear();
         atlasReset(atlas.size ? atlas.size : kAtlasInitial);
     }
+
+    bool fontFound(Font font) { return font != kFontBrand || g_brandFound; }
 
     FontMetrics metrics(Font font, float px)
     {

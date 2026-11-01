@@ -63,12 +63,13 @@ namespace screens
         y += px(24);
         pushReveal(since, 1);
         {
-            const float size = px(58);
-            const FontMetrics m = metrics(kFontDisplay, size);
+            // the name in Pricedown when the player has it (kFontBrand), else in the display font
+            const float size = fontFound(kFontBrand) ? px(66) : px(58);
+            const FontMetrics m = metrics(kFontBrand, size);
             // a soft glow under the name
-            shadow({left, y + m.ascent * 0.35f, measure(kFontDisplay, size, "Vice City Stories"), m.ascent * 0.6f},
+            shadow({left, y + m.ascent * 0.35f, measure(kFontBrand, size, "Vice City Stories"), m.ascent * 0.6f},
                    withAlpha(theme::kPink, 0.16f), px(26), px(10));
-            drawText(kFontDisplay, size, left - px(2), y + m.ascent, theme::kText, "Vice City Stories");
+            drawText(kFontBrand, size, left - px(2), y + m.ascent, theme::kText, "Vice City Stories");
             y += m.ascent + m.descent + px(4);
         }
         popReveal();
@@ -81,6 +82,8 @@ namespace screens
         pushReveal(since, 3);
         const std::string next = app.next();
         const Rect big{left, y, px(232), px(56)};
+        // the big button's label is the other place for Pricedown
+        const float heroSize = fontFound(kFontBrand) ? px(31) : px(18); // Pricedown is small on its body
         bool primary = false;
         std::string below;
         Color belowColor = theme::kFaint;
@@ -92,7 +95,7 @@ namespace screens
         else if (!app.doctorDone || app.doctorCached)
         {
             // the last answer is on screen; this run's check is still out: nothing to press yet
-            ui::button("Play", big, ButtonStyle::Primary, theme::icon::kPlay, false, px(18));
+            ui::button("Play", big, ButtonStyle::Primary, theme::icon::kPlay, false, heroSize, kFontBrand);
             ui::spinner(big.right() + px(26), big.cy(), px(8), theme::kDim, px(2));
             ui::label(kFontBody, px(theme::kBody), {big.right() + px(44), big.y, px(200), big.h}, theme::kDim, "Checking");
             below = app.doctorCached ? buildSummary(app) : "";
@@ -100,7 +103,7 @@ namespace screens
         else if (app.doctorFailed())
         {
             primary = ui::button(app.doctorRunning ? "Checking..." : "Check again", big, ButtonStyle::Primary, theme::icon::kRefresh,
-                                 !app.doctorRunning, px(17));
+                                 !app.doctorRunning, heroSize, kFontBrand);
             if (primary || (platform::input.key(platform::kKeyEnter) && !ui::state.focusVisible && ui::inputAllowed()))
                 app.refresh();
             below = "The check of this PC gave no answer.";
@@ -108,7 +111,7 @@ namespace screens
         }
         else if (next == "build")
         {
-            primary = ui::button("Update the build", big.offset(0, 0), ButtonStyle::Primary, theme::icon::kRepair, !app.busy(), px(17));
+            primary = ui::button("Update the build", big.offset(0, 0), ButtonStyle::Primary, theme::icon::kRepair, !app.busy(), heroSize, kFontBrand);
             if (primary || (platform::input.key(platform::kKeyEnter) && !ui::state.focusVisible && ui::inputAllowed() && !app.busy()))
                 app.startBuild();
             const launcher::Json &reasons = app.doctor["build"]["reasons"];
@@ -117,14 +120,14 @@ namespace screens
         }
         else if (next == "play")
         {
-            primary = ui::button("Play", big, ButtonStyle::Primary, theme::icon::kPlay, true, px(19));
+            primary = ui::button("Play", big, ButtonStyle::Primary, theme::icon::kPlay, true, heroSize, kFontBrand);
             if (primary || (platform::input.key(platform::kKeyEnter) && !ui::state.focusVisible && ui::inputAllowed()))
                 play(app);
             below = buildSummary(app);
         }
         else
         {
-            if (ui::button("Continue setup", big, ButtonStyle::Primary, theme::icon::kChevronRight, true, px(17)))
+            if (ui::button("Continue setup", big, ButtonStyle::Primary, theme::icon::kChevronRight, true, heroSize, kFontBrand))
                 openSetup(-1);
         }
         y += big.h + px(16);

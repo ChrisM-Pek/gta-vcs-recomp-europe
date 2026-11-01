@@ -108,11 +108,11 @@ namespace screens
             if (t.total > 0)
             {
                 const int pct = int(100.0 * t.done / t.total);
-                const float size = px(64);
-                const FontMetrics m = metrics(kFontDisplay, size);
+                const float size = fontFound(kFontBrand) ? px(80) : px(64);
+                const FontMetrics m = metrics(kFontBrand, size); // Pricedown when installed: GTA's money counter
                 const float base = y + m.ascent;
-                const float numW = ui::rollingNumber(ui::id("#pct"), kFontDisplay, size, col.x - px(2), base, theme::kText, pct);
-                drawText(kFontDisplay, size * 0.5f, col.x + numW + px(4), base, theme::kDim, "%");
+                const float numW = ui::rollingNumber(ui::id("#pct"), kFontBrand, size, col.x - px(2), base, theme::kText, pct);
+                drawText(kFontBrand, size * 0.5f, col.x + numW + px(4), base, theme::kDim, "%");
                 const float tx = col.x + numW + px(44);
                 ui::label(kFontSemibold, px(17), {tx, base - px(46), col.right() - tx, px(26)}, theme::kText, stageTitle);
                 std::string line = duration(elapsed) + " so far";

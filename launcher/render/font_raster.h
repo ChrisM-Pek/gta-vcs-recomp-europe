@@ -29,6 +29,8 @@ namespace render::raster
     void shutdown();
     // the first family of the list that exists; -1 when none does
     int loadFace(const std::vector<FaceRequest> &candidates);
+    // a font file (the first face in it); -1 when it can't be read
+    int loadFaceFile(const std::wstring &path);
     FaceMetrics faceMetrics(int face);
     uint16_t glyphIndex(int face, char32_t codepoint); // 0: the face has no glyph for it
     float advance(int face, uint16_t glyph);           // font units

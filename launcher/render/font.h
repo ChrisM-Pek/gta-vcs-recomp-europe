@@ -23,6 +23,7 @@ namespace render
         kFontDisplay,  // Bahnschrift: the wordmark, large numbers
         kFontIcons,    // Segoe Fluent Icons / Segoe MDL2 Assets
         kFontMono,     // Cascadia Mono / Consolas: the log
+        kFontBrand,    // Pricedown (GTA's), when the player has it installed; else the display font. Sparingly.
         kFontCount
     };
 
@@ -52,6 +53,9 @@ namespace render
     void fontsShutdown();
     void fontsBeginFrame();  // a full atlas is cleared here, never mid-frame
     void fontsClearCache();  // the DPI changed: everything rasterises again at the new sizes
+
+    // false when the font fell back to another (kFontBrand without Pricedown installed)
+    bool fontFound(Font font);
 
     FontMetrics metrics(Font font, float px);
     float measure(Font font, float px, std::string_view utf8);

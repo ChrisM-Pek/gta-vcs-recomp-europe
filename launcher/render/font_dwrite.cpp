@@ -29,6 +29,16 @@ namespace render::raster
                 p->Release();
             p = nullptr;
         }
+
+        // metrics and kerning of a face just made
+        void finish(LoadedFace &loaded)
+        {
+            DWRITE_FONT_METRICS m{};
+            loaded.face->GetMetrics(&m);
+            loaded.metrics = {float(m.designUnitsPerEm), float(m.ascent), float(m.descent), float(m.lineGap), float(m.capHeight)};
+            if (SUCCEEDED(loaded.face->QueryInterface(__uuidof(IDWriteFontFace1), reinterpret_cast<void **>(&loaded.face1))))
+                loaded.kerning = loaded.face1->HasKerningPairs() != FALSE;
+        }
     }
 
     bool init(std::string &error)
@@ -74,13 +84,7 @@ namespace render::raster
                 SUCCEEDED(family->GetFirstMatchingFont(DWRITE_FONT_WEIGHT(request.weight), DWRITE_FONT_STRETCH_NORMAL,
                                                        DWRITE_FONT_STYLE_NORMAL, &font)) &&
                 SUCCEEDED(font->CreateFontFace(&loaded.face)))
-            {
-                DWRITE_FONT_METRICS m{};
-                loaded.face->GetMetrics(&m);
-                loaded.metrics = {float(m.designUnitsPerEm), float(m.ascent), float(m.descent), float(m.lineGap), float(m.capHeight)};
-                if (SUCCEEDED(loaded.face->QueryInterface(__uuidof(IDWriteFontFace1), reinterpret_cast<void **>(&loaded.face1))))
-                    loaded.kerning = loaded.face1->HasKerningPairs() != FALSE;
-            }
+                finish(loaded);
             release(font);
             release(family);
             if (loaded.face)
@@ -90,6 +94,25 @@ namespace render::raster
             }
         }
         return -1;
+    }
+
+    int loadFaceFile(const std::wstring &path)
+    {
+        IDWriteFontFile *file = nullptr;
+        LoadedFace loaded;
+        BOOL supported = FALSE;
+        DWRITE_FONT_FILE_TYPE fileType{};
+        DWRITE_FONT_FACE_TYPE faceType{};
+        UINT32 faces = 0;
+        if (SUCCEEDED(g_factory->CreateFontFileReference(path.c_str(), nullptr, &file)) &&
+            SUCCEEDED(file->Analyze(&supported, &fileType, &faceType, &faces)) && supported && faces > 0 &&
+            SUCCEEDED(g_factory->CreateFontFace(faceType, 1, &file, 0, DWRITE_FONT_SIMULATIONS_NONE, &loaded.face)))
+            finish(loaded);
+        release(file);
+        if (!loaded.face)
+            return -1;
+        g_faces.push_back(loaded);
+        return int(g_faces.size()) - 1;
     }
 
     FaceMetrics faceMetrics(int face) { return g_faces[size_t(face)].metrics; }

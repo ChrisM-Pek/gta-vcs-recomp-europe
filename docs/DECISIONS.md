@@ -786,3 +786,14 @@ bar, disc art behind Home later.
   also turned motion off. Now the launcher's setting alone decides; Windows' only gives its value until it is set.)
 - **Tests stay hidden**: `--screenshot` renders offscreen on a fixed clock (same arguments, same picture), with
   `--frames` for transitions; `--hidden --quit-after` runs the real window loop unshown and reports its cost.
+
+## 2026-11-01 - Pricedown in the launcher only when the player has it installed
+
+The user asked for Pricedown (GTA's lettering) on the launcher's prominent elements, from a zip of Typodermic's free
+desktop release (`Pricedown Bl.otf`). Its licence (Typodermic Desktop EULA v260817, in the zip) forbids distributing the
+font (4.1), bundling or embedding it in a desktop application or other software (4.3) and including it in open-source /
+publicly available software (4.6); the zip's guide says apps and software need another licence. So the font is not in
+the repository or the exe: the launcher asks DirectWrite for an installed "Pricedown" (each player may install their own
+copy, 2.1) and falls back to Bahnschrift. Used for three things only: the name on Home, Home's big button, the build
+percentage (GTA's money counter is Pricedown). A pre-rendered image of the lettering (fixed artwork, 2.2) was not
+chosen: digits for the percentage would be a reusable glyph set (4.5). A licence for embedding would change this.

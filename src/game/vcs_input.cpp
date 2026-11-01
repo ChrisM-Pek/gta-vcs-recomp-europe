@@ -458,13 +458,17 @@ namespace vcs::input
                     const bool padWant = m.freeAimPad && padR1;
                     aim::Input in;
                     in.want = !blocked && (mouseWant || padWant);
-                    // zoomed views turn slower for the same hand movement
-                    const float look = m.mouseLook * fov / 70.0f;
-                    in.turn = -dx * look;
-                    in.tilt = up * look;
-                    // the stick on a curve (fine aim near the centre), left / up +
-                    in.turnRate = -padRx * std::fabs(padRx);
-                    in.tiltRate = -padRy * std::fabs(padRy);
+                    in.on = m.freeAimMouse || m.freeAimPad;
+                    if (!blocked)
+                    {
+                        // zoomed views turn slower for the same hand movement
+                        const float look = m.mouseLook * fov / 70.0f;
+                        in.turn = -dx * look;
+                        in.tilt = up * look;
+                        // the stick on a curve (fine aim near the centre), left / up +
+                        in.turnRate = -padRx * std::fabs(padRx);
+                        in.tiltRate = -padRy * std::fabs(padRy);
+                    }
                     g_mouse.aim = aim::update(in);
                 }
 
@@ -589,6 +593,13 @@ namespace vcs::input
                 buttons = static_cast<uint16_t>((buttons & ~(kR1 | kL3)) | (g_mouse.aim.r1 ? kR1 : 0) | (g_mouse.aim.l3 ? kL3 : 0));
                 if (g_mouse.aim.camera)
                     rx = ry = 0.0f;
+            }
+            else if (g_mouse.aim.camera)
+            {
+                // the game's own free aim in a car (aim::update): the mouse / right stick turn it, not the left stick
+                rx = ry = 0.0f;
+                if (g_mouse.aim.leftStick)
+                    lx = ly = 0.0f;
             }
 
             const uint16_t word = static_cast<uint16_t>(~buttons);

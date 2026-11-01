@@ -746,3 +746,10 @@ from them: Vic moves while free aiming exactly when he can move locked on with t
   giving up and trying again. Now: once a free aim has ended because the gun went, R1 stays up until the button is let
   go (a gun back in hand, e.g. by the wheel, aims again); an entry the game answers with a ped lock is let go at once,
   and every retry waits 8 frames with R1 up. Starting with fists or melee is the PS2's R1 as before.
+- (2026-11-01, the user) Jive Drive's shooting from the passenger seat still aimed with the left stick. That is the
+  game's own free aim, which the mission starts itself (SET_PLAYER_DRIVEBY_MODE; game-internals.md 12c) - the only
+  mission that does. With free aim on for either device the host turns its dummy in the car too: the mouse and the
+  right stick, no button (the game aims all the time there), the left stick centred so the two don't fight. Kept from
+  the game: the dummy at the gun's range, the world direction while the car turns, 20 deg up / 5 down; the shots go
+  down the camera line as on foot. Both devices' sticks / mice turn it whichever setting is on: there is no button to
+  tell the devices apart, and the left stick no longer aims. Free aim off is the PS2's left stick.

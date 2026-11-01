@@ -56,6 +56,10 @@ namespace vcs::aim
         constexpr float kStartPitchLimit = 0.35f; // aiming starts about level, not where a steep camera looked
         constexpr uint32_t kCamModeFollowPed = 4;
         constexpr float kStickRate = 2.0f;      // radians a second at full tilt (gamepad)
+        // in a car (the game's drive-by free aim, FUN_002343E0): the dummy at the gun's range from Vic, between 5 deg
+        // below and 20 deg above level (the game's limits for the stick there: 70..95 deg from Vic's up)
+        constexpr float kCarPitchDown = -0.0872665f, kCarPitchUp = 0.3490659f;
+        constexpr uint32_t kWeaponInfo = 0x00712770u; // *(*(this) + 4) + type * 0x70: the weapon's info, +8 its range
 
         PS2Runtime::RecompiledFunction g_origGame = nullptr, g_origCamera = nullptr, g_origShotLine = nullptr,
                                        g_origMovesAiming = nullptr;
@@ -70,6 +74,7 @@ namespace vcs::aim
                       // Idle again - the game never sees R1 held long enough to lock on to a ped
             Held,     // the gun went (ran dry: the game puts the fists in his hand; or changed) while the button is
                       // held: R1 up until it is let go or a gun is back in hand (then free aim again)
+            Passenger, // in a car, the game's own free aim (its drive-by mode): the dummy is ours, no buttons
         };
         // game thread
         State g_state = State::Idle;
@@ -119,6 +124,21 @@ namespace vcs::aim
         bool isGun(uint32_t type) { return (type >= 19 && type <= 29) || (type >= 33 && type <= 35); }
 
         bool onFoot(uint32_t ped) { return ped && !rd32(ped + kPedVehicle) && rd32(ped + kPedState) != 0x37; }
+
+        // In a car with the game's free aim on (a mission's drive-by mode): bit 51 and the dummy object as the target.
+        bool carFreeAim(uint32_t ped)
+        {
+            return ped && rd32(ped + kPedVehicle) && freeAimBit(ped) && isObject(rd32(ped + kPedTarget));
+        }
+
+        float weaponRange(uint32_t ped)
+        {
+            const int8_t slot = static_cast<int8_t>(g_rdram[(ped + kPedSlot) & kRamMask]);
+            const uint32_t type = slot >= 0 && slot < 10 ? rd32(ped + kPedWeapons + slot * 0x1Cu) : 0;
+            const uint32_t table = rd32(rd32(kWeaponInfo) + 4);
+            const float range = type && type < 60 && table ? rdf(table + type * 0x70u + 8) : 0.0f;
+            return range >= 5.0f && range <= 200.0f ? range : 30.0f;
+        }
 
         void dummyPlace(uint32_t ped)
         {
@@ -221,8 +241,8 @@ namespace vcs::aim
         PS2_GUEST_CC void shotLine(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
         {
             const uint32_t ped = rd32(kPlayerPed);
-            if (g_state == State::Active && GPR_U32(ctx, 31) == kShotLineReturn && ped && GPR_U32(ctx, 9) == ped &&
-                rd32(ped + kPedTarget) == g_dummy)
+            if ((g_state == State::Active || g_state == State::Passenger) && GPR_U32(ctx, 31) == kShotLineReturn && ped &&
+                GPR_U32(ctx, 9) == ped && rd32(ped + kPedTarget) == g_dummy)
             {
                 const uint32_t from = GPR_U32(ctx, 4), to = GPR_U32(ctx, 5), cam = activeCam();
                 const float src[3] = {rdf(cam + kCamSource), rdf(cam + kCamSource + 4), rdf(cam + kCamSource + 8)};
@@ -302,12 +322,69 @@ namespace vcs::aim
             turnFollowCamera(cam, ped, std::remainder(g_handBeta - rdf(cam + kCamBeta), 6.2831855f));
     }
 
+    namespace
+    {
+        // In a car with the game's free aim on (a mission's drive-by mode, game-internals.md 12c): the game moves the
+        // dummy with the car and turns it by the left stick (FUN_002343E0, in the world update after this pad read),
+        // then pulls it onto whatever the camera's line to it hits. Here the mouse / right stick turn it instead (the
+        // left stick centred), placed at the gun's range from Vic as the game keeps it, and the lock-on camera is
+        // turned by the same amount first, as on foot. No button: the game aims all the time in this mode, and the
+        // fire button shoots (through the circle: the shot line as on foot).
+        Output passenger(uint32_t ped, const Input &in)
+        {
+            Output out;
+            const uint32_t cam = activeCam();
+            if (g_state != State::Passenger)
+            {
+                if (g_state == State::Active)
+                    stop("in a car");
+                // aim where the camera looks, level
+                g_yaw = std::atan2(rdf(cam + 0x14), rdf(cam + 0x10));
+                g_pitch = 0.0f;
+                g_dummy = rd32(ped + kPedTarget);
+                g_state = State::Passenger;
+                g_active = true;
+                std::fprintf(stderr, "[aim] free aim in the car (the game's drive-by, dummy 0x%x)\n", g_dummy);
+            }
+            g_dummy = rd32(ped + kPedTarget);
+            out.camera = out.leftStick = true;
+
+            const float dt = std::clamp(rdf(kTimeStep), 0.05f, 3.4f) / 50.0f;
+            const float turn = in.turn + in.turnRate * kStickRate * dt;
+            const float pitch = std::clamp(g_pitch + in.tilt + in.tiltRate * kStickRate * dt, kCarPitchDown, kCarPitchUp);
+            const float tilt = pitch - g_pitch;
+            g_yaw = std::remainder(g_yaw + turn, 6.2831855f);
+            g_pitch = pitch;
+            if (rd32(cam) == kCamModeLockOn && (turn != 0.0f || tilt != 0.0f))
+            {
+                const float beta = std::fmod(rdf(cam + kCamBeta) + turn, 6.2831855f);
+                wrf(cam + kCamBeta, beta < 0.0f ? beta + 6.2831855f : beta);
+                wrf(cam + kCamAlpha, rdf(cam + kCamAlpha) + tilt);
+            }
+            const float range = weaponRange(ped), cp = std::cos(g_pitch);
+            const float at[3] = {rdf(ped + kPedPos) + range * cp * std::cos(g_yaw),
+                                 rdf(ped + kPedPos + 4) + range * cp * std::sin(g_yaw),
+                                 rdf(ped + kPedPos + 8) + range * std::sin(g_pitch)};
+            wrVec(g_dummy + kPedPos, at);
+            wrVec(ped + kPedAimPoint, at);
+            return out;
+        }
+    }
+
     Output update(const Input &in)
     {
         Output out;
         const uint32_t ped = g_rdram && g_origGame ? rd32(kPlayerPed) : 0;
         if (g_handBack > 0)
             --g_handBack; // the camera hasn't come back to the follow camera in time: leave it
+        if (in.on && carFreeAim(ped))
+            return passenger(ped, in);
+        if (g_state == State::Passenger)
+        {
+            std::fprintf(stderr, "[aim] free aim in the car off\n");
+            g_state = State::Idle;
+            g_active = false;
+        }
         if (!ped || !in.want || !onFoot(ped))
         {
             stop(!in.want ? "released" : "not on foot");

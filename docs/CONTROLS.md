@@ -65,6 +65,11 @@ game-internals.md 12c):
   R1 as on the PS2. There is no aim assist on the gamepad.
 - It is the game's own free aim (R1 then L3 on the PS2: the left stick moves an aiming point while Vic stands still),
   driven so that Vic can move and the mouse aims; `VCS_FREEAIM=0` leaves it out entirely.
+- **Shooting from a car** (Jive Drive: Vic in the passenger seat while Lance drives - the game's own free aim, which the
+  mission starts itself): with free aim on for either device, the mouse and the right stick turn the circle instead of
+  the left stick (the game's help text still says the left stick), no button to hold; the left button fires through
+  the circle. The circle keeps its direction while the car turns, up to 20 degrees above level and 5 below, as the game
+  allows there. With free aim off it is the PS2's left stick.
 
 **In the scopes** (sniper rifles, rocket launcher, M16 view, camera, binoculars) the mouse turns the view itself, 1:1,
 with Mouse camera on (zoomed in it turns slower). **Mouse wheel** (Keyboard page, on by default): on foot down is the

@@ -1978,6 +1978,28 @@ hidden run (rig `peek` / `poke`, snapshots diffed).
   camera / laser-sniper extras; the free-aim circle and the lock-on triangles are drawn elsewhere (not traced).
 - Guest RAM below the game (the EE kernel's 0x00000-0x7FFFF) is all zero in play except a few words at 0x10000,
   0x74000 and 0x7C000; vcs_aim.cpp keeps the shot's start point at **0x60000**.
+- **Free aim in a car: the drive-by mode** (2026-11-01; Jive Drive, mission 61 `LAN_B1`). The mission puts Vic in
+  Lance's Stinger with `WARP_CHAR_INTO_CAR_AS_PASSENGER`, `SET_CHAR_DRIVEBY_MODE(0442) $G2A5 1` and
+  **`SET_PLAYER_DRIVEBY_MODE(0481) $G2A5 1`** (0x100377..0x100384, again at 0x101BD8 after its cutscene) - the only
+  mission that uses 0481 (a search of every mission's disassembly for 0481 / 04D6 SET_PLAYER_FORCE_FREE_AIMING; 04D6 is
+  only ever set in JER_A1 / SRANGE, the driving range, both on foot). From then on the game is in its own free aim: ped
+  state 0x32, bit 51 set, the dummy object (+0x820 = +0xCF8) the target, the lock-on camera (mode 11) and the circle,
+  no button held. Switching 0481 / 0442 off again does not end it; leaving the car does (checked with VCS_FREEAIM=0).
+- **FUN_002343E0(ped, pad) is the free-aim dummy's update** (found by a write watch on the dummy's +0x30 in the car: pc
+  0x47268C, a vector set, called from 0x234634 with s1 = the player; its only caller is FUN_00230640 at 0x23152C, the
+  player's control for states 0x10 / 0x16 / 0x24 / 0x32 / 0x33 with bit 51 set). FUN_00219CC0(ped) = "in a vehicle"
+  by state (0x32, 0x33, 0x37, 0x39, ...). In a vehicle it first moves the dummy by the car's movement since the last frame
+  (+0xD00 keeps the car's position), then the left stick (FUN_00286928 / FUN_00286A20: x 1.5 times faster than on foot)
+  turns it about the camera and puts it at **the weapon's range** (weapon info `*(*(0x712770) + 4) + type * 0x70`, +8:
+  pistol 30, SMG / Mac 45, M249 / minigun 75, rifles 90; byte 0 bit 7 = moves while aiming) - in the car with no
+  side-to-side limit (on foot +-110 deg from Vic's heading) and up / down only between 70 and 95 deg from Vic's up (20
+  above level, 5 below). Then a line test from the camera to the dummy (FUN_001908C0) pulls it onto what it hits. The
+  car's turning does not turn it: the aim keeps its world direction.
+- The passenger's shots go through FireInstantHit's line test at 0x2C47A4 like the on-foot ones (vcs_aim.cpp's shot
+  line counted them: 62 shots in 3 s of fire in Jive Drive). vcs_aim.cpp takes the car's free aim over when free aim
+  is on (either device): the dummy written at the pad read at the gun's range along the mouse / right stick's aim
+  (kept in the game's height limits), the lock-on camera turned by the same amount, the left stick centred; the game's
+  update then adds the car's movement and the line test, as for its own stick.
 
 ## 13. Open questions / next research targets
 

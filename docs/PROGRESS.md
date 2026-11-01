@@ -626,6 +626,15 @@ dropped on uploads (lazy render-target patching).
   M249 shots checked down the camera line too. Not done: aim assist on the gamepad; the shotguns fire through another
   path (not FireInstantHit's line test), so their pellets still fly from the gun to the aim point - right at range, a
   little off up close; the flame-thrower not checked.
+- **Free aim in a car** (2026-11-01, asked for by the user): Jive Drive's passenger-seat shooting (the game's own free
+  aim in its drive-by mode, SET_PLAYER_DRIVEBY_MODE - the only mission that uses it) is turned by the mouse / right
+  stick when free aim is on, the left stick centred; the game's range, height limits and car-following kept, shots down
+  the camera line (src/game/vcs_aim.cpp; game-internals.md 12c). `tools/controls_check.py`, in a car standing with an
+  AI driver and the mission's two commands: free aim off - the left stick turns it (-1.8 rad a second), the mouse not;
+  on - the mouse 1.000 rad per 400 counts (the camera -1.008), the right stick -1.05 in 0.5 s, the left stick 0, 21 deg
+  at the top, a man under the circle hit and one 2 m beside it not, leaving the car ends it. In the mission itself
+  (hidden run, the user's save, god mode): the aim kept its world heading for 4 s of Lance's driving (0.02 rad), 62
+  shots in 3 s of fire, all down the camera line, tracers to the circle.
 - **Music / sound effects volume** (2026-10-28, asked for by the user): Audio > Music and Sound effects are the game's
   own levels, in step with its pause menu both ways and kept across save loads (game-internals.md 9c). controls_check
   checks that the levels reach the game and its prefs, a save load keeps them, and the pause menu's slider changes the

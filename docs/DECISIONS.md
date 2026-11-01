@@ -839,6 +839,13 @@ the UI's, draws exactly as before. The slices' top edge sits on a whole pixel, w
 first slice, so the two never leave a half-covered seam. The streaks are now scheduled like the jets: one every ~10 s
 at a random place around the sun, fading in, drifting right for 35-55 s and fading out.
 
+Then (the user) the jets' starting points and angles more random and varied. A flight's line is now a random point of
+the upper sky (10-90% across, 8-32% down) and an angle up to 24 degrees either way; it enters and leaves where that
+line meets the window's edges (a little outside them) or the skyline, so jets come in from the left, the right or down
+from the top, climbing or descending, and its pace is in pixels a second (a short diagonal is over sooner). Trails
+crossing the words on the left are dimmed to 30%, and fade out under the title bar, so a jet from the top seems to come
+out from under it.
+
 Two frame-loop faults turned up on the way: a sleep that ended on its timeout set `needsRedraw`, which also books a
 settle frame, so every timed wake drew two frames (a timed wake now draws one); and minimized, a frame asked for at a
 time already past made the loop wake at once, again and again - a core spinning behind the game while the "Playing"

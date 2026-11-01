@@ -73,7 +73,8 @@ motion is (2026-11-01, the user's "rethink everything"; before, a sidebar of pag
   slides in from the side it comes from; a pink ring slides along the rail to it. Any step can be looked at from the
   rail. The Folder step only stops Setup when doctor has a warning for it and nothing is built yet.
 - **Home** (`home.cpp`): the name over a striped sun setting into the sea (the icon's motif, drawn by the renderer),
-  one big button for what's next (Play / Update the build / Check again), what was built under it ("Built 2 days ago ·
+  one big button for what's next (Play, or Check again when the check failed; with an update ready Play stays and a
+  smaller *Update the build* sits under it - offered, never forced), what was built under it ("Built 2 days ago ·
   Standard · AVX2"), and three cards along the bottom: Setup (opens it at any step), Saves, Updates. While the game runs
   the button is a "Playing · 12:34" panel (redrawn once a second, never continuously); a non-zero exit becomes a red
   card with `gameExitText()` and the log.

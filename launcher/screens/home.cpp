@@ -117,11 +117,18 @@ namespace screens
         }
         else if (next == "build")
         {
-            primary = ui::button("Update the build", fit("Update the build", theme::icon::kRepair), ButtonStyle::Primary, theme::icon::kRepair, !app.busy(), heroSize, kFontBrand);
-            if (primary || (platform::input.key(platform::kKeyEnter) && !ui::state.focusVisible && ui::inputAllowed() && !app.busy()))
+            // an update is offered, never forced: Play stays the big button (the game that is built still runs), the
+            // update a quieter one under it (the user's choice, 2026-11-01)
+            primary = ui::button("Play", fit("Play", theme::icon::kPlay), ButtonStyle::Primary, theme::icon::kPlay, true, heroSize, kFontBrand);
+            if (primary || (platform::input.key(platform::kKeyEnter) && !ui::state.focusVisible && ui::inputAllowed()))
+                play(app);
+            y += big.h + px(14);
+            if (ui::button("Update the build", {left, y, ui::buttonWidth("Update the build", theme::icon::kRepair), px(40)},
+                           ButtonStyle::Secondary, theme::icon::kRepair, !app.busy()))
                 app.startBuild();
+            y += px(40) - big.h; // the lines under it follow the smaller button
             const launcher::Json &reasons = app.doctor["build"]["reasons"];
-            below = reasons.size() ? "Needs an update: " + reasons[0].str() : "The build needs an update.";
+            below = reasons.size() ? "An update is ready: " + reasons[0].str() : "An update is ready.";
             belowColor = theme::kAmber;
         }
         else if (next == "play")

@@ -4,6 +4,8 @@
 
 #include <windows.h>
 
+#include <atomic>
+
 namespace launcher
 {
     std::wstring quoteArg(const std::wstring &arg)
@@ -33,6 +35,16 @@ namespace launcher
 
     namespace
     {
+        std::atomic<void (*)()> g_wakeHook{nullptr};
+
+        void wakeUi()
+        {
+            if (void (*hook)() = g_wakeHook.load())
+                hook();
+        }
+
+        void CALLBACK exited(void *, BOOLEAN) { wakeUi(); }
+
         // The launcher's environment with `extra` set: a CREATE_UNICODE_ENVIRONMENT block.
         std::wstring environmentBlock(const std::vector<std::pair<std::string, std::string>> &extra)
         {
@@ -61,8 +73,12 @@ namespace launcher
         }
     }
 
+    void Process::setWakeHook(void (*hook)()) { g_wakeHook = hook; }
+
     Process::~Process()
     {
+        if (m_exitWait)
+            UnregisterWaitEx(m_exitWait, INVALID_HANDLE_VALUE); // and its callback finished
         if (m_reader.joinable())
         {
             // a tool's tree still running, or a leftover grandchild holding the pipe open: the job ends them all
@@ -160,6 +176,7 @@ namespace launcher
         CloseHandle(pi.hThread);
         m_process = pi.hProcess;
         m_readPipe = readEnd;
+        RegisterWaitForSingleObject(&m_exitWait, m_process, exited, nullptr, INFINITE, WT_EXECUTEONLYONCE);
         if (readEnd)
         {
             m_readerDone = false;
@@ -184,6 +201,7 @@ namespace launcher
                         else
                             m_partial += c;
                     }
+                    wakeUi();
                 }
                 std::lock_guard<std::mutex> lock(m_lock);
                 if (!m_partial.empty())
@@ -191,6 +209,7 @@ namespace launcher
                 CloseHandle(m_readPipe);
                 m_readPipe = nullptr;
                 m_readerDone = true;
+                wakeUi();
             });
         }
         return true;

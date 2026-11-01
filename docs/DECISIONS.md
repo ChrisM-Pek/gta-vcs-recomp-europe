@@ -757,3 +757,30 @@ from them: Vic moves while free aiming exactly when he can move locked on with t
   that car aim only, the gamepad's R1 button fires: it is sent as Circle, and not as R1 (the keyboard's R1 keys are
   left as they are). Nowhere else changes: on foot R1 is the target button, and in the car
   with free aim off it is R1 (controls_check checks both).
+
+## 2026-11-01 - The launcher draws itself (docs/LAUNCHER.md)
+
+The user asked for the launcher to become a high-performance application with its own native UI and beautiful
+animation - "not a sloppy web application", a purpose-built PC utility - multi-platform in design, Windows / D3D11 for
+now, built the way uppies (D:\aislop\uppies) is. The user approved the plan and chose: rethink the flow, a custom title
+bar, disc art behind Home later.
+
+- **Own window, renderer and UI, no third-party code.** SDL3 + Dear ImGui go: ImGui's look is a tool panel, its
+  SDL_Renderer path polled while idle, and SDL made the launcher an 81 s build. uppies' design instead: a platform layer
+  (Win32), one instanced draw of SDF primitives (D3D11), immediate-mode widgets with retained animation state. 1 MB, 17 s.
+- **Not the game's RHI.** It links ImGui and serves the game's presenter; the launcher wants exact control of
+  presentation (latency waitable, tearing, device loss) and must stay a project CI builds with nothing downloaded. Its
+  own five-call backend interface takes the same draw list on another API later (Vulkan on Linux), as uppies plans.
+- **DirectWrite, not FreeType** (uppies' choice): nothing to bundle or license, Windows' own rasterisation. The atlas,
+  cache and layout are platform independent; FreeType is the Linux rasteriser.
+- **Three modes instead of pages**: Setup (a guided sequence: one step at a time, the rail filling in), Home (one big
+  button over the sunset), Task (the running tool takes the window). Saves / Settings / Help are sheets. Every feature
+  of the 2026-10-30 launcher kept its place (the parity list in the plan; LAUNCHER.md "The player's flow").
+- **Custom chrome on a normal window**: WM_NCCALCSIZE / WM_NCHITTEST rather than a borderless popup, so snapping, the
+  system menu, the min / max animations and the shadow stay Windows'.
+- **Zero cost when idle**: the frame loop sleeps in the OS; tool output and process exit wake it (Process's reader
+  thread and a thread-pool wait); clocks on screen ask for a frame once a second; nothing animates continuously except
+  while a task runs (spinners, the bar's sheen) - never while the game plays (the game wants the GPU).
+- **Motion is optional**: Windows' "Show animations" and the launcher's own *Reduce motion* make everything snap.
+- **Tests stay hidden**: `--screenshot` renders offscreen on a fixed clock (same arguments, same picture), with
+  `--frames` for transitions; `--hidden --quit-after` runs the real window loop unshown and reports its cost.

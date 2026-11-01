@@ -25,13 +25,12 @@ import urllib.request
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import toolchain as tc  # noqa: E402
 
-# the CMake files with FetchContent_Declare that a Windows build of the game, the recompiler and the launcher uses
-# (not ps2xStudio, which is off; not sse2neon, ARM only; not the Vulkan backend's, off on Windows)
+# the CMake files with FetchContent_Declare that a Windows build of the game and the recompiler uses (not ps2xStudio,
+# which is off; not sse2neon, ARM only; not the Vulkan backend's, off on Windows). The launcher downloads nothing.
 CMAKE_FILES = [
     "src/platform/CMakeLists.txt",
     "third_party/PS2Recomp/ps2xRecomp/CMakeLists.txt",
     "third_party/PS2Recomp/ps2xAnalyzer/CMakeLists.txt",
-    "launcher/CMakeLists.txt",
 ]
 FFMPEG_CMAKE = "third_party/PS2Recomp/ps2xRuntime/CMakeLists.txt"
 # a release archive instead of the repository where the repository carries far more than the build needs

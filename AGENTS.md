@@ -51,7 +51,7 @@ choices).
 | `third_party/PS2Recomp/ps2xRuntime` | The runtime (EE, VIF, VU1, GS HW backend, IOP host, stubs); our changes marked `[gta-recomp]` |
 | `game/vcs/` | Recompiler config, function map, VU1 upload list |
 | `tools/` | Python 3 tools (standard library only) - see below |
-| `launcher/` | `VCSLauncher.exe` (SDL3 + Dear ImGui, a CMake project of its own): disc, build tools, build, play - a front end over `tools/` (docs/LAUNCHER.md) |
+| `launcher/` | `VCSLauncher.exe` (a CMake project of its own, no third-party code: its own Win32 window, D3D11 renderer, DirectWrite text and animated UI, after uppies): disc, build tools, build, play - a front end over `tools/` (docs/LAUNCHER.md) |
 
 ## Build and run
 
@@ -64,7 +64,7 @@ python tools/build.py --check-deps          # Linux: missing packages and the co
 python tools/build.py --opt none|lto|pgo    # game optimisation, kept until changed (lto: the default; pgo: ThinLTO + profile, trains if needed)
 python tools/bench.py [OUT]                  # game-thread benchmark: fixed city spots + an AI drive (game / worker ms)
 python tools/clean.py [--apply] [--keep-days 7]   # delete test output in build/ (lists first; builds, saves, baselines kept)
-python tools/build.py --launcher             # the launcher (VCSLauncher.exe in the root; no disc, ~1 min the first time)
+python tools/build.py --launcher             # the launcher (VCSLauncher.exe in the root; no disc, ~20 s the first time)
 python tools/build.py --recompile-if-needed  # recompile only when generated/ is stale (generated/recompile_stamp.json)
 python tools/doctor.py [--json]              # folder, compiler, disc, build state, the next step (the launcher reads --json)
 python tools/build_dir.py [check|set P|reset] # the build folder elsewhere (.vcs-build-dir, VCS_BUILD_DIR): tc.BUILD follows;
@@ -128,7 +128,10 @@ card copies to start from (never the user's live card).
 - The launcher (`launcher/`, docs/LAUNCHER.md) only runs `tools/`: build logic stays in Python, so a change to the
   pipeline is a change to the scripts. The tools print `@vcs {json}` event lines (`toolchain.event` / `stage` / `fail`
   with a code) the launcher reads; keep them when changing a tool's output. `VCSLauncher.exe --screenshot F.png
-  [--step N | --demo error | --action build]` renders its window hidden (tests, docs); `--self-test` is CI's check.
+  [--screen home|task|sheet:saves|gallery... --demo error --frames N --action build]` renders its window offscreen
+  (tests, docs; `--screen gallery` shows every widget); `--hidden --quit-after S` runs the real loop unshown and prints
+  its cost; `--self-test` is CI's check. The launcher's UI is immediate mode: never open a file dialog inside a frame
+  (`screens::runPending`), and keep it idle - no animation that runs forever while nothing happens.
 
 ## Rules that keep things working
 

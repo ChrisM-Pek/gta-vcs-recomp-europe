@@ -727,6 +727,13 @@ Python scripts still usable on their own. docs/LAUNCHER.md has the whole of it; 
       setup_vs.py dry runs and the Microsoft-signature check; a disc copy from an image file.
 - [ ] A PC with nothing installed (Windows Sandbox): setup_vs.py's real install. A real DVD drive. CI's first run and
       the first tagged release. Code signing.
+- [x] **The launcher draws itself** (2026-11-01, the user's request; DECISIONS.md, docs/LAUNCHER.md): SDL3 + Dear ImGui
+      replaced by its own Win32 window with custom chrome, a D3D11 renderer (one instanced draw of SDF primitives),
+      DirectWrite text and immediate-mode widgets with springs, after uppies; a new flow - Setup (a rail and one step at
+      a time), Home (Play over a striped sunset), Task (rolling percentage, timeline, log drawer), sheets, dialogs,
+      toasts. 1.0 MB (was 4), 17 s from scratch (was 81), 0.67 ms a frame, nothing drawn when idle. Checked offscreen
+      (every screen and state, at 1x / 1.5x, transitions frame by frame), with the real disc, and a real build through
+      it (LAUNCHER.md "Checked"). Not checked: the visible window by hand, Windows 11.
 - [x] **Older CPUs** (a player's report on 0.0.2, 2026-10-30: Xeon E5-2687W, Sandy Bridge - "recompiling fails in 1
       second", `recomp.log` empty): every build was `/arch:AVX2`, so `ps2_recomp.exe` died on its first AVX2 / BMI
       instruction (0xC000001D) before printing. **Fixed 2026-10-31**: the build follows the building PC's CPU,

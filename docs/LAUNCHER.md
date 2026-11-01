@@ -5,9 +5,11 @@ terminal: it finds and checks the disc, installs what the build needs, recompile
 bar, and starts it. It is a front end over the Python tools in `tools/` - every button runs a script people can also
 run by hand - so the launcher and the README's manual install are one pipeline.
 
-Status (2026-10-30): built, and checked end to end from a release zip in a fresh folder (below). Windows only; the
-code is SDL3 + Dear ImGui, so a Linux build is mostly the process / folder layer (`launcher/process.cpp`,
-`launcher/system.cpp`). Decisions: DECISIONS.md 2026-10-30 "A launcher for releases".
+Status (2026-11-01): rebuilt as a native app of its own - its own window, Direct3D 11 renderer, DirectWrite text and
+animated UI, after uppies - with a rethought flow (Setup, Home, Task); before, SDL3 + Dear ImGui (2026-10-30, checked
+end to end from a release zip in a fresh folder, below). Windows only; another platform is a platform file, a renderer
+backend and a rasteriser ("The launcher's own code"). Decisions: DECISIONS.md 2026-10-30 "A launcher for releases",
+2026-11-01 "The launcher draws itself".
 
 ## Why
 
@@ -61,57 +63,117 @@ update or a new folder.
 
 ## The player's flow
 
-One window (`launcher/ui.cpp`): a dark sidebar with the logo, the four setup steps as a tracker (Folder, Disc, Build
-tools, Game: a teal check when done, an amber ! for something to look at, the step's number when missing, a spinner
-while checking) and three more pages (Saves, Settings, Help); the selected page in the main column - a small pink
-label, a title, a line of explanation, then cards; and a footer whose one pink button is the next thing to do (Choose
-your disc / Install build tools / Build the game / Update the build / Play; Cancel while a task runs; Try again / Close
-after a failure). Everything else is a quiet secondary or text button on its page. The page shown follows what's next
-until the player picks one. Drawn with Dear ImGui's draw list - badges, pills, a thin rounded progress bar, a spinner,
-the logo are shapes, no icon font - in one palette (dusk violet base, pink for the action, teal for done, amber / red
-for attention) at the display's scale.
+One window with a title bar the launcher draws itself, and always one of three modes; moving between them is where the
+motion is (2026-11-01, the user's "rethink everything"; before, a sidebar of pages - DECISIONS.md 2026-11-01).
 
-- **Folders** (tools/doctor.py `check_folder`): the **build folder** - `build\` next to the source, or one the
+- **Setup** (`launcher/screens/setup.cpp`), until the game can be played: a rail of the four steps (Folder, Disc,
+  Build tools, Game) whose line fills in teal as they are done, and one step at a time below it in a large card - a
+  pink label, a title, a line of explanation, the step, and a footer whose primary (sunset-gradient) button is the
+  step's next thing. A step that turns good plays its check (a stroke that draws itself), holds 0.9 s, and the next
+  slides in from the side it comes from; a pink ring slides along the rail to it. Any step can be looked at from the
+  rail. The Folder step only stops Setup when doctor has a warning for it and nothing is built yet.
+- **Home** (`home.cpp`): the name over a striped sun setting into the sea (the icon's motif, drawn by the renderer),
+  one big button for what's next (Play / Update the build / Check again), what was built under it ("Built 2 days ago ·
+  Standard · AVX2"), and three cards along the bottom: Setup (opens it at any step), Saves, Updates. While the game runs
+  the button is a "Playing · 12:34" panel (redrawn once a second, never continuously); a non-zero exit becomes a red
+  card with `gameExitText()` and the log.
+- **Task** (`task.cpp`): a build, the installer, a disc copy, an update, a report or a restore takes the window: a
+  large percentage whose digits roll like an odometer, a bar with a sheen, the time so far and left, the stages as a
+  timeline (spinners that turn into checks or a cross), Cancel (asks first), the log in a drawer that rises from the
+  bottom (Ctrl+L, or *Show details*; it opens by itself on a failure). A failure slides in a card with a red edge that
+  shakes once: the code's title and fix (`errorHelp` in `launcher/model/tasks.cpp`), *Try again*, *Open the log*,
+  *Make a report*. Success: the check, what happened, *Play* after a build.
+- **Sheets** (`sheets.cpp`): Saves, Settings and Help from the title bar slide in from the right on a spring over a
+  dimmed window; Escape, the dim or the button close them. **Dialogs** (`overlays.cpp`: restore a backup, cancel a
+  task, quit during a task, the chosen build folder's check) scale up and fade in; **toasts** rise at the bottom and
+  leave after 6 s.
+- Keyboard: Enter is the highlighted action, Escape closes the top sheet or dialog, F1 Help, Ctrl+L the log, Tab /
+  Shift+Tab walk the controls with a focus ring. Reduced motion (Windows' "Show animations" off, or *Reduce motion* in
+  Settings): everything snaps.
+- The first frame: the last doctor answer (`build/launcher_state.json`) gives the right mode at once; while this run's
+  check is out, only "fine" is believed (anything else shows as checking) and the big button waits.
+
+What each step and sheet holds:
+
+- **Folder** (tools/doctor.py `check_folder`): the **build folder** - `build\` next to the source, or one the
   player chooses (*Choose another folder*: a folder dialog, then tools/build_dir.py `check` says what it would mean -
   the folder used, free space, warnings, or why not - and *Build here* runs `set`; *Use the default* goes back) - and
   the source folder. Warns for either under Program Files, in a OneDrive / Dropbox folder, on a network drive, in a
   path over 60 characters or with non-ASCII letters; less than 3 GB free on the build folder's drive; memory under
   8 GB.
-- **Disc**: the launcher's own check (`launcher/disc_check.cpp`, the same as vcs.exe's through
+- **Disc**: the launcher's own check (`launcher/model/disc_check.cpp`, the same as vcs.exe's through
   `src/disc/vcs_disc_id.h`): SYSTEM.CNF's boot file, then the SHA-1 of `SLUS_215.90` - about a second. What a player can
   act on: another release ("the European release of Vice City Stories (SLES_546.22)", "Liberty City Stories (USA)"),
-  not a PS2 disc, a `.bin` / `.chd` / `.cso` / archive with how to convert it. A file dialog, drag and drop, a search
-  of Downloads / Desktop / Documents / its folder (one level deep, DVD-sized `.iso` files, Vice City Stories names
-  first), or **Copy from a DVD drive** (tools/rip_disc.py). The choice goes into `build\vcs.ini` as `iso=` (vcs.exe's
-  settings keep lines they don't own).
+  not a PS2 disc, a `.bin` / `.chd` / `.cso` / archive with how to convert it. A drop zone that answers while a file is
+  dragged over the window (OLE drag and drop: it glows and breathes), the file dialog, a search of Downloads / Desktop /
+  Documents / its folder (one level deep, DVD-sized `.iso` files, Vice City Stories names first), or **Copy from a DVD
+  drive** (tools/rip_disc.py). The choice goes into `build\vcs.ini` as `iso=` (vcs.exe's settings keep lines they don't
+  own); a relative `iso=` is read against the build folder, then the source folder.
 - **Build tools**: the processor (doctor's `check_cpu`: which build this PC gets - AVX2, AVX or SSE4,
   `toolchain.cpu_level`; a CPU without SSE4.2 can't build: `cpu_unsupported`, a red card), and tools/doctor.py
   `check_compiler` (vswhere, one `-requires` query per component - `-path` ignores
   `-requires`; the clang-cl the build would take: scoop's LLVM, then Visual Studio's, then PATH). Missing parts:
   *Install build tools* runs tools/setup_vs.py.
 - **Game**: built and current, or the reasons not (doctor's `check_build`: no exe, generated/ stale, no / other
-  `build_info.json`, source files newer than vcs.exe). Build type: keep / Standard (ThinLTO) / Quick / Fastest (PGO).
+  `build_info.json`, source files newer than vcs.exe). Build type: Standard (ThinLTO) / Quick / Fastest (PGO), a
+  segmented control; unset, the current build's type is kept.
 - **Play**: `build\vcs.exe <iso>`, working folder `build\`, no console, output to `build\run\launcher_game.log`, in a
-  job that outlives the launcher. The launcher minimises (or closes, or stays: *Options*) and comes back when the game
+  job that outlives the launcher. The launcher minimises (or closes, or stays: *Settings*) and comes back when the game
   ends; a non-zero exit is explained from vcs.exe's exit codes (`vcs_disc_id.h`: 2 no disc, 3 unreadable, 4 wrong disc,
   5 no window / graphics / sound; `0xC...` a crash, with the log).
 - **Saves**: the card's folder, Back up now, the backups with Restore (asks first; tools/backup.py).
 - **Settings**: what the launcher does when the game starts, updates (check now, check at start, Update now when one
-  is found - the sidebar marks it), a desktop shortcut.
-- **Help**: Make a report (tools/report.py), the game's last log, the build log, the README, version and folder.
+  is found - a dot on the title bar's Settings marks it), Reduce motion, a desktop shortcut.
+- **Help**: Make a report (tools/report.py), the game's last log, the build log, the README, the keyboard, version and
+  folder.
 
-A running task takes the main column: a large percentage and a bar while compiling (Ninja's step count; a sliding
-bar otherwise), the time so far and left, its stages as a timeline (check, spinner, cross, with their times), Cancel (the tool runs in a Job Object: the whole tree stops, and a new build continues where
-it stopped), the log on demand. A failure shows the code's title and fix (`errorHelp` in `launcher/tasks.cpp`): no
-Visual Studio / C++ tools / clang, a download, a full disk, a long path, a locked file (antivirus, OneDrive), out of
-memory, the installer declined... in a card with a red edge, with *Open the log* and *Make a report*. The PC is kept from sleeping while a build
-or a disc copy runs. Closing during a task asks first.
+Cancel stops the whole tree (the tool runs in a Job Object), and a new build continues where it stopped. The PC is kept
+from sleeping while a build or a disc copy runs. Closing during a task asks first.
+
+## The launcher's own code (uppies' design)
+
+A native app of its own, after uppies (D:\aislop\uppies, docs/ARCHITECTURE.md there): no third-party code, one 1 MB
+static exe, 17 s from scratch. Layers, each using only those below it:
+
+| Path | What |
+|---|---|
+| `launcher/main.cpp` | entry, the command-line forms, the frame loop, `--screenshot` |
+| `launcher/screens/` | the window: `screens.cpp` (which mode, transitions, the model's readings), `titlebar`, `backdrop`, `setup`, `home`, `task`, `sheets`, `overlays` (dialogs, toasts), `gallery` |
+| `launcher/ui/` | immediate-mode widgets with retained animation state (`ui.cpp`: ids, hover / press / focus, input layers, `animate` / `spring`, `wakeAt`, tooltips; `widgets.cpp`: buttons, segmented control, toggle, choice rows, cards, pills, status badges that morph, progress bar, rolling numbers, scroll areas, the log view), `theme.h` (every colour and size) |
+| `launcher/render/` | `draw.cpp`: the draw list - one 96-byte instance per primitive (rounded rect with gradient and border, glyph, Gaussian shadow, line, arc), base and overlay layers, clip / opacity / offset stacks; `font.cpp`: the glyph atlas (R8, shelf-packed, grows 1024 -> 4096 without moving glyphs, quarter-pixel variants), layout, ellipsis, wrapping; `font_dwrite.cpp`: DirectWrite rasterises; `renderer.h` and `d3d11/` (`ui.hlsl`, compiled by fxc at build time) |
+| `launcher/platform/` | `platform.h` (window, input, time, wake, dialogs); `platform_win32.cpp` |
+| `launcher/core/` | `math.h` (rects and rect cutting, sRGB colours, `damp`, a sub-stepped `Spring`, easings), `png.cpp` |
+| `launcher/model/` | the state and the tools it runs: `tasks.cpp` (App, Task, the `@vcs` events, `errorHelp`, settings), `process.cpp` (Job Objects; output and exit wake the UI), `disc_check.cpp`, `system.cpp`, `json.cpp` |
+
+- **Frame loop**: sleep in `MsgWaitForMultipleObjectsEx` until input, a wake (a tool printed or ended: `Process`'s
+  reader thread and a thread-pool wait post `WM_APP`), a time something asked for (`ui::wakeAt`: a tooltip, the
+  clocks once a second while something runs) or an animation in flight; then wait on the swap chain's latency
+  waitable, pump input again, build the UI, one upload, one draw, present. dt is measured, clamped to 100 ms, one
+  refresh after a sleep; animations are `damp` / springs, so motion is the same at 60 and 240 Hz. Win32's modal loops
+  (moving / resizing the window, a file dialog) draw through `platform::setModalFrame`; dialogs are only opened
+  between frames (`screens::runPending`), never inside one.
+- **Rendering**: one instanced draw, no vertex or index buffer (`SV_VertexID`), clipped on the GPU by shrinking the
+  quad; the pixel shader evaluates distance functions (uppies' shading, with an arc added and horizontal gradients).
+  Flip-discard swap chain, latency 1, tearing when vsync is off, `WS_EX_NOREDIRECTIONBITMAP`, the first frame drawn
+  before the window is shown; a lost device is recreated from CPU state (Ctrl+Shift+F10 simulates it); WARP when
+  there is no GPU.
+- **Text**: DirectWrite (grayscale, natural symmetric, grid-fitted at text sizes), cached per font / pixel size /
+  code point / quarter pixel; kerning from the font. Fonts from Windows: Segoe UI Variable Text (Windows 11) else
+  Segoe UI, Bahnschrift for the name and the big numbers, Segoe Fluent Icons else Segoe MDL2 Assets, Cascadia Mono else
+  Consolas for the log. Nothing bundled.
+- **Chrome**: an ordinary overlapped window whose whole area is client (`WM_NCCALCSIZE`), `WM_NCHITTEST` for the
+  resize edges, the caption (drag, double-click, system menu, snapping) and `HTMAXBUTTON` over the maximise button
+  (Windows 11's snap layouts); dark mode, Windows 11 corners and border through DWM attributes; the DWM shadow from a
+  one-pixel frame extension.
+- **Other platforms**: the renderer interface takes the same draw list on any API (a Vulkan backend and a port of
+  `ui.hlsl`), the platform layer is one file per OS, the rasteriser one file (FreeType on Linux); `model/` has the
+  Windows process and folder code that docs/LINUX.md lists.
 
 ## How it fits together
 
 ```
-VCSLauncher.exe (launcher/: main.cpp window + CLI, ui.cpp, tasks.cpp, process.cpp, disc_check.cpp, system.cpp, json.cpp)
-   ├─ itself: window, disc check, folder dialogs, vcs.ini's iso=, processes (Job Objects), shortcuts, the game
+VCSLauncher.exe (launcher/: main.cpp, screens/ ui/ render/ platform/ core/, model/ tasks process disc_check system json)
+   ├─ itself: window, disc check, file / folder dialogs, vcs.ini's iso=, processes (Job Objects), shortcuts, the game
    └─ python\python.exe -I tools\<tool>.py ...  with VCS_PROGRESS=json
          doctor.py --json     the state: folder, memory, cpu, compiler, downloads, disc, build, "next"
          build.py --recompile-if-needed <iso> --progress json [--opt X]
@@ -131,7 +193,7 @@ Everything else is log.
 **State files**: `generated/recompile_stamp.json` (a hash of what the generated code depends on: game/vcs, the
 recompiler, the runtime headers it compiles in, the translate / sync scripts; `recompile.py --check`),
 `build/build_info.json` (source version, generated inputs, optimisation, disc; written by a successful game build),
-`build/launcher.ini` (the launcher's options).
+`build/launcher.ini` (the launcher's options), `build/launcher_state.json` (doctor's last answer, for the first frame).
 
 ## The tools (all usable without the launcher)
 
@@ -152,8 +214,28 @@ recompiler, the runtime headers it compiles in, the translate / sync scripts; `r
 
 The launcher's command line: `--check`, `--build [--iso X]`, `--play [--iso X]`, `--self-test`, `--out FILE` (a GUI
 exe prints to the terminal that started it only through AttachConsole; `--out` for scripts and CI), and
-`--screenshot F.png [--step N] [--demo running|error] [--action build --every S] [--iso X]`: the window rendered
-hidden into a texture and saved - tests never put a window on the desktop.
+`--screenshot F.png`: the window rendered offscreen into a texture and saved - tests never put a window on the desktop.
+`--screen` picks what is shown (`setup:folder|disc|tools|game`, `home`, `task`, `sheet:saves|settings|help|folder`,
+`dialog:restore|quit|cancel`, `gallery` - every widget in its states), `--demo` a sample state (`running`, `error`,
+`done`, `playing`, `update`, `gameerror`), `--then S --at T` switches after T seconds and `--frames N` saves N
+consecutive frames (a transition, frame by frame), `--scale K` / `--size WxH` the pixels per unit and the logical size;
+`--step N` (the old page numbers), `--action build --every S`, `--iso X`, `--wait S`, `--pick-build-dir PATH` as
+before. Screenshots run on a fixed 60 Hz clock, so the same arguments give the same picture. `--hidden --quit-after S`
+runs the real window and frame loop without showing it and prints the frames drawn and the CPU used (the idle cost);
+`--stats` (or Ctrl+Shift+F11) overlays frame times.
+
+## Checked (2026-11-01, the native launcher)
+
+- `--self-test` (the renderer and fonts included, offscreen): ok.
+- Every mode, step, sheet, dialog and demo state as offscreen screenshots at scale 1 and 1.5, `--screen gallery`, and
+  transitions frame by frame (`--frames`: Home's entrance, a sheet sliding in).
+- With the real disc: verified on the Disc step, Setup moved on to Game by itself; a relative `iso=` is found.
+- A full build through the hidden launcher from an empty build folder (`--action build`, Quick): every stage on the
+  timeline, the rolling percentage with Ninja's steps, done in 9 min 10 s with *Play* offered; afterwards Home with
+  *Play* and "Built just now".
+- The real window loop, unshown (`--hidden --quit-after 30`): 67 frames in 30 s (the entrance and doctor's run), 0.4 ms
+  per frame, 0 ms of CPU measured outside them.
+- **Not checked**: the visible window by hand (drag, snap, maximise, DPI moves, a drop from Explorer), Windows 11.
 
 ## Checked (2026-10-30)
 
@@ -192,7 +274,10 @@ hidden into a texture and saved - tests never put a window on the desktop.
 
 | | |
 |---|---|
-| Launcher build from scratch | 81 s (SDL3 + Dear ImGui), relinks 5 s |
+| Launcher build from scratch | **17 s** (configure 5 s, 28 steps 12 s; 2026-11-01); was 81 s with SDL3 + Dear ImGui |
+| VCSLauncher.exe | **1.0 MB**, static, no third-party code (was 4 MB) |
+| Idle cost (`--hidden --quit-after 20`) | 62 frames in 20 s - the entrance animation and the doctor's run - then none; 94 ms of CPU in all |
+| A frame | 0.67 ms CPU on average (the first ones, rasterising glyphs: up to 14 ms); one draw call, a few hundred instances |
 | `doctor.py` | 0.8 s |
 | Release zip | 82 MB; 1 min to make with the libraries cached, +17 s to fetch them |
 | First build from the release, through the hidden launcher (i7-7700K, 8 threads, ThinLTO, offline) | **8 min 42 s**: configure 52 s (with the recompiler), MIPS -> C++ 36 s, configure again 41 s, compile + link 6 min 25 s (786 steps) |
@@ -207,5 +292,9 @@ hidden into a texture and saved - tests never put a window on the desktop.
   signing service (SignPath's OSS programme) would remove that.
 - The CI workflow is written, not run (it runs on the next push to GitHub); the first `v*` tag publishes the first
   release.
-- Linux: the launcher's process / folder layer, and a Linux release (an AppImage-style bundle needs a different Python
-  story).
+- Linux: the launcher's platform file, a Vulkan backend for its renderer, FreeType for its glyphs, the process /
+  folder layer in `model/`, and a Linux release (an AppImage-style bundle needs a different Python story).
+- The window itself, by a person: dragging, snapping, maximising, moving between monitors of different DPI, dropping
+  an .iso from Explorer, how the motion feels (tests stay hidden). Windows 11's snap layouts flyout and rounded
+  corners are untested (the dev machine is Windows 10).
+- Art from the player's own disc behind Home (read at run time, never shipped): the backdrop has the slot.

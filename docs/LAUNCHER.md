@@ -109,7 +109,10 @@ motion is (2026-11-01, the user's "rethink everything"; before, a sidebar of pag
   in Settings: System (the default: Windows' app mode, `AppsUseLightTheme`, followed live on `WM_SETTINGCHANGE`), Light
   or Dark (`theme=` in launcher.ini). Every colour is a field of a palette; the two palettes crossfade over a quarter
   of a second when the choice or Windows' mode changes, and the window's own frame (DWM dark mode, Windows 11's border)
-  switches with them. The icon (`launcher/make_icon.py`) is the same hot pink sun on black.
+  switches with them. The icon (`launcher/make_icon.py`, which writes `launcher.ico`) is Home's backdrop in a rounded square: the
+  striped sun behind the beach's towers, the horizon's line and the sun on the sea, in the dark palette. Each size is
+  drawn for itself: 16 and 20 px only the sun, its stripes and the sea; towers from 24 px; up to 64 px every edge and
+  stripe on whole pixels; lit windows and stars only at 256.
 - The first frame: the last doctor answer (`build/launcher_state.json`) gives the right mode at once; while this run's
   check is out, only "fine" is believed (anything else shows as checking) and the big button waits.
 

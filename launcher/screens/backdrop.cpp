@@ -1,8 +1,7 @@
-// Behind everything: the sky and its glows, and on Home Vice City at dusk - a striped sun going down behind palms and
-// the towers of the beach, over a sea that moves (the app icon's motif, launcher/make_icon.py), all drawn with the
-// renderer's own primitives. Alive while Home shows and the game isn't running: the sun's stripes slide toward the
-// horizon, clouds drift, the palms sway, windows go on and off, the sea's lines roll in and the sun's reflection
-// shimmers - at 30 frames a second (15 when the window isn't focused), slow enough to cost almost nothing, and still
+// Behind everything: the sky and its glows, and on Home Vice City at dusk - a striped sun going down behind the towers
+// of the beach, over a sea that moves (the app icon's motif, launcher/make_icon.py), all drawn with the renderer's own
+// primitives. Alive while Home shows and the game isn't running: the sun's stripes slide toward the horizon, clouds
+// drift, windows go on and off, the sea's lines roll in and the sun's reflection shimmers - at 30 frames a second (15 when the window isn't focused), slow enough to cost almost nothing, and still
 // with reduce motion on. Every other screen draws once and sleeps. (A later option: art from the player's own disc in
 // this slot - docs/LAUNCHER.md.)
 #include "shell.h"
@@ -20,8 +19,6 @@ namespace screens
 
     namespace
     {
-        constexpr float kPi = 3.14159265f;
-
         // the same "random" numbers every frame: a hash of an index into [0, 1)
         float hash(uint32_t n)
         {
@@ -59,82 +56,13 @@ namespace screens
             rect(r, c, radius);
         }
 
-        // a band along a line of points, as convex quads between neighbours: palm trunks and fronds
-        void ribbon(const Scene &S, const float *xs, const float *ys, const float *ws, int n, Color c)
-        {
-            float nx[24], ny[24];
-            for (int i = 0; i < n; ++i)
-            {
-                const int a = i > 0 ? i - 1 : i, b = i + 1 < n ? i + 1 : i;
-                const float dx = xs[b] - xs[a], dy = ys[b] - ys[a];
-                const float len = std::max(std::sqrt(dx * dx + dy * dy), 1e-4f);
-                nx[i] = -dy / len;
-                ny[i] = dx / len;
-            }
-            for (int i = 0; i + 1 < n; ++i)
-            {
-                const float w0 = std::max(ws[i], px(0.35f)) * 0.5f, w1 = std::max(ws[i + 1], px(0.35f)) * 0.5f;
-                // each piece reaches a little into the next, or their antialiased edges leave a hairline between them
-                float dx = xs[i + 1] - xs[i], dy = ys[i + 1] - ys[i];
-                const float len = std::max(std::sqrt(dx * dx + dy * dy), 1e-4f);
-                dx *= px(0.7f) / len;
-                dy *= px(0.7f) / len;
-                const float ax = xs[i] - (i > 0 ? dx : 0), ay = ys[i] - (i > 0 ? dy : 0);
-                const float bx = xs[i + 1] + (i + 2 < n ? dx : 0), by = ys[i + 1] + (i + 2 < n ? dy : 0);
-                const float q[8] = {ax + nx[i] * w0, S.y(ay + ny[i] * w0),
-                                    bx + nx[i + 1] * w1, S.y(by + ny[i + 1] * w1),
-                                    bx - nx[i + 1] * w1, S.y(by - ny[i + 1] * w1),
-                                    ax - nx[i] * w0, S.y(ay - ny[i] * w0)};
-                quad(q, c);
-            }
-        }
-
-        // a palm: a curved trunk thinning upward and a crown of drooping, notched fronds that sway a little
-        void palm(const Scene &S, float baseX, float height, float lean, float phase, Color c)
-        {
-            const float sway = std::sin(S.t * 0.55f + phase) * height * 0.012f;
-            const float topX = baseX + lean + sway, topY = S.horizon - height;
-            const float ctrlX = baseX + lean * 0.12f, ctrlY = S.horizon - height * 0.55f;
-            constexpr int kTrunk = 16;
-            float xs[24], ys[24], ws[24];
-            for (int i = 0; i < kTrunk; ++i)
-            {
-                const float u = float(i) / float(kTrunk - 1), v = 1 - u;
-                xs[i] = v * v * baseX + 2 * v * u * ctrlX + u * u * topX;
-                ys[i] = v * v * (S.horizon + px(2)) + 2 * v * u * ctrlY + u * u * topY;
-                ws[i] = height * (0.046f - 0.022f * u) * (i % 2 ? 1.0f : 1.07f); // the rings of the bark
-            }
-            ribbon(S, xs, ys, ws, kTrunk, c);
-
-            // the fronds, left to right; angles in degrees, 0 = right, -90 = up (y points down)
-            static const float kAngles[] = {172, -168, -140, -110, -84, -58, -30, -8, 14};
-            constexpr int kSeg = 14;
-            for (int k = 0; k < int(std::size(kAngles)); ++k)
-            {
-                const float a = (kAngles[k] + 5.0f * std::sin(S.t * 0.9f + phase + float(k) * 1.3f)) * kPi / 180.0f;
-                const float len = height * (0.40f + 0.12f * hash(uint32_t(k) * 7 + uint32_t(phase * 100)));
-                const float droop = 0.62f;
-                for (int i = 0; i < kSeg; ++i)
-                {
-                    const float u = float(i) / float(kSeg - 1);
-                    xs[i] = topX + std::cos(a) * len * u;
-                    ys[i] = topY + std::sin(a) * len * u + droop * len * u * u;
-                    // a leaf's outline: widest a third of the way, notched along its length (the leaflets)
-                    const float shape = std::pow(std::max(std::sin(kPi * std::min(u * 1.12f, 1.0f)), 0.0f), 0.75f);
-                    ws[i] = height * 0.072f * shape * (0.82f + 0.18f * std::fabs(std::sin(u * kPi * 8.5f)));
-                }
-                ribbon(S, xs, ys, ws, kSeg, c);
-            }
-            circle(topX, S.y(topY + height * 0.015f), height * 0.032f, c); // the coconuts where the fronds meet
-        }
-
-        // the towers of the beach: art deco - setbacks, rounded crowns, a spire
+        // the towers of the beach: art deco - setbacks, parapets, a spire
         struct Tower
         {
             float x;      // left edge, a fraction of the width
             float width;  // fractions of the scene's size
             float height;
-            int style;    // 0 flat, 1 stepped, 2 rounded, 3 spire
+            int style;    // 0 flat, 1 stepped, 2 a parapet, 3 spire
         };
         constexpr Tower kTowers[] = {
             {0.425f, 0.050f, 0.095f, 1}, {0.468f, 0.036f, 0.158f, 3}, {0.500f, 0.058f, 0.118f, 2},
@@ -153,8 +81,10 @@ namespace screens
                 block(S, {body.x + bw * 0.14f, body.y - bh * 0.08f, bw * 0.72f, bh * 0.08f + px(1)}, c);
                 block(S, {body.x + bw * 0.30f, body.y - bh * 0.15f, bw * 0.40f, bh * 0.07f + px(1)}, c);
                 break;
-            case 2: // a rounded crown
-                block(S, body, c, Corners(bw * 0.5f, bw * 0.5f, 0, 0));
+            case 2: // a parapet, narrower, and a slab on it
+                block(S, body, c);
+                block(S, {body.x + bw * 0.08f, body.y - bh * 0.035f, bw * 0.84f, bh * 0.035f + px(1)}, c);
+                block(S, {body.x + bw * 0.38f, body.y - bh * 0.09f, bw * 0.24f, bh * 0.055f + px(1)}, c);
                 break;
             case 3: // a crown and a spire
                 block(S, body, c);
@@ -257,19 +187,44 @@ namespace screens
             }
         }
 
-        // the towers and palms; once on the sky, once mirrored in the sea (lights off, sunk toward the sea's colour by
-        // `faded`: opaque, so where pieces overlap nothing shows darker)
+        // a building's windows: each goes on or off now and then, on its own schedule. `scale` shrinks the grid (the far
+        // row), `strength` dims it
+        void windows(const Scene &S, Rect body, uint32_t building, float scale, float strength)
+        {
+            const float ww = px(2) * scale, wh = px(2.6f) * scale, gx = px(5) * scale, gy = px(6.5f) * scale;
+            const float top = px(8) * scale;
+            const int cols = int((body.w - px(6) * scale) / gx), rows = int((body.h - top - px(4) * scale) / gy);
+            if (cols <= 0 || rows <= 0)
+                return;
+            const float x0 = body.x + (body.w - float(cols - 1) * gx - ww) * 0.5f;
+            for (int r = 0; r < rows; ++r)
+                for (int c = 0; c < cols; ++c)
+                {
+                    const uint32_t id = building * 977 + uint32_t(r) * 31 + uint32_t(c);
+                    const float epoch = std::floor(S.t / 50.0f + hash(id * 3) * 50.0f);
+                    if (hash(id * 5 + uint32_t(epoch) * 7919) > 0.3f)
+                        continue;
+                    rect({x0 + float(c) * gx, body.y + top + float(r) * gy, ww, wh},
+                         withAlpha(theme::kLights, strength * (0.45f + 0.4f * theme::darkness) * (0.6f + 0.4f * hash(id * 9))));
+                }
+        }
+
+        // the towers; once on the sky, once mirrored in the sea (lights off, sunk toward the sea's colour by `faded`:
+        // opaque, so where pieces overlap nothing shows darker)
         void skyline(const Scene &S, bool lights, float faded = 0)
         {
             const Color near = mix(theme::kSkyline, theme::kSea, faded);
-            // far towers, lower and paler in the haze
+            // far towers, lower and paler in the haze, their windows smaller and dimmer
             const Color far = mix(mix(theme::kSkyline, theme::kHorizon, 0.55f), theme::kSea, faded);
             float x = S.w * 0.30f;
             for (uint32_t i = 0; x < S.w; ++i)
             {
                 const float bw = S.s * (0.022f + 0.03f * hash(i * 13 + 1));
                 const float bh = S.s * (0.016f + 0.045f * hash(i * 13 + 2));
-                block(S, {x, S.horizon - bh, bw + px(1), bh + px(1)}, far, hash(i * 13 + 3) < 0.25f ? Corners(bw * 0.4f, bw * 0.4f, 0, 0) : Corners());
+                const Rect body{x, S.horizon - bh, bw + px(1), bh + px(1)};
+                block(S, body, far);
+                if (lights)
+                    windows(S, body, 5000 + i, 0.7f, 0.55f);
                 x += bw;
             }
 
@@ -284,25 +239,9 @@ namespace screens
                     tallest = body.h;
                     beacon = body;
                 }
-                if (!lights)
-                    continue;
-                // windows: each goes on or off now and then, on its own schedule
-                const float ww = px(2), wh = px(2.6f), gx = px(5), gy = px(6.5f);
-                const int cols = int((body.w - px(6)) / gx), rows = int((body.h - px(12)) / gy);
-                const float x0 = body.x + (body.w - float(cols - 1) * gx - ww) * 0.5f;
-                for (int r = 0; r < rows; ++r)
-                    for (int c = 0; c < cols; ++c)
-                    {
-                        const uint32_t id = b * 977 + uint32_t(r) * 31 + uint32_t(c);
-                        const float epoch = std::floor(S.t / 50.0f + hash(id * 3) * 50.0f);
-                        if (hash(id * 5 + uint32_t(epoch) * 7919) > 0.3f)
-                            continue;
-                        rect({x0 + float(c) * gx, body.y + px(8) + float(r) * gy, ww, wh},
-                             withAlpha(theme::kLights, (0.45f + 0.4f * theme::darkness) * (0.6f + 0.4f * hash(id * 9))));
-                    }
+                if (lights)
+                    windows(S, body, b, 1.0f, 1.0f);
             }
-            palm(S, S.w * 0.615f, S.s * 0.36f, S.s * 0.05f, 0.0f, near);
-            palm(S, S.w * 0.868f, S.s * 0.28f, -S.s * 0.04f, 2.1f, near);
             // the tallest tower's light, blinking
             if (lights && std::fmod(S.t, 1.6f) < 0.18f)
             {
@@ -318,7 +257,7 @@ namespace screens
             gradient({0, top, S.w, depth}, theme::kSea, theme::kNight);
             pushClip({0, top, S.w, depth});
 
-            // the towers and palms upside down, faint, fading out with depth
+            // the towers upside down, faint, fading out with depth
             const float reach = depth * 0.45f;
             S.mirror = true;
             pushClip({0, top, S.w, reach});

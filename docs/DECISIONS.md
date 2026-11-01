@@ -821,6 +821,9 @@ screens, never minimized. Cost: ~0.16 ms of CPU a frame, about 0.5% of a core. A
 (palms are chains of quads, each overlapping the next by 0.7 px so antialiased edges leave no seams; the reflection is
 drawn opaque, sunk toward the sea's colour, so overlapping pieces don't show darker).
 
+Next (the user): the palms went, the far row got windows of its own (smaller and dimmer), and no tower has a rounded
+top any more (a parapet instead).
+
 Two frame-loop faults turned up on the way: a sleep that ended on its timeout set `needsRedraw`, which also books a
 settle frame, so every timed wake drew two frames (a timed wake now draws one); and minimized, a frame asked for at a
 time already past made the loop wake at once, again and again - a core spinning behind the game while the "Playing"

@@ -77,9 +77,9 @@ motion is (2026-11-01, the user's "rethink everything"; before, a sidebar of pag
   convex quadrilateral). Any step can be looked at from the
   rail. The Folder step only stops Setup when doctor has a warning for it and nothing is built yet.
 - **Home** (`home.cpp`): the name over Vice City at dusk (`backdrop.cpp`, drawn by the renderer: the icon's striped sun
-  behind two palms and the beach's art deco towers, a hazier row behind them, the sea with their reflection; stars at
-  night). It moves, gently: the sun's stripes slide into the horizon, cloud streaks drift across the sun, the palms sway,
-  windows go on and off and the tallest tower's light blinks, lines roll in on the water and the sun's reflection
+  behind the beach's art deco towers, a hazier row behind them with smaller, dimmer windows, the sea with their
+  reflection; stars at night). It moves, gently: the sun's stripes slide into the horizon, cloud streaks drift across
+  the sun, windows go on and off and the tallest tower's light blinks, lines roll in on the water and the sun's reflection
   wavers - drawn at 30 frames a second (15 unfocused), only while Home shows, never while the game runs, and still with
   reduce motion on. In front of it,
   one big button for what's next (Play, or Check again when the check failed; with an update ready Play stays and a

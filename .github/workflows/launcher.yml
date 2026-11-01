@@ -17,7 +17,10 @@ permissions:
   contents: write
 
 jobs:
+  # Off until the Linux launcher ships (the user's call, 2026-11-01): releases are Windows only for now. Remove the `if`
+  # to build and check it again.
   linux:
+    if: false
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4

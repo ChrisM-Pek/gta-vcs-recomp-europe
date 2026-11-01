@@ -71,7 +71,7 @@ python tools/doctor.py [--json]              # folder, compiler, disc, build sta
 python tools/build_dir.py [check|set P|reset] # the build folder elsewhere (.vcs-build-dir, VCS_BUILD_DIR): tc.BUILD follows;
                                              # the test tools keep writing to build\ in the source folder
 python tools/release.py [--ref vX | --worktree]   # the Windows release zip (build/dist); refuses game files. The number is
-                                             # VERSION (root; 0.1.0): bump it before tagging - the tag must match
+                                             # VERSION (root; 0.1.1): bump it before tagging - the tag must match
 python tools/deps.py list|fetch|check        # the libraries CMake downloads; deps/ makes the build offline
 python tools/backup.py create|list|restore   # memory card backups (VCS_DATA_DIR honoured: test on copies)
 python tools/setup_vs.py status|install [--dry-run]   # Visual Studio Build Tools (+ clang) from Microsoft, elevated

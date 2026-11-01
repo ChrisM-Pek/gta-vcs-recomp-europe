@@ -186,6 +186,7 @@ namespace
         const Shots *shots = nullptr;
         double lastTime = 0;
         bool resumed = true;     // woke from sleeping: assume one refresh for dt
+        bool timedWake = false;  // the sleep ended on its timeout: one frame (no settle frame, unlike input)
         int settleFrames = 0;
         bool stats = false;
         double fixedTime = 0;    // screenshots: a fixed 60 Hz clock
@@ -235,6 +236,7 @@ namespace
         }
         L.lastTime = start;
         L.resumed = false;
+        L.timedWake = false;
         // an immediate-mode UI settles a frame after input (a click can change what is drawn above it)
         if (platform::window.needsRedraw)
             L.settleFrames = 1;
@@ -275,7 +277,7 @@ namespace
     bool wantsFrame()
     {
         const double now = g_loop.shots ? g_loop.fixedTime : platform::now();
-        return platform::window.needsRedraw || g_loop.settleFrames > 0 || ui::state.animating ||
+        return platform::window.needsRedraw || g_loop.settleFrames > 0 || ui::state.animating || g_loop.timedWake ||
                (ui::state.wakeAt > 0 && now >= ui::state.wakeAt);
     }
 
@@ -450,7 +452,9 @@ namespace
             {
                 // sleep until input, a tool's output, or a frame asked for at a time
                 double timeout = -1;
-                if (ui::state.wakeAt > 0)
+                // (minimized, a frame asked for is drawn on restore: a time already past would wake this at once,
+                // again and again - the playing clock while the game runs)
+                if (ui::state.wakeAt > 0 && !platform::window.minimized)
                     timeout = std::max(ui::state.wakeAt - platform::now(), 0.0);
                 if (app.doctorRunning || app.busy() || app.gameRunning)
                     timeout = timeout < 0 ? 1.0 : std::min(timeout, 1.0); // clocks on screen; a tool's grace after exit
@@ -462,7 +466,7 @@ namespace
                 platform::waitForEvents(timeout);
                 g_loop.resumed = true;
                 if (timeout >= 0 && !platform::window.minimized)
-                    platform::window.needsRedraw = true;
+                    g_loop.timedWake = true;
                 continue;
             }
             // every wait is paired with a present, or the swap chain's latency budget drifts

@@ -76,7 +76,12 @@ motion is (2026-11-01, the user's "rethink everything"; before, a sidebar of pag
   step carries the box there while its corners blend from the old shape into the new one (`render::quad`, a filled
   convex quadrilateral). Any step can be looked at from the
   rail. The Folder step only stops Setup when doctor has a warning for it and nothing is built yet.
-- **Home** (`home.cpp`): the name over a striped sun setting into the sea (the icon's motif, drawn by the renderer),
+- **Home** (`home.cpp`): the name over Vice City at dusk (`backdrop.cpp`, drawn by the renderer: the icon's striped sun
+  behind two palms and the beach's art deco towers, a hazier row behind them, the sea with their reflection; stars at
+  night). It moves, gently: the sun's stripes slide into the horizon, cloud streaks drift across the sun, the palms sway,
+  windows go on and off and the tallest tower's light blinks, lines roll in on the water and the sun's reflection
+  wavers - drawn at 30 frames a second (15 unfocused), only while Home shows, never while the game runs, and still with
+  reduce motion on. In front of it,
   one big button for what's next (Play, or Check again when the check failed; with an update ready Play stays and a
   smaller *Update the build* sits under it - offered, never forced), what was built under it ("Built 2 days ago ·
   Standard · AVX2"), and three cards along the bottom: Setup (opens it at any step), Saves, Updates. While the game runs
@@ -307,7 +312,8 @@ runs the real window and frame loop without showing it and prints the frames dra
 |---|---|
 | Launcher build from scratch | **17 s** (configure 5 s, 28 steps 12 s; 2026-11-01); was 81 s with SDL3 + Dear ImGui |
 | VCSLauncher.exe | **1.0 MB**, static, no third-party code (was 4 MB) |
-| Idle cost (`--hidden --quit-after 20`) | 62 frames in 20 s - the entrance animation and the doctor's run - then none; 94 ms of CPU in all |
+| Idle cost (`--hidden --quit-after 20`) | 62 frames in 20 s - the entrance animation and the doctor's run - then none; 94 ms of CPU in all (before Home moved) |
+| Home, moving (2026-11-01) | 783 frames in 20 s - the entrance, then ~33 a second; 0.16 ms of CPU a frame (about 0.5% of one core); every other screen still draws nothing when idle |
 | A frame | 0.67 ms CPU on average (the first ones, rasterising glyphs: up to 14 ms); one draw call, a few hundred instances |
 | `doctor.py` | 0.8 s |
 | Release zip | 82 MB; 1 min to make with the libraries cached, +17 s to fetch them |

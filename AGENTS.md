@@ -131,7 +131,8 @@ card copies to start from (never the user's live card).
   [--screen home|task|sheet:saves|gallery... --demo error --frames N --action build]` renders its window offscreen
   (tests, docs; `--screen gallery` shows every widget); `--hidden --quit-after S` runs the real loop unshown and prints
   its cost; `--self-test` is CI's check. The launcher's UI is immediate mode: never open a file dialog inside a frame
-  (`screens::runPending`), and keep it idle - no animation that runs forever while nothing happens.
+  (`screens::runPending`), and keep it idle - no animation that runs forever while nothing happens, except Home's
+  backdrop (the user's wish, 2026-11-01: 30 fps, off while the game runs and with reduce motion; DECISIONS.md).
 
 ## Rules that keep things working
 

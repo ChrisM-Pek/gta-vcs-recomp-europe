@@ -146,7 +146,7 @@ namespace screens
     float windowScale();
 
     // ---- the parts (each in its own file) --------------------------------------------------------------------------
-    void drawBackdrop(Rect r, float hero);   // hero: 0..1, the sun and sea of Home
+    void drawBackdrop(Rect r, float hero, bool alive = false); // hero: 0..1, the scene of Home; alive: it moves
     float drawTitleBar(Rect r);              // returns its height
     void drawSetup(Rect r);
     void drawHome(Rect r);

@@ -652,7 +652,7 @@ namespace screens
             }
         }
         ui::animate(g_hero, shell.mode == Mode::Home ? 1.0f : 0.0f, 3.5f);
-        drawBackdrop(window, g_hero);
+        drawBackdrop(window, g_hero, !app.gameRunning);
         Rect content = window;
         core::cutTop(content, drawTitleBar(window));
 

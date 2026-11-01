@@ -35,6 +35,8 @@ namespace theme
         Color logFill;                                 // the log's well
         Color well, wellBottom, wellGlow, wellGlowBottom; // the disc drop zone, idle and with a file over it
         Color sky, sea;                                // the backdrop's top and its sea
+        Color horizon;                                 // the sky's glow at the horizon
+        Color skyline, cloud, lights;                  // silhouettes (towers, palms), cloud streaks, lit windows
     };
 
     inline constexpr Palette kDarkPalette{
@@ -67,6 +69,10 @@ namespace theme
         .wellGlowBottom = rgb(0x210B17),
         .sky = rgb(0x140A0F),
         .sea = rgb(0x0F080B),
+        .horizon = rgb(0x3A0E24),
+        .skyline = rgb(0x0B0709),
+        .cloud = rgb(0x1E0B15),
+        .lights = rgb(0xFFB8D6),
     };
 
     inline constexpr Palette kLightPalette{
@@ -99,6 +105,10 @@ namespace theme
         .wellGlowBottom = rgb(0xFFDBEA),
         .sky = rgb(0xFFD9E9),
         .sea = rgb(0xFFE8F1),
+        .horizon = rgb(0xFFBBD6),
+        .skyline = rgb(0xD9618F),
+        .cloud = rgb(0xFFFAFC),
+        .lights = rgb(0xFFF1F6),
     };
 
     // the palette in use: between the two while it changes (apply)
@@ -146,6 +156,10 @@ namespace theme
     inline Color &kWellGlowBottom = current.wellGlowBottom;
     inline Color &kSky = current.sky;
     inline Color &kSea = current.sea;
+    inline Color &kHorizon = current.horizon;
+    inline Color &kSkyline = current.skyline;
+    inline Color &kCloud = current.cloud;
+    inline Color &kLights = current.lights;
 
     // a tint over a surface (white on dark, a deep pink on light)
     inline Color ink(float a) { return core::withAlpha(current.ink, a * core::alphaOf(current.ink)); }

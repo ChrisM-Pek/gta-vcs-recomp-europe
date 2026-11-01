@@ -809,6 +809,23 @@ Overlays (hover tints, hairlines) are `theme::ink(a)` - white on dark, a deep pi
 instead of darkening it. Screenshots default to dark (`--theme`), so docs and tests give the same picture on any PC.
 The app icon was redrawn in the same colours.
 
+## 2026-11-01 - Home's backdrop moves (the one exception to an idle launcher)
+
+The user wanted Home's backdrop more sophisticated and "more alive". It became Vice City at dusk - the striped sun
+behind palms and art deco towers, a sea that reflects them, stars at night - and it moves continuously but slowly:
+stripes sliding into the horizon, clouds, swaying palms, windows, a beacon, rolling water lines, a wavering
+reflection. A launcher that draws nothing when idle was a design rule (docs/LAUNCHER.md); this breaks it on Home
+only, within bounds: 30 frames a second (motion this slow needs no more; 15 when the window isn't focused), never
+while the game runs (it wants the GPU), never with reduce motion on (the scene stands still), never on the other
+screens, never minimized. Cost: ~0.16 ms of CPU a frame, about 0.5% of a core. All with the renderer's primitives
+(palms are chains of quads, each overlapping the next by 0.7 px so antialiased edges leave no seams; the reflection is
+drawn opaque, sunk toward the sea's colour, so overlapping pieces don't show darker).
+
+Two frame-loop faults turned up on the way: a sleep that ended on its timeout set `needsRedraw`, which also books a
+settle frame, so every timed wake drew two frames (a timed wake now draws one); and minimized, a frame asked for at a
+time already past made the loop wake at once, again and again - a core spinning behind the game while the "Playing"
+clock was due (minimized, those requests now wait for the restore).
+
 ## 2026-11-01 - Pricedown in the launcher only when the player has it installed
 
 The user asked for Pricedown (GTA's lettering) on the launcher's prominent elements, from a zip of Typodermic's free

@@ -441,11 +441,42 @@ namespace ps2_stubs
 
                     std::string recovered;
                     size_t moved = 0;
+                    // A save slot ("<1-8> <mission>", game-internals.md 10c) already holding a save - the player saved
+                    // again after the loss, maybe a new game - shows only the newer of the two: the recovered one goes
+                    // to the first free slot instead (the game takes the slot from the name alone; 10f)
+                    auto slotTaken = [&](char digit)
+                    {
+                        std::error_code listEc;
+                        for (const auto &entry : std::filesystem::directory_iterator(dir, listEc))
+                        {
+                            std::error_code entryEc;
+                            const std::string name = decodeMcName(entry.path().filename().string());
+                            if (name.size() > 2u && name[0] == digit && name[1] == ' ' &&
+                                entry.is_regular_file(entryEc) && entry.file_size(entryEc) > 0u && !entryEc)
+                            {
+                                return true;
+                            }
+                        }
+                        return false;
+                    };
                     for (const auto &[stream, size] : streams)
                     {
                         const std::filesystem::path source(file.native() + L":" + stream);
-                        const std::string guest =
+                        std::string guest =
                             decodeMcName(file.filename().string()) + ":" + std::filesystem::path(stream).string();
+                        if (guest.size() > 2u && guest[0] >= '1' && guest[0] <= '8' && guest[1] == ' ' && slotTaken(guest[0]))
+                        {
+                            for (char digit = '1'; digit <= '8'; ++digit)
+                            {
+                                if (!slotTaken(digit))
+                                {
+                                    std::fprintf(stderr, "[MC] slot %c holds a newer save: the recovered one goes to slot %c\n",
+                                                 guest[0], digit);
+                                    guest[0] = digit;
+                                    break;
+                                }
+                            }
+                        }
                         const std::filesystem::path target = dir / encodeMcName(guest);
                         if (std::filesystem::exists(target, ec))
                         {

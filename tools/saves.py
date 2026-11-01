@@ -4,11 +4,12 @@
     python tools/saves.py [OUT] [--port N]
 
 One session from a copy of build/rig/saves/fortbaxter (slot 1 = "1 Soldier"):
-  recover (Windows) slot 3 planted as the card layer once stored "3 Kill Phil: Part 2" - an empty "3 Kill Phil" with
-          the save in an NTFS stream: at boot it is the file "3 Kill Phil%3A Part 2" again (game-internals.md 10f)
+  recover (Windows) a save planted as the card layer once stored "1 Kill Phil: Part 2" - an empty "1 Kill Phil" with
+          the save in an NTFS stream - while slots 1 and 2 hold saves: at boot it is the file "3 Kill Phil%3A Part 2",
+          the first free slot (game-internals.md 10f)
   save    "Kill Phil: Part 2" registered as the last mission passed (the save's name; a colon), then
-          ACTIVATE_SAVE_MENU (script opcode 0x0260) -> Save Game -> slot 2 -> Yes: "2 Kill Phil%3A Part 2" appears,
-          whole
+          ACTIVATE_SAVE_MENU (script opcode 0x0260) -> Save Game -> slot 2 -> Yes (over "2 In the beginning"):
+          "2 Kill Phil%3A Part 2" appears, whole
   load    pause menu -> Game -> Load Game -> slot 1 -> Yes, with trainer god mode on: slot 1 is read in full, the
           player is back in free roam
   delete  pause menu -> Game -> Delete Game -> slot 2 -> Yes: the slot file and its card-order entry are gone
@@ -46,11 +47,17 @@ def main():
     if os.path.isdir(os.path.join(data, "backups")):
         shutil.rmtree(os.path.join(data, "backups"))
     if os.name == "nt":
-        # what the card layer did before names were encoded: fopen("3 Kill Phil: Part 2") on NTFS
+        # what the card layer did before names were encoded: fopen("1 Kill Phil: Part 2") on NTFS. Slot 1 holds a save
+        # (as when the player saved again after the loss) and the card's stray "1 In the beginning" becomes slot 2: the
+        # recovered save must go to slot 3, the first free one
         seed_folder = os.path.join(seed, *FOLDER)
         with open(os.path.join(seed_folder, "1 Soldier"), "rb") as f, \
-                open(os.path.join(seed_folder, "3 Kill Phil: Part 2"), "wb") as lost:
+                open(os.path.join(seed_folder, "1 Kill Phil: Part 2"), "wb") as lost:
             lost.write(f.read())
+        os.rename(os.path.join(seed_folder, "1 In the beginning"), os.path.join(seed_folder, "2 In the beginning"))
+        order = os.path.join(seed_folder, ".ps2x-order")
+        text = open(order).read().replace("1 In the beginning", "2 In the beginning")
+        open(order, "w", newline="\n").write(text)
     g = rig.Game.start(save=seed, name="saves", data_dir=data, port=a.port)
     shots = [0]
 
@@ -76,7 +83,7 @@ def main():
         if os.name == "nt":
             got = os.path.join(folder, "3 Kill Phil%3A Part 2")
             checks["recover"] = {"ok": os.path.isfile(got) and os.path.getsize(got) == 98304 and
-                                 not os.path.exists(os.path.join(folder, "3 Kill Phil")), "files": slot_files()}
+                                 not os.path.exists(os.path.join(folder, "1 Kill Phil")), "files": slot_files()}
         before = slot_files()
         # save: named after the last mission passed - REGISTER_MISSION_PASSED (0x01EB) "REN_C05", "Kill Phil: Part 2".
         # The menu opens on "Save Game"; the slot list starts on Cancel, two down is slot 2

@@ -928,7 +928,9 @@ before writing it, and its whole save folder after a failed write, so any crash 
   alternative - Unicode look-alikes (U+FF1A for `:`) - reads nicer but is a guess per character and not ASCII.
 - **Recovery**: on Windows the card layer turns an empty file whose stream holds 900+ bytes back into the save it was
   meant to be, at the next listing (smaller streams are Windows' own, e.g. a download's Zone.Identifier). Players who
-  lost a save this way get it back by starting the new build.
+  lost a save this way get it back by starting the new build. If they have saved in that slot since (a new game), the
+  recovered save goes to the first free slot rather than hide behind the newer one; the new save is never touched
+  (recovery never writes over an existing file).
 - **Backups**: before the first delete / write to an existing file / rename / format in 10 s, both cards go into
   `<data>/backups/auto-<date>.zip`, tools/backup.py's own format, so the launcher's Saves sheet lists them and Restore
   works unchanged; newest 10 kept (a card is ~0.5-1 MB, stored). In vcs.exe, not the launcher: players start vcs.exe on

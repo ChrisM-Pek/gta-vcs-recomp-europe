@@ -1492,6 +1492,12 @@ with the rig (`REGISTER_MISSION_PASSED` 0x01EB with a text-label argument: type 
   (`1 Kill Phil%3A Part 2`) and listed back decoded; files lost to a stream this way are recovered at the next listing
   (PS2RECOMP_PATCHES.md, DECISIONS.md 2026-11-01). Checked: the save is whole, listed and loaded at boot ("2 Kill Phil:
   Part 2" in the Load list); a card made by the old code is put right at boot and that save loaded.
+- **The slot comes from the file name alone**: `1 Soldier` renamed `4 Soldier` is listed as slot 4 and loads from it.
+  With two files for one slot the menus show only the newer (by the header date). A player who lost a save and then
+  saved again in that slot (a new game, say) would get the recovered save back hidden behind the new one, so recovery
+  moves it to the first free slot ("slot 1 holds a newer save: the recovered one goes to slot 2" in the log); both
+  listed, the newer loaded at boot, the recovered one from its slot. With all 8 slots used it stays in its own slot,
+  on disk and in the backups.
 - **A failed save deletes the whole save folder.** With the slot file's open failing (reproduced: a read-only file in
   the way; anything that fails the open or a write does it), the game shows "Save failed! Check the memory card (8MB)
   (for PlayStation 2) in MEMORY CARD slot 1 and please try again." - and before that deletes every file in

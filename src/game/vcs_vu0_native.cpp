@@ -114,43 +114,52 @@ namespace
         lqi(r, 4, 4, data, size);
         lqi(r, 5, 4, data, size);
         lqi(r, 6, 4, data, size);
+        // [perf] as matrixTimes3From: the broadcasts of vf1 / vf2 / vf0.w (not written in the loop) cleaned once, vf31
+        // (0) cleaned once, ACC kept in a register and stored at the end - the same operations (PS2X_VU0_VERIFY=1)
+        const vu1v::V b1x = splat(vu1fast::operand(r.vf[1][0])), b1y = splat(vu1fast::operand(r.vf[1][1])),
+                      b1z = splat(vu1fast::operand(r.vf[1][2])), b2x = splat(vu1fast::operand(r.vf[2][0])),
+                      b2y = splat(vu1fast::operand(r.vf[2][1])), b2z = splat(vu1fast::operand(r.vf[2][2])),
+                      one = splat(vu1fast::operand(r.vf[0][3])), zero = operand(load(r.vf[31]));
+        vu1v::V acc = load(r.acc);
         do
         {
             r.vi[1] = static_cast<int16_t>(r.vi[1] << 4);                   // 0d40..0d58 IADD vi1, vi1, vi1 (x4)
-            store<0xFu>(r.acc, mulBc(r.vf[3], r.vf[1], 0));                 // 0d40 MULAx  acc = vf3 * vf1x
-            store<0xFu>(r.acc, maddBc(r.acc, r.vf[4], r.vf[1], 1));         // 0d48 MADDAy
-            store<0xFu>(r.acc, maddBc(r.acc, r.vf[5], r.vf[1], 2));         // 0d50 MADDAz
-            store<0xFu>(r.vf[7], maddBc(r.acc, r.vf[6], r.vf[0], 3));       // 0d58 MADDw vf7 = acc + vf6 * 1
-            store<0xFu>(r.vf[8], mulBc(r.vf[3], r.vf[2], 0));               // 0d60 MULx vf8
-            store<0xFu>(r.vf[9], mulBc(r.vf[4], r.vf[2], 1));               // 0d68 MULy vf9
-            store<0xFu>(r.vf[10], mulBc(r.vf[5], r.vf[2], 2));              // 0d70 MULz vf10
+            const vu1v::V v3 = operand(load(r.vf[3])), v4 = operand(load(r.vf[4])), v5 = operand(load(r.vf[5]));
+            acc = operand(vu1v::mul(v3, b1x));                              // 0d40 MULAx  acc = vf3 * vf1x
+            acc = fused<0xFu, false>(operand(acc), v4, b1y);                // 0d48 MADDAy
+            acc = fused<0xFu, false>(operand(acc), v5, b1z);                // 0d50 MADDAz
+            const vu1v::V v7 = fused<0xFu, false>(operand(acc), operand(load(r.vf[6])), one); // 0d58 MADDw vf7 = acc + vf6 * 1
+            store<0xFu>(r.vf[7], v7);
+            const vu1v::V v8 = operand(vu1v::mul(v3, b2x)), v9 = operand(vu1v::mul(v4, b2y)), v10 = operand(vu1v::mul(v5, b2z));
+            store<0xFu>(r.vf[8], v8);                                       // 0d60 MULx vf8
+            store<0xFu>(r.vf[9], v9);                                       // 0d68 MULy vf9
+            store<0xFu>(r.vf[10], v10);                                     // 0d70 MULz vf10
             r.vi[2] = static_cast<int16_t>(r.vi[2] << 4);                   // 0d60..0d78 IADD vi2, vi2, vi2 (x4)
+            const vu1v::V lo[3] = {vu1v::min(operand(v8), zero), vu1v::min(operand(v9), zero), vu1v::min(operand(v10), zero)};
+            const vu1v::V hi[3] = {vu1v::max(operand(v8), zero), vu1v::max(operand(v9), zero), vu1v::max(operand(v10), zero)};
             for (int i = 0; i < 3; ++i)                                     // 0d80..0da8 MINI / MAX against vf31 (0)
             {
-                store<0xFu>(r.vf[11 + i], vu1v::min(operand(load(r.vf[8 + i])), operand(load(r.vf[31]))));
+                store<0xFu>(r.vf[11 + i], lo[i]);
+                store<0xFu>(r.vf[14 + i], hi[i]);
             }
-            for (int i = 0; i < 3; ++i)
-            {
-                store<0xFu>(r.vf[14 + i], vu1v::max(operand(load(r.vf[8 + i])), operand(load(r.vf[31]))));
-            }
-            store<0xFu>(r.acc, mulBc(r.vf[7], r.vf[0], 3));                 // 0db0 MULAw acc = vf7 | LQI vf3 (next set)
-            lqi(r, 3, 4, data, size);
-            store<0xFu>(r.acc, maddBc(r.acc, r.vf[11], r.vf[0], 3));        // 0db8 MADDAw | LQI vf4
+            const vu1v::V base = operand(vu1v::mul(operand(v7), one));      // 0db0 / 0dd0 MULAw acc = vf7
+            lqi(r, 3, 4, data, size);                                       // | LQI vf3 (next set)
+            acc = fused<0xFu, false>(operand(base), operand(lo[0]), one);   // 0db8 MADDAw | LQI vf4
             lqi(r, 4, 4, data, size);
-            store<0xFu>(r.acc, maddBc(r.acc, r.vf[12], r.vf[0], 3));        // 0dc0 MADDAw | LQI vf5
+            acc = fused<0xFu, false>(operand(acc), operand(lo[1]), one);    // 0dc0 MADDAw | LQI vf5
             lqi(r, 5, 4, data, size);
-            store<0xFu>(r.vf[17], maddBc(r.acc, r.vf[13], r.vf[0], 3));     // 0dc8 MADDw vf17 (most negative corner) | LQI vf6
+            store<0xFu>(r.vf[17], fused<0xFu, false>(operand(acc), operand(lo[2]), one)); // 0dc8 MADDw vf17 (most negative corner) | LQI vf6
             lqi(r, 6, 4, data, size);
-            store<0xFu>(r.acc, mulBc(r.vf[7], r.vf[0], 3));                 // 0dd0 MULAw acc = vf7
-            store<0xFu>(r.acc, maddBc(r.acc, r.vf[14], r.vf[0], 3));        // 0dd8 MADDAw
-            store<0xFu>(r.acc, maddBc(r.acc, r.vf[15], r.vf[0], 3));        // 0de0 MADDAw
-            store<0xFu>(r.vf[18], maddBc(r.acc, r.vf[16], r.vf[0], 3));     // 0de8 MADDw vf18 (most positive corner)
+            acc = fused<0xFu, false>(operand(base), operand(hi[0]), one);   // 0dd8 MADDAw
+            acc = fused<0xFu, false>(operand(acc), operand(hi[1]), one);    // 0de0 MADDAw
+            store<0xFu>(r.vf[18], fused<0xFu, false>(operand(acc), operand(hi[2]), one)); // 0de8 MADDw vf18 (most positive corner)
             r.vi[6] = static_cast<int16_t>(r.vi[5] & signFlags(r.vf[17]));  // 0de8 FMAND: flags of 0dc8 (4 pairs earlier)
             r.vi[1] = static_cast<int16_t>(r.vi[1] | r.vi[6]);              // 0df0 IOR
             r.vi[3] = static_cast<int16_t>(r.vi[3] - 1);                    // 0df8 ISUBIU
             r.vi[7] = static_cast<int16_t>(r.vi[5] & signFlags(r.vf[18]));  // 0e08 FMAND: flags of 0de8
             r.vi[2] = static_cast<int16_t>(r.vi[2] | r.vi[7]);              // 0e18 IOR (delay slot of 0e10 IBNE)
         } while (r.vi[3] != 0);
+        store<0xFu>(r.acc, acc);
         storeRegs(r, ctx);
     }
 
@@ -214,19 +223,29 @@ namespace
         r.vi[1] = static_cast<int16_t>(r.vi[15] + from);                    // 0eb8 / 0e98
         r.vi[2] = static_cast<int16_t>(r.vi[15] + to);                      // 0ec0 / 0ea0
         r.vi[3] = 3;                                                        // 0ec8 / 0eb0 (delay slot of 0ea8 B)
+        // [perf] the same operations as mulBc / maddBc, with what repeats taken out of the loop: the inputs vf1..vf4
+        // (not written here) as cleaned broadcasts once per call, each matrix row cleaned once per matrix, ACC kept in
+        // a register (still cleaned as an operand each time) and stored once at the end (bit-identical:
+        // PS2X_VU0_VERIFY=1; PERFORMANCE.md 22)
+        vu1v::V in[4][4];
+        for (int v = 0; v < 4; ++v)
+            for (int c = 0; c < 4; ++c)
+                in[v][c] = splat(vu1fast::operand(r.vf[1 + v][c]));
+        vu1v::V acc = load(r.acc);
         do
         {
             lqi(r, 5, 1, data, size);                                       // 0ed0..0ee8
             lqi(r, 6, 1, data, size);
             lqi(r, 7, 1, data, size);
             lqi(r, 8, 1, data, size);
+            const vu1v::V m0 = operand(load(r.vf[5])), m1 = operand(load(r.vf[6])), m2 = operand(load(r.vf[7])),
+                          m3 = operand(load(r.vf[8]));
             for (int v = 0; v < 4; ++v)                                     // 0ef0..0f68: vf13+v = M * vf(1+v)
             {
-                const float *in = r.vf[1 + v];
-                store<0xFu>(r.acc, mulBc(r.vf[5], in, 0));
-                store<0xFu>(r.acc, maddBc(r.acc, r.vf[6], in, 1));
-                store<0xFu>(r.acc, maddBc(r.acc, r.vf[7], in, 2));
-                store<0xFu>(r.vf[13 + v], maddBc(r.acc, r.vf[8], in, 3));
+                acc = operand(vu1v::mul(m0, in[v][0]));                     // MULAx
+                acc = fused<0xFu, false>(operand(acc), m1, in[v][1]);       // MADDAy
+                acc = fused<0xFu, false>(operand(acc), m2, in[v][2]);       // MADDAz
+                store<0xFu>(r.vf[13 + v], fused<0xFu, false>(operand(acc), m3, in[v][3])); // MADDw
             }
             r.vi[3] = static_cast<int16_t>(r.vi[3] - 1);                    // 0f68 ISUBIU
             sqi(r, 13, 2, data, size);                                      // 0f70..0f80
@@ -234,6 +253,7 @@ namespace
             sqi(r, 15, 2, data, size);
             sqi(r, 16, 2, data, size);                                      // 0f90 (delay slot of 0f88 IBNE)
         } while (r.vi[3] != 0);
+        store<0xFu>(r.acc, acc);
         storeRegs(r, ctx);
     }
 

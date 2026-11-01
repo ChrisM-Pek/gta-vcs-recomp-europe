@@ -550,6 +550,16 @@ ones 0.00-0.5 apart from the flyover's tower (timing).
 per crossing; the largest texture bursts still cost the GS stage ~10-20 ms of decoding (the frame ~45 ms); the rest
 of the drive holds 16.7 ms.
 
+### 22. VU0 natives: what repeats out of the loops (2026-11-02)
+
+The uncapped cruise (`tools/cruise.py run OUT --fps 0`, `VCS_PROFILE=10`) puts the VU0 natives at ~9.4% of the game
+thread: `matrixTimes3From` 3.7%, `maddBc` 3.4% (called by both), `boxClip` 2.3%. Each multiply-add re-loaded and
+re-cleaned (VU operand rules) its matrix row, the broadcast input lane and ACC from memory. The 3x matrix product and
+the sector box clip now clean their constant inputs once per call and each matrix row once per matrix, and keep ACC in a
+register (stored once at the end); every operation is the same one, ACC still cleaned as an operand.
+`PS2X_VU0_VERIFY=1` over a whole cruise: 5.06 M matrix products and 5.56 M box clips, 0 differed. Game thread: 9.4% ->
+7.9% for the three; the uncapped cruise 168.3 -> 171.1 fps (`--opt none`).
+
 ## Next
 
 - **The heavy views (~120 fps)**: the game thread's chain submission there (1.4-1.6 ms: the VIF1 chain copy, the walker

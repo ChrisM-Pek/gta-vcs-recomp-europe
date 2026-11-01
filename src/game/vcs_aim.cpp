@@ -25,6 +25,7 @@ namespace vcs::aim
         constexpr uint32_t kPedAimPoint = 0xC90u;   // the free-aim point (the game keeps the dummy there)
         constexpr uint32_t kPedFreeAimWord = 0xCCCu; // the high word of the flags at +0xCC8: bit 51 = free aim
         constexpr uint32_t kFreeAimBit = 0x00080000u;
+        constexpr uint32_t kForcedBit = 0x00200000u; // bit 53: a script's forced free aim (SET_PLAYER_FORCE_FREE_AIMING)
         constexpr uint32_t kEntityFlags = 0x48u;    // & 0xE: 6 ped, 8 object
         // TheCamera and its CCams (game-internals.md 12b)
         constexpr uint32_t kTheCamera = 0x006F44D0u;
@@ -59,6 +60,9 @@ namespace vcs::aim
         // in a car (the game's drive-by free aim, FUN_002343E0): the dummy at the gun's range from Vic, between 5 deg
         // below and 20 deg above level (the game's limits for the stick there: 70..95 deg from Vic's up)
         constexpr float kCarPitchDown = -0.0872665f, kCarPitchUp = 0.3490659f;
+        // on foot (the forced free aim): 50..110 deg from Vic's up (20 deg below level, 40 above), and 110 deg either side
+        // of his heading
+        constexpr float kFootPitchDown = -0.3490659f, kFootPitchUp = 0.6981317f, kFootYawLimit = 1.9198622f;
         constexpr uint32_t kWeaponInfo = 0x00712770u; // *(*(this) + 4) + type * 0x70: the weapon's info, +8 its range
 
         PS2Runtime::RecompiledFunction g_origGame = nullptr, g_origCamera = nullptr, g_origShotLine = nullptr,
@@ -74,7 +78,8 @@ namespace vcs::aim
                       // Idle again - the game never sees R1 held long enough to lock on to a ped
             Held,     // the gun went (ran dry: the game puts the fists in his hand; or changed) while the button is
                       // held: R1 up until it is let go or a gun is back in hand (then free aim again)
-            Passenger, // in a car, the game's own free aim (its drive-by mode): the dummy is ours, no buttons
+            Script,   // the game's own free aim a script started (a car's drive-by mode, the forced free aim on foot): the
+                      // dummy is ours, no buttons
         };
         // game thread
         State g_state = State::Idle;
@@ -125,10 +130,12 @@ namespace vcs::aim
 
         bool onFoot(uint32_t ped) { return ped && !rd32(ped + kPedVehicle) && rd32(ped + kPedState) != 0x37; }
 
-        // In a car with the game's free aim on (a mission's drive-by mode): bit 51 and the dummy object as the target.
-        bool carFreeAim(uint32_t ped)
+        // The game's free aim, started by a script: bit 51 and the dummy object as the target, in a car (a mission's
+        // drive-by mode) or forced (bit 53: the shooting range). Not the player's own (R1 + L3 on foot: neither).
+        bool scriptFreeAim(uint32_t ped)
         {
-            return ped && rd32(ped + kPedVehicle) && freeAimBit(ped) && isObject(rd32(ped + kPedTarget));
+            return ped && freeAimBit(ped) && isObject(rd32(ped + kPedTarget)) &&
+                   (rd32(ped + kPedVehicle) || (rd32(ped + kPedFreeAimWord) & kForcedBit));
         }
 
         float weaponRange(uint32_t ped)
@@ -241,7 +248,7 @@ namespace vcs::aim
         PS2_GUEST_CC void shotLine(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
         {
             const uint32_t ped = rd32(kPlayerPed);
-            if ((g_state == State::Active || g_state == State::Passenger) && GPR_U32(ctx, 31) == kShotLineReturn && ped &&
+            if ((g_state == State::Active || g_state == State::Script) && GPR_U32(ctx, 31) == kShotLineReturn && ped &&
                 GPR_U32(ctx, 9) == ped && rd32(ped + kPedTarget) == g_dummy)
             {
                 const uint32_t from = GPR_U32(ctx, 4), to = GPR_U32(ctx, 5), cam = activeCam();
@@ -324,34 +331,48 @@ namespace vcs::aim
 
     namespace
     {
-        // In a car with the game's free aim on (a mission's drive-by mode, game-internals.md 12c): the game moves the
-        // dummy with the car and turns it by the left stick (FUN_002343E0, in the world update after this pad read),
-        // then pulls it onto whatever the camera's line to it hits. Here the mouse / right stick turn it instead (the
-        // left stick centred), placed at the gun's range from Vic as the game keeps it, and the lock-on camera is
-        // turned by the same amount first, as on foot. No button: the game aims all the time in this mode, and the
-        // fire button shoots (through the circle: the shot line as on foot).
-        Output passenger(uint32_t ped, const Input &in)
+        // The game's free aim started by a script (game-internals.md 12c): in a car (a mission's drive-by mode) the game
+        // moves the dummy with the car, on foot (the forced free aim: the shooting range) Vic stands still; either way
+        // the left stick turns it (FUN_002343E0, in the world update after this pad read), within limits, then it is
+        // pulled onto whatever the camera's line to it hits. Here the mouse / right stick turn it instead (the left
+        // stick centred), within the same limits (the game's apply only while its stick moves it), placed at the gun's
+        // range from Vic as the game keeps it, and the lock-on camera is turned by the same amount first, as on foot.
+        // No button: the game aims all the time in this mode, and the fire button shoots (through the circle: the shot
+        // line as on foot). R1 is left to the game (it does nothing here) - our own free aim's R1 + L3 would end the
+        // script's.
+        Output scripted(uint32_t ped, const Input &in)
         {
             Output out;
             const uint32_t cam = activeCam();
-            if (g_state != State::Passenger)
+            const bool car = rd32(ped + kPedVehicle) != 0;
+            if (g_state != State::Script)
             {
                 if (g_state == State::Active)
-                    stop("in a car");
+                    stop("a script's free aim");
                 // aim where the camera looks, level
                 g_yaw = std::atan2(rdf(cam + 0x14), rdf(cam + 0x10));
                 g_pitch = 0.0f;
                 g_dummy = rd32(ped + kPedTarget);
-                g_state = State::Passenger;
+                g_state = State::Script;
                 g_active = true;
-                std::fprintf(stderr, "[aim] free aim in the car (the game's drive-by, dummy 0x%x)\n", g_dummy);
+                std::fprintf(stderr, "[aim] the game's free aim (%s, dummy 0x%x)\n",
+                             car ? "a car's drive-by" : "forced by a script", g_dummy);
             }
             g_dummy = rd32(ped + kPedTarget);
-            out.camera = out.leftStick = out.padR1Fires = true;
+            out.camera = out.leftStick = true;
+            out.padR1Fires = car; // the user's ask: R1 fires in the car only (Jive Drive)
 
             const float dt = std::clamp(rdf(kTimeStep), 0.05f, 3.4f) / 50.0f;
-            const float turn = in.turn + in.turnRate * kStickRate * dt;
-            const float pitch = std::clamp(g_pitch + in.tilt + in.tiltRate * kStickRate * dt, kCarPitchDown, kCarPitchUp);
+            float turn = in.turn + in.turnRate * kStickRate * dt;
+            if (!car)
+            {
+                // within 110 deg of Vic's heading (his forward, the matrix's +0x10)
+                const float heading = std::atan2(rdf(ped + 0x14), rdf(ped + 0x10));
+                const float to = std::clamp(std::remainder(g_yaw + turn - heading, 6.2831855f), -kFootYawLimit, kFootYawLimit);
+                turn = std::remainder(heading + to - g_yaw, 6.2831855f);
+            }
+            const float pitch = std::clamp(g_pitch + in.tilt + in.tiltRate * kStickRate * dt, car ? kCarPitchDown : kFootPitchDown,
+                                           car ? kCarPitchUp : kFootPitchUp);
             const float tilt = pitch - g_pitch;
             g_yaw = std::remainder(g_yaw + turn, 6.2831855f);
             g_pitch = pitch;
@@ -364,7 +385,7 @@ namespace vcs::aim
             const float range = weaponRange(ped), cp = std::cos(g_pitch);
             const float at[3] = {rdf(ped + kPedPos) + range * cp * std::cos(g_yaw),
                                  rdf(ped + kPedPos + 4) + range * cp * std::sin(g_yaw),
-                                 rdf(ped + kPedPos + 8) + range * std::sin(g_pitch)};
+                                 rdf(ped + kPedPos + 8) + (car ? 0.0f : kPivotHeight) + range * std::sin(g_pitch)};
             wrVec(g_dummy + kPedPos, at);
             wrVec(ped + kPedAimPoint, at);
             return out;
@@ -377,11 +398,11 @@ namespace vcs::aim
         const uint32_t ped = g_rdram && g_origGame ? rd32(kPlayerPed) : 0;
         if (g_handBack > 0)
             --g_handBack; // the camera hasn't come back to the follow camera in time: leave it
-        if (in.on && carFreeAim(ped))
-            return passenger(ped, in);
-        if (g_state == State::Passenger)
+        if (in.on && scriptFreeAim(ped))
+            return scripted(ped, in);
+        if (g_state == State::Script)
         {
-            std::fprintf(stderr, "[aim] free aim in the car off\n");
+            std::fprintf(stderr, "[aim] the game's free aim off\n");
             g_state = State::Idle;
             g_active = false;
         }

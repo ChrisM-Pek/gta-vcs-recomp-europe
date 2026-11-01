@@ -13,7 +13,9 @@ leaving the car; free aim (src/game/vcs_aim.cpp: the right button enters the gam
 hits a man on the aim line and not one beside it, Vic strafes while aiming, the camera stays where the aim looked, fists
 and free aim off still lock on, the gamepad's RB and right stick, the sniper scope turned 1:1 and zoomed by the wheel,
 the wheel changing weapons; in a car, the game's drive-by free aim as in Jive Drive: the left stick with free aim off,
-the mouse / right stick with it on, the height limits, a shot through the circle, leaving the car); a mouse wheel binding; a menu key
+the mouse / right stick with it on, the height limits, a shot through the circle, leaving the car; on foot, the game's
+forced free aim as in Phil's shooting range: the same, the right button keeping it, the side and height limits, the
+script's end); a mouse wheel binding; a menu key
 refuses a key a control has; the presets and Reset all settings; the screenshot key (F8) saves a PNG; screenshots of the settings menu's pages; Audio >
 Music / Sound effects are the game's own levels (set here, shown in its pause menu, changed there, kept by a save
 load) (src/game/vcs_volume.cpp). Results: OUT/summary.txt; screenshots OUT/*.png. Default
@@ -475,6 +477,34 @@ class Check:
                 dry == (0, 0, 0, 0, 4) and again == (5, 1, 11),
                 "dry: slot %d aim %d buttons %04x target 0x%x mode %d; wheel: slot %d aim %d mode %d" % (dry + again))
 
+    def shot_under_circle(self, ped, name):
+        """A man under the circle (on the camera's line through it, 8 m past Vic) and one 2 m beside him, the aim tilted
+        onto the first one's middle, the left button pressed: (health of the one under it, of the one beside it, shots
+        sent down the camera line)."""
+        g = self.g
+        cam = self.CAM
+        (sx, sy, sz), (dx, dy, dz) = g.peekf(cam + 0x20, 3), g.peekf(g.u32(ped + self.PED_TARGET) + 0x30, 3)
+        (px, py, _) = g.peekf(ped + 0x30, 3)
+        h = math.hypot(dx - sx, dy - sy)
+        ux, uy = (dx - sx) / h, (dy - sy) / h
+        t = math.hypot(px - sx, py - sy) + 8.0
+        on_ped = self.ped_at(sx + ux * t, sy + uy * t)
+        off_ped = self.ped_at(sx + ux * t - uy * 2.0, sy + uy * t + ux * 2.0)
+        time.sleep(0.5)
+        for _ in range(3):  # the camera's line through his middle: the aim tilted until it does
+            (sx, sy, sz), (dx, dy, dz) = g.peekf(cam + 0x20, 3), g.peekf(g.u32(ped + self.PED_TARGET) + 0x30, 3)
+            (qx, qy, qz) = g.peekf(on_ped + 0x30, 3)
+            along = math.hypot(qx - sx, qy - sy)
+            ray = sz + (dz - sz) * along / math.hypot(dx - sx, dy - sy)
+            g.cmd("mouse 0 %d" % round(-math.atan2(qz - ray, along) * 400))
+            g.wait_frames(10)
+        shots0 = self.aim()[1]
+        g.cmd("press mouseleft 300")
+        time.sleep(1.0)
+        hit, missed = g.peekf(on_ped + self.PED_HEALTH, 1)[0], g.peekf(off_ped + self.PED_HEALTH, 1)[0]
+        self.shot(name)
+        return hit, missed, self.aim()[1] - shots0
+
     def car_free_aim(self):
         """Free aim in a car: the game's own free aim in a mission's drive-by mode (SET_PLAYER_DRIVEBY_MODE, as Jive
         Drive sets it: Vic in the passenger seat with an SMG), the left stick turning it with free aim off (the PS2), the
@@ -568,29 +598,7 @@ class Check:
         # (seen from Vic: the game pulls the dummy along the camera's line onto what it hits, a degree or so either way)
         self.ok("in a car: the aim's height in the game's limits", 18.0 < up < 22.0, "%.1f deg up" % up)
 
-        # a shot hits a man under the circle (on the camera's line through it, 8 m past Vic), not one 2 m beside him
-        cam = self.CAM
-        (sx, sy, sz), (dx, dy, dz) = g.peekf(cam + 0x20, 3), g.peekf(g.u32(ped + self.PED_TARGET) + 0x30, 3)
-        (px, py, _) = g.peekf(ped + 0x30, 3)
-        h = math.hypot(dx - sx, dy - sy)
-        ux, uy = (dx - sx) / h, (dy - sy) / h
-        t = math.hypot(px - sx, py - sy) + 8.0
-        on_ped = self.ped_at(sx + ux * t, sy + uy * t)
-        off_ped = self.ped_at(sx + ux * t - uy * 2.0, sy + uy * t + ux * 2.0)
-        time.sleep(0.5)
-        for _ in range(3):  # the camera's line through his middle: the aim tilted until it does
-            (sx, sy, sz), (dx, dy, dz) = g.peekf(cam + 0x20, 3), g.peekf(g.u32(ped + self.PED_TARGET) + 0x30, 3)
-            (qx, qy, qz) = g.peekf(on_ped + 0x30, 3)
-            along = math.hypot(qx - sx, qy - sy)
-            ray = sz + (dz - sz) * along / math.hypot(dx - sx, dy - sy)
-            g.cmd("mouse 0 %d" % round(-math.atan2(qz - ray, along) * 400))
-            g.wait_frames(10)
-        shots0 = self.aim()[1]
-        g.cmd("press mouseleft 300")
-        time.sleep(1.0)
-        hit, missed = g.peekf(on_ped + self.PED_HEALTH, 1)[0], g.peekf(off_ped + self.PED_HEALTH, 1)[0]
-        shots = self.aim()[1] - shots0
-        self.shot("car_free_aim")
+        hit, missed, shots = self.shot_under_circle(ped, "car_free_aim")
         self.ok("in a car: the shot goes through the circle", hit < 100 and missed == 100 and shots >= 1,
                 "under the circle %.0f, beside it %.0f, %d shot(s) down the camera line" % (hit, missed, shots))
 
@@ -607,6 +615,118 @@ class Check:
         g.cmd("trainer toggle god 0")
         self.ok("in a car: leaving it ends it", ended[0] == 0 and ended[1] == 4 and not g.u32(ped + 0x480),
                 "active %d mode %d" % ended[:2])
+
+    def forced_free_aim(self):
+        """The forced free aim on foot (SET_PLAYER_FORCE_FREE_AIMING, as Phil's shooting range sets it: a pistol, Vic
+        standing): the left stick turns it with free aim off (the PS2), the mouse with it on (the left stick then not),
+        the right button pressed and let go keeps it (our own free aim's R1 + L3 used to end it), the gamepad's R1 stays
+        R1, the game's limits (110 degrees either side, 40 up), shots through the circle, the script's end ends it."""
+        g = self.g
+        S = rig.Scm
+        g.teleport(575.0, 175.0, -100.0, 0.0)
+        time.sleep(3.0)
+        self.give(19)
+        g.scm(S.op(0x04D6, S.PLAYER, S.i(1)))  # SET_PLAYER_FORCE_FREE_AIMING
+        time.sleep(1.5)
+        ped = g.player()[0]
+        target = g.u32(ped + self.PED_TARGET)
+        kind = g.u32(target + 0x48) & 0xE if target else 0
+        forced = bool(g.u32(ped + 0xCCC) & 0x200000)
+
+        def turned(h0):
+            return (self.aim_heading() - h0 + math.pi) % (2 * math.pi) - math.pi
+
+        def mouse_turn(counts=400):
+            h0 = self.aim_heading()
+            for _ in range(20):
+                g.cmd("mouse %d 0" % (counts // 20))
+            g.wait_frames(15)
+            return turned(h0)
+
+        def stick_turn():
+            h0 = self.aim_heading()
+            g.cmd("key d down")
+            time.sleep(0.5)
+            g.cmd("key d up")
+            g.wait_frames(5)
+            return turned(h0)
+
+        def aiming():
+            target = g.u32(ped + self.PED_TARGET)
+            return self.cam()[0] == 11 and target and g.u32(target + 0x48) & 0xE == 8
+
+        # free aim off: the game's (the left stick turns it, the mouse does not)
+        self.setting("mouse.free_aim", 0)
+        g.wait_frames(5)
+        off = self.aim()[0], mouse_turn(), stick_turn()
+        self.ok("forced free aim, free aim off: the game's (left stick)",
+                forced and self.cam()[0] == 11 and kind == 8 and off[0] == 0 and abs(off[1]) < 0.02 and abs(off[2]) > 0.2,
+                "forced %d mode %d target kind %d, active %d, mouse %+.3f, left stick %+.3f" % ((forced, self.cam()[0], kind) + off))
+
+        # free aim on: the mouse turns it (400 counts a radian) and the camera with it, the left stick does not
+        self.setting("mouse.free_aim", 1)
+        g.wait_frames(5)
+        c0 = self.cam()[2]
+        on = self.aim()[0], mouse_turn()
+        cturn = (self.cam()[2] - c0 + math.pi) % (2 * math.pi) - math.pi
+        still = stick_turn()
+        p = self.held("d")
+        self.ok("forced free aim: the mouse aims", on[0] == 1 and abs(on[1] + 1.0) < 0.05 and abs(cturn + 1.0) < 0.15 and
+                abs(still) < 0.01 and p["lx"] in (127, 128),
+                "active %d, mouse %+.3f, camera %+.3f, left stick %+.3f (lx %d)" % (on + (cturn, still, p["lx"])))
+
+        # the right button held and let go: still the script's free aim (no R1 + L3 of ours), the mouse still aims
+        g.cmd("key mouseright down")
+        time.sleep(0.8)
+        g.cmd("key mouseright up")
+        time.sleep(1.0)
+        after = self.aim()[0], aiming(), mouse_turn(-400)
+        self.ok("forced free aim: the right button keeps it", after[0] == 1 and after[1] and abs(after[2] - 1.0) < 0.05,
+                "active %d aiming %d, mouse %+.3f" % after)
+
+        # the gamepad: the right stick aims, R1 stays R1 (it fires only in a car)
+        g.cmd("gamepad on")
+        h0 = self.aim_heading()
+        g.cmd("gamepad rx 1")
+        time.sleep(0.5)
+        g.cmd("gamepad rx 0")
+        time.sleep(0.3)
+        pad = turned(h0)
+        g.cmd("gamepad rb 1")
+        rb = self.pad()["buttons"]
+        g.cmd("gamepad rb 0")
+        time.sleep(0.5)
+        g.cmd("gamepad off")
+        mouse_turn(round(pad * 400))  # back to where it was
+        self.ok("forced free aim: the right stick aims, R1 is R1", -1.4 < pad < -0.6 and rb == R1 and aiming(),
+                "aim %+.3f, buttons %04x" % (pad, rb))
+
+        # the game's limits on foot: 110 degrees either side of Vic's heading, 40 above level
+        fx, fy = g.peekf(ped + 0x10, 2)
+        heading = math.atan2(fy, fx)
+        mouse_turn(1600)  # 4 radians to the right
+        side = math.degrees((self.aim_heading() - heading + math.pi) % (2 * math.pi) - math.pi)
+        mouse_turn(round(math.radians(side) * 400))  # back along his heading
+        g.cmd("mouse 0 -800")
+        g.wait_frames(10)
+        (px, py, pz), (tx, ty, tz) = g.peekf(ped + 0x30, 3), g.peekf(g.u32(ped + self.PED_TARGET) + 0x30, 3)
+        up = math.degrees(math.atan2(tz - (pz + 0.6), math.hypot(tx - px, ty - py)))
+        g.cmd("mouse 0 %d" % round(math.radians(up) * 400))  # level again
+        g.wait_frames(10)
+        # (seen from Vic: the game pulls the dummy along the camera's line onto what it hits, a few degrees either way)
+        self.ok("forced free aim: the game's limits", -112.0 < side < -106.0 and 38.0 < up < 42.0,
+                "%.1f deg to the side, %.1f deg up" % (side, up))
+
+        hit, missed, shots = self.shot_under_circle(ped, "forced_free_aim")
+        self.ok("forced free aim: the shot goes through the circle", hit < 100 and missed == 100 and shots >= 1,
+                "under the circle %.0f, beside it %.0f, %d shot(s) down the camera line" % (hit, missed, shots))
+
+        # the script ends it (the range's last SET_PLAYER_FORCE_FREE_AIMING 0)
+        g.scm(S.op(0x04D6, S.PLAYER, S.i(0)))
+        time.sleep(1.5)
+        ended = self.aim()[0], self.cam()[0]
+        self.setting("mouse.free_aim", 0)
+        self.ok("forced free aim: the script's end ends it", ended == (0, 4), "active %d mode %d" % ended)
 
     def run(self):
         g = self.g = rig.Game.start(save=os.path.join(ROOT, "build", "rig", "saves", "fortbaxter"), name="controls_check",
@@ -663,6 +783,7 @@ class Check:
             self.mouse_and_driving()
             self.free_aim()
             self.car_free_aim()
+            self.forced_free_aim()
 
             # a wheel notch as L1 (second slot); the menu key keeps F2 (the menu refuses keys a control has)
             self.setting("keys.l12", KEY_WHEEL_UP)

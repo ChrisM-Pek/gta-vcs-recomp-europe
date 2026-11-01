@@ -637,6 +637,17 @@ dropped on uploads (lazy render-target patching).
   shots in 3 s of fire, all down the camera line, tracers to the circle. Then (the user's ask) the gamepad's R1 fires
   in that car aim only (sent as Circle): controls_check "the gamepad's R1 fires" (Circle, 30 shots in 1 s) and, free
   aim off, "the gamepad's R1 is R1".
+- **Free aim in Phil's shooting range** (2026-11-01, the user's report: the old aim, and broken): the range forces
+  the game's free aim on foot (SET_PLAYER_FORCE_FREE_AIMING); the right button's R1 + L3 and its release ended it for
+  the round. Now taken over like the car's (game-internals.md 12c). In the range itself (hidden run, entered through
+  Phil's door as a player does): the mouse 0.75 rad per 300 counts with the camera, the right button pressed and let
+  go keeps it, the left stick nothing; aimed at the pop-up targets with the mouse, 400 points (the targets' own
+  HAS_OBJECT_BEEN_DAMAGED). controls_check `forced_free_aim` (the command on foot with a pistol): free aim off the left
+  stick turns it and the mouse not; on - the mouse 1.000 rad per 400 counts, the right button kept, the right stick
+  aims and R1 stays R1, 107.6 deg to the side at most (110 less the line test's pull), 40.0 up, a man under the
+  circle hit and one beside him not, the script's end ends it. (Starting the range from the trainer's mission list
+  drops Vic through the floor: the range is an interior the door's script loads - the game's, with or without free
+  aim.)
 - **Music / sound effects volume** (2026-10-28, asked for by the user): Audio > Music and Sound effects are the game's
   own levels, in step with its pause menu both ways and kept across save loads (game-internals.md 9c). controls_check
   checks that the levels reach the game and its prefs, a save load keeps them, and the pause menu's slider changes the

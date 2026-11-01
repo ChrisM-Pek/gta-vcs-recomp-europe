@@ -8,9 +8,10 @@
 // camera and its circle), and the player's shots test their line from the camera through the circle (so they hit what
 // is under it, not what the gun's own line would). VCS_FREEAIM=0 installs none of it (the reference).
 //
-// In a car the game starts its free aim itself (a mission's drive-by mode, SET_PLAYER_DRIVEBY_MODE: Jive Drive, Vic
-// shooting from the passenger seat while Lance drives; game-internals.md 12c): there, with free aim on for either
-// device, the mouse and the right stick turn its dummy in place of the left stick, with no button to hold.
+// Two scripts start the game's free aim themselves (game-internals.md 12c): in a car a mission's drive-by mode
+// (SET_PLAYER_DRIVEBY_MODE: Jive Drive, Vic shooting from the passenger seat while Lance drives), on foot the forced
+// free aim (SET_PLAYER_FORCE_FREE_AIMING: Phil's shooting range). There, with free aim on for either device, the mouse
+// and the right stick turn its dummy in place of the left stick, with no button to hold.
 #pragma once
 
 #include <cstdint>
@@ -26,7 +27,7 @@ namespace vcs::aim
     struct Input
     {
         bool want = false;        // the target button is held (or hip fire) and free aim is on for that device
-        bool on = false;          // free aim is on for either device (the game's own free aim in a car is taken over)
+        bool on = false;          // free aim is on for either device (the game's own free aim a script starts is taken over)
         float turn = 0, tilt = 0; // radians this frame: left +, up + (the mouse)
         float turnRate = 0, tiltRate = 0; // -1..1: left +, up + (the right stick)
     };
@@ -35,7 +36,7 @@ namespace vcs::aim
     {
         bool own = false;    // free aim has the target button: R1 is `r1` and L3 `l3`, not the bindings'
         bool camera = false; // and the camera: the right stick centred, the mouse camera left alone
-        bool leftStick = false; // and the left stick: centred (in a car it moves the game's free-aim dummy)
+        bool leftStick = false; // and the left stick: centred (in a script's free aim it moves the game's dummy)
         bool padR1Fires = false; // the gamepad's R1 fires (Circle) - in a car, where the right stick aims and Circle is
                                  // out of the thumb's reach
         bool r1 = false, l3 = false;
@@ -44,7 +45,7 @@ namespace vcs::aim
 
     // The player's current weapon is one free aim works with (the guns: not melee, thrown, scopes, the camera).
     bool gunInHand();
-    // Free aim is on (the game's free-aim lock is held, or its free aim in a car is ours), as of the last pad read.
+    // Free aim is on (the game's free-aim lock is held, or a script's free aim is ours), as of the last pad read.
     bool aiming();
 
     // Game thread, right after the CCam `cam`'s update (CCam::Process) and before the frame's camera is built from it

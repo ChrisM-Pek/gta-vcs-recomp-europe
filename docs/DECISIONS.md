@@ -757,6 +757,14 @@ from them: Vic moves while free aiming exactly when he can move locked on with t
   that car aim only, the gamepad's R1 button fires: it is sent as Circle, and not as R1 (the keyboard's R1 keys are
   left as they are). Nowhere else changes: on foot R1 is the target button, and in the car
   with free aim off it is R1 (controls_check checks both).
+- (2026-11-01, the user, next) Phil's shooting range also used the left-stick aim, and broke when the right button was
+  pressed: the range forces the game's free aim on foot (SET_PLAYER_FORCE_FREE_AIMING, bit 53), and our own free aim's
+  entry (R1 + L3) and exit (R1 let go) ended it - Vic back on the follow camera with no circle for the rest of the
+  round. A free aim a script forces is now taken over like the car's (one path, `scripted` in vcs_aim.cpp): the mouse /
+  right stick, no button, the left stick centred (Vic stands still there anyway), R1 left to the game (it does nothing
+  there). The game's on-foot limits are kept: 110 deg either side of Vic's heading, 40 up, 20 down (the game applies
+  them only while its own stick moves the dummy, so the host clamps). The gamepad's R1 still fires only in the car (the
+  user asked for Jive Drive only; the range has the same reach problem - theirs to decide).
 
 ## 2026-11-01 - The launcher draws itself (docs/LAUNCHER.md)
 

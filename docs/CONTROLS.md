@@ -71,6 +71,10 @@ game-internals.md 12c):
   the circle. On the gamepad **R1 fires** there (as Circle, which still fires too): the right thumb is on the stick.
   Only in this car aim - R1 is the target button everywhere else. The circle keeps its direction while the car turns, up to 20 degrees above level and 5 below, as the game
   allows there. With free aim off it is the PS2's left stick.
+- **Phil's shooting range** (the game's free aim forced on foot, `SET_PLAYER_FORCE_FREE_AIMING`): the same - the mouse
+  and the right stick turn the circle, no button to hold, the left button fires; the right button does nothing there
+  (as R1 on the PS2), and the gamepad's R1 stays R1 (Circle fires). Up to 110 degrees either side of Vic's heading,
+  40 above level and 20 below, as the game allows.
 
 **In the scopes** (sniper rifles, rocket launcher, M16 view, camera, binoculars) the mouse turns the view itself, 1:1,
 with Mouse camera on (zoomed in it turns slower). **Mouse wheel** (Keyboard page, on by default): on foot down is the

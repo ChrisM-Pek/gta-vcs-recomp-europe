@@ -1981,8 +1981,8 @@ hidden run (rig `peek` / `poke`, snapshots diffed).
 - **Free aim in a car: the drive-by mode** (2026-11-01; Jive Drive, mission 61 `LAN_B1`). The mission puts Vic in
   Lance's Stinger with `WARP_CHAR_INTO_CAR_AS_PASSENGER`, `SET_CHAR_DRIVEBY_MODE(0442) $G2A5 1` and
   **`SET_PLAYER_DRIVEBY_MODE(0481) $G2A5 1`** (0x100377..0x100384, again at 0x101BD8 after its cutscene) - the only
-  mission that uses 0481 (a search of every mission's disassembly for 0481 / 04D6 SET_PLAYER_FORCE_FREE_AIMING; 04D6 is
-  only ever set in JER_A1 / SRANGE, the driving range, both on foot). From then on the game is in its own free aim: ped
+  mission that uses 0481 (a search of every mission's disassembly for 0481 / 04D6 SET_PLAYER_FORCE_FREE_AIMING; 04D6
+  appears in JER_A1 (only ever 0) and SRANGE, the shooting range, on foot: below). From then on the game is in its own free aim: ped
   state 0x32, bit 51 set, the dummy object (+0x820 = +0xCF8) the target, the lock-on camera (mode 11) and the circle,
   no button held. Switching 0481 / 0442 off again does not end it; leaving the car does (checked with VCS_FREEAIM=0).
 - **FUN_002343E0(ped, pad) is the free-aim dummy's update** (found by a write watch on the dummy's +0x30 in the car: pc
@@ -2000,6 +2000,25 @@ hidden run (rig `peek` / `poke`, snapshots diffed).
   is on (either device): the dummy written at the pad read at the gun's range along the mouse / right stick's aim
   (kept in the game's height limits), the lock-on camera turned by the same amount, the left stick centred; the game's
   update then adds the car's movement and the line test, as for its own stick.
+- **The forced free aim on foot: Phil's shooting range** (2026-11-01; mission 13 `SRANGE`). **04D6
+  SET_PLAYER_FORCE_FREE_AIMING** (handler FUN_002D5C20: the script handler table at 0x4BEAF0 is per opcode, 8 bytes
+  each, the function at +4) sets **bit 53 of the ped's flags at +0xCC8** (word +0xCCC, mask 0x200000) and, unless he
+  is already free aiming (FUN_00235C70), starts the free aim (FUN_002394D8) and the lock-on camera (FUN_0037C488(0x6F44D0,
+  11)); 0 clears the bit and ends it (FUN_0023ADC0). Seen as a memory diff of the command on and off: +0xCCC 0x0040d400
+  -> 0x0069d400 (bits 48, 51, 53), +0x820 the dummy, state 1 -> 0x11 (0x10 in the range), +0xD6C bit 0x400. The range
+  sets it after each round's start (0x054EA8) and clears it between rounds and at the end. On foot FUN_002343E0 limits
+  the stick's dummy to 50..110 deg from Vic's up (40 above level, 20 below) and 110 deg either side of his forward
+  (+0x10) - only in the frames the stick moves it (with the sticks centred only the line test touches it). Bit 53 with
+  an entity at +0x858 takes the car-like path (the dummy moved with that entity; not seen in a mission). The right
+  button (R1) does nothing in the forced aim, but our own free aim's R1 + L3 and then R1 let go ended it for the round:
+  vcs_aim.cpp now takes a script's free aim over (bit 51 + the dummy, in a vehicle or with bit 53) before its own entry.
+  The range itself: an interior (area 2) behind Phil's door at (-710, -1541.8, 12.4) (the main script warps Vic to
+  (-685.31, -1550.65, 30) and back), the marker at (-695.95, -1549.34, 30) launches mission 13
+  (LOAD_AND_LAUNCH_MISSION_INTERNAL at 0x24957). Launched from elsewhere (the trainer) Vic falls through the booth's
+  floor to the ground at z 12: the interior was never loaded. Targets: objects (models -18 / -42) in `$G1543[11]`,
+  scored by HAS_OBJECT_BEEN_DAMAGED (+100; -200 when `$G1590[i]` is set - presumably the board not to shoot, not
+  checked), the score `$G15A6`, the round's target `$G15A7`; their
+  origin is at the board's foot (aim ~0.6 m above it).
 
 ## 13. Open questions / next research targets
 

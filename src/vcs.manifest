@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!-- vcs.exe's manifest (src/vcs.rc). activeCodePage UTF-8 (Windows 10 1903+): the narrow strings the game and the
+     runtime use for paths - std::filesystem::path::string(), getenv, argv, fopen - are UTF-8, so a folder or a
+     Windows user name outside the system code page (Cyrillic, CJK...) works. Without it the game stopped at start
+     ("No mapping for the Unicode character exists in the target multi-byte code page", issue #27; DECISIONS.md). -->
+<assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
+  <trustInfo xmlns="urn:schemas-microsoft-com:asm.v3">
+    <security>
+      <requestedPrivileges>
+        <requestedExecutionLevel level="asInvoker" uiAccess="false"/>
+      </requestedPrivileges>
+    </security>
+  </trustInfo>
+  <application xmlns="urn:schemas-microsoft-com:asm.v3">
+    <windowsSettings>
+      <activeCodePage xmlns="http://schemas.microsoft.com/SMI/2019/WindowsSettings">UTF-8</activeCodePage>
+    </windowsSettings>
+  </application>
+</assembly>

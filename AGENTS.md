@@ -179,6 +179,9 @@ card copies to start from (never the user's live card).
   time zone); `build.py` sets them to now (`toolchain.fix_future_files`, docs/LAUNCHER.md).
 - A tool fails within a second, its log empty (a player's report, 2026-10-31): a crash before the first line - the log
   now ends with the exit code (`0xC000001D` illegal instruction: a build for a newer CPU, `PS2X_CPU`; DECISIONS.md).
+- `[main] fatal exception: No mapping for the Unicode character exists in the target multi-byte code page`, or a path
+  full of `?`s: a non-ASCII folder seen through the ANSI code page - vcs.exe's UTF-8 manifest missing or ignored
+  (`src/vcs.manifest`, DECISIONS.md 2026-11-01).
 - First things to grep in a log: `[ee] thread N -> dormant`, `[guest-branch:unlisted-resume]`.
 
 ## Working style for long autonomous runs

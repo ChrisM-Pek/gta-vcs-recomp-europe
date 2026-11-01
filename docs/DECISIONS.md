@@ -861,3 +861,20 @@ the repository or the exe: the launcher asks DirectWrite for an installed "Price
 copy, 2.1) and falls back to Bahnschrift. Used for three things only: the name on Home, Home's big button, the build
 percentage (GTA's money counter is Pricedown). A pre-rendered image of the lettering (fixed artwork, 2.2) was not
 chosen: digits for the percentage would be a reusable glyph set (4.5). A licence for embedding would change this.
+
+## 2026-11-01 - vcs.exe runs with the UTF-8 code page (non-ASCII folders)
+
+A player's report (issue #27): the built game stopped at start with "No mapping for the Unicode character exists in the
+target multi-byte code page". Reproduced with the game in `build\run\nonascii\Игры é\game`: the folder comes from
+`GetModuleFileNameW` (wide), and the first `std::filesystem::path::string()` on it throws, because MSVC's STL converts
+to the system's ANSI code page (cp1252 here), which has no Cyrillic. A second case fails the other way: a data folder
+with Cyrillic letters (a Windows user name, so `%LOCALAPPDATA%`) arrives through `getenv` as `?`s, and the game "cannot
+write" its cache. The game and the runtime pass paths as narrow strings in many places (`loadELF(std::string)`, fopen,
+the ini, the card), so converting each to wide calls was not the fix.
+
+vcs.exe now has its own manifest (`src/vcs.manifest` through `src/vcs.rc`, the linker's default off with
+`/MANIFEST:NO`): the same `asInvoker` as lld-link's default plus `activeCodePage` UTF-8 (Windows 10 1903 and later), so
+the ANSI code page of the process is UTF-8 - `path::string()`, `getenv`, `argv` and the CRT's narrow file functions
+all speak UTF-8 and round-trip any name. A resource, not `/MANIFESTINPUT`: lld-link merges manifests only when LLVM
+was built with libxml2 (else it calls mt.exe), which a player's clang may not be. Older Windows 10 ignores the setting
+and behaves as before.

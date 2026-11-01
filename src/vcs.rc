@@ -1,0 +1,3 @@
+// vcs.exe's manifest: the UTF-8 code page (src/vcs.manifest). 1 = CREATEPROCESS_MANIFEST_RESOURCE_ID, 24 = RT_MANIFEST;
+// the linker's own manifest is off (/MANIFEST:NO in CMakeLists.txt), so this is the only one.
+1 24 "vcs.manifest"

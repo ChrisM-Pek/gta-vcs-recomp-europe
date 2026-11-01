@@ -523,6 +523,10 @@ dropped on uploads (lazy render-target patching).
       it after the points before it, in every configuration; a fresh teleport there from Fort Baxter lands (z 14.5).
       Collision streaming order / timing at that spot needs a look.
 ## Phase 5 - stability
+- [x] The game stopping at start in a non-ASCII folder, or with a Windows user name in Cyrillic (issue #27, "No mapping
+      for the Unicode character...") - **fixed 2026-11-01**: vcs.exe's manifest sets the UTF-8 code page (DECISIONS.md).
+      Checked hidden: the game in `...\Игры é\game` and a data folder `...\Пользователь é\VCSRecomp` both crashed before
+      and now boot to the intro movie (321 pictures, 0 dropped), the cache and card made under the Cyrillic name.
 - [x] Shakedown (MAR_A1): characters floating over / sunk into the ground in the opening cutscene, and the game stuck on
       "Loading..." when entering the shop (user report 2026-10-25) - **fixed 2026-10-25**, two separate bugs
       (game-internals.md 4 and 12). The cutscene: CCutsceneObject::ProcessControl's dead `step < 0.5` branch (only

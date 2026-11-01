@@ -36,7 +36,8 @@ namespace theme
         Color well, wellBottom, wellGlow, wellGlowBottom; // the disc drop zone, idle and with a file over it
         Color sky, sea;                                // the backdrop's top and its sea
         Color horizon;                                 // the sky's glow at the horizon
-        Color skyline, cloud, lights;                  // silhouettes (towers, palms), cloud streaks, lit windows
+        Color skyline, cloud, lights;                  // silhouettes (towers), cloud streaks, lit windows
+        Color contrail;                                // jet trails, lit by the low sun
     };
 
     inline constexpr Palette kDarkPalette{
@@ -73,6 +74,7 @@ namespace theme
         .skyline = rgb(0x0B0709),
         .cloud = rgb(0x1E0B15),
         .lights = rgb(0xFFB8D6),
+        .contrail = rgb(0xFFC2DA),
     };
 
     inline constexpr Palette kLightPalette{
@@ -109,6 +111,7 @@ namespace theme
         .skyline = rgb(0xD9618F),
         .cloud = rgb(0xFFFAFC),
         .lights = rgb(0xFFF1F6),
+        .contrail = rgb(0xFFFFFF),
     };
 
     // the palette in use: between the two while it changes (apply)
@@ -160,6 +163,7 @@ namespace theme
     inline Color &kSkyline = current.skyline;
     inline Color &kCloud = current.cloud;
     inline Color &kLights = current.lights;
+    inline Color &kContrail = current.contrail;
 
     // a tint over a surface (white on dark, a deep pink on light)
     inline Color ink(float a) { return core::withAlpha(current.ink, a * core::alphaOf(current.ink)); }

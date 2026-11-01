@@ -20,6 +20,7 @@ namespace screens
     {
         std::string screen, demo;
         bool screenshot = false; // no window: a fixed size, nothing outside the window
+        double clock = 0;        // where Home's moving scene starts, seconds (--clock: a picture of a given moment)
     };
 
     void init(launcher::App &app, const Options &options);

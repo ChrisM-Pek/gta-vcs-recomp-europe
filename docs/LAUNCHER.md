@@ -79,7 +79,8 @@ motion is (2026-11-01, the user's "rethink everything"; before, a sidebar of pag
 - **Home** (`home.cpp`): the name over Vice City at dusk (`backdrop.cpp`, drawn by the renderer: the icon's striped sun
   behind the beach's art deco towers, a hazier row behind them with smaller, dimmer windows, the sea with their
   reflection; stars at night). It moves, gently: the sun's stripes slide into the horizon, cloud streaks drift across
-  the sun, windows go on and off and the tallest tower's light blinks, lines roll in on the water and the sun's reflection
+  the sun, far-off jets cross high up (about one every 30 s) drawing trails that spread, drift and fade over half a
+  minute, windows go on and off and the tallest tower's light blinks, lines roll in on the water and the sun's reflection
   wavers - drawn at 30 frames a second (15 unfocused), only while Home shows, never while the game runs, and still with
   reduce motion on. In front of it,
   one big button for what's next (Play, or Check again when the check failed; with an update ready Play stays and a
@@ -254,7 +255,9 @@ exe prints to the terminal that started it only through AttachConsole; `--out` f
 `dialog:restore|quit|cancel`, `gallery` - every widget in its states), `--demo` a sample state (`running`, `link`,
 `firstlink`, `error`, `done`, `playing`, `update`, `gameerror`), `--then S --at T` switches after T seconds and `--frames N` saves N
 consecutive frames (a transition, frame by frame), `--scale K` / `--size WxH` the pixels per unit and the logical size,
-`--theme light|dark` the palette (dark when not given, whatever launcher.ini or Windows say);
+`--theme light|dark` the palette (dark when not given, whatever launcher.ini or Windows say), `--clock S` Home's moving
+scene S seconds further on (its jets, clouds and windows at a given moment: the stills otherwise land wherever the
+doctor's run left the clock);
 `--step N` (the old page numbers), `--action build --every S`, `--iso X`, `--wait S`, `--pick-build-dir PATH` as
 before. Screenshots run on a fixed 60 Hz clock, so the same arguments give the same picture. `--hidden --quit-after S`
 runs the real window and frame loop without showing it and prints the frames drawn and the CPU used (the idle cost);

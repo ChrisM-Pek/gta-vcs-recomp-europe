@@ -822,7 +822,10 @@ screens, never minimized. Cost: ~0.16 ms of CPU a frame, about 0.5% of a core. A
 drawn opaque, sunk toward the sea's colour, so overlapping pieces don't show darker).
 
 Next (the user): the palms went, the far row got windows of its own (smaller and dimmer), and no tower has a rounded
-top any more (a parapet instead).
+top any more (a parapet instead). Then jets (the user): a speck crossing high up every ~30 s - each flight's height,
+slant, direction and pace from its number, so nothing is stored - laying a trail of soft dots that starts thin behind
+it and widens, sinks and fades over 32 s; white on the light sky (stronger there, or it vanishes), sunlit pink at night
+with a blinking strobe.
 
 Two frame-loop faults turned up on the way: a sleep that ended on its timeout set `needsRedraw`, which also books a
 settle frame, so every timed wake drew two frames (a timed wake now draws one); and minimized, a frame asked for at a

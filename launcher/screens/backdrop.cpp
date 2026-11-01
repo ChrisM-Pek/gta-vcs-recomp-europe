@@ -1,7 +1,8 @@
 // Behind everything: the sky and its glows, and on Home Vice City at dusk - a striped sun going down behind the towers
 // of the beach, over a sea that moves (the app icon's motif, launcher/make_icon.py), all drawn with the renderer's own
 // primitives. Alive while Home shows and the game isn't running: the sun's stripes slide toward the horizon, clouds
-// drift, windows go on and off, the sea's lines roll in and the sun's reflection shimmers - at 30 frames a second (15 when the window isn't focused), slow enough to cost almost nothing, and still
+// drift, far-off jets draw trails that spread and fade, windows go on and off, the sea's lines roll in and the sun's
+// reflection shimmers - at 30 frames a second (15 when the window isn't focused), slow enough to cost almost nothing, and still
 // with reduce motion on. Every other screen draws once and sleeps. (A later option: art from the player's own disc in
 // this slot - docs/LAUNCHER.md.)
 #include "shell.h"
@@ -120,6 +121,59 @@ namespace screens
                 const float twinkle = 0.55f + 0.45f * std::sin(S.t * (0.6f + hash(i * 5) * 1.4f) + hash(i * 7) * 6.28f);
                 const float a = (0.25f + 0.55f * hash(i * 3 + 2)) * twinkle * dark;
                 circle(x, y, px(0.55f + 0.7f * hash(i * 11)), withAlpha(theme::kText, a));
+            }
+        }
+
+        // jets crossing high up, far away: a speck drawing a trail that starts thin and bright behind it, then spreads,
+        // drifts and fades over half a minute. One sets off about every 30 s (each flight's line, direction and pace
+        // from its number), so there are usually one to three trails in the sky
+        void jets(const Scene &S)
+        {
+            constexpr float kEvery = 30, kFade = 32;
+            const float dark = theme::darkness;
+            const int last = int(std::floor(S.t / kEvery));
+            for (int k = last - 3; k <= last; ++k)
+            {
+                const uint32_t id = uint32_t(k) * 101u + 7u;
+                const float start = float(k) * kEvery + hash(id) * 12.0f;
+                const float cross = 32.0f + 16.0f * hash(id + 1); // seconds from one side to the other
+                const float since = S.t - start;
+                if (since < 0 || since > cross + kFade)
+                    continue;
+                // its line: high in the sky, a little slanted, either way
+                const bool rightward = hash(id + 2) < 0.5f;
+                const float y0 = S.h * (0.11f + 0.10f * hash(id + 3)), y1 = y0 + S.h * (hash(id + 4) - 0.5f) * 0.10f;
+                const float ax = rightward ? -0.05f * S.w : 1.05f * S.w, bx = rightward ? 1.05f * S.w : -0.05f * S.w;
+                const float jet = std::min(since / cross, 1.0f);
+                const float pathLen = std::fabs(bx - ax);
+
+                // the trail: soft dots along the line, wider, fainter and lower the longer ago the jet passed
+                float u = 0;
+                while (u < jet)
+                {
+                    const float age = since - u * cross; // seconds since the jet was here
+                    const float life = 1.0f - smooth(kFade * 0.3f, kFade, age);
+                    const float width = px(1.4f) + age * px(0.45f);
+                    const float step = std::max(px(2.5f), width * 0.55f);
+                    if (age > 0.35f && life > 0.01f) // it forms a little behind the jet
+                    {
+                        const float x = ax + (bx - ax) * u, y = y0 + (y1 - y0) * u + age * px(0.12f);
+                        const float a = (0.85f - 0.35f * dark) * life * smooth(0.35f, 1.2f, age) * std::min(1.0f, step / width * 1.6f);
+                        shadow({x - width * 0.5f, y - width * 0.5f, width, width}, withAlpha(theme::kContrail, a), width * 0.35f, width * 0.5f);
+                    }
+                    u += step / pathLen;
+                }
+                // the jet itself, a speck catching the sun, its strobe blinking at night
+                if (since < cross)
+                {
+                    const float x = ax + (bx - ax) * jet, y = y0 + (y1 - y0) * jet;
+                    circle(x, y, px(1.1f), withAlpha(theme::kContrail, 0.9f));
+                    if (dark > 0.01f && std::fmod(S.t + hash(id + 5), 1.3f) < 0.08f)
+                    {
+                        shadow({x - px(3), y - px(3), px(6), px(6)}, withAlpha(theme::kText, 0.5f * dark), px(1.5f), px(3));
+                        circle(x, y, px(1.0f), withAlpha(theme::kText, dark));
+                    }
+                }
             }
         }
 
@@ -307,7 +361,7 @@ namespace screens
         S.s = std::min(r.w, r.h);
         S.horizon = std::round(r.h * 0.70f);
         // the ambient clock: real time (a still frame with reduce motion on)
-        S.t = ui::state.motion > 0 ? float(std::fmod(ui::state.wall, 3600.0)) : 20.0f;
+        S.t = ui::state.motion > 0 ? float(std::fmod(ui::state.wall + shell.options.clock, 3600.0)) : 20.0f;
 
         sky(S, hero);
         if (hero <= 0.01f)
@@ -318,6 +372,7 @@ namespace screens
         const float cy = S.horizon - radius * (0.15f + 0.45f * e); // it rises a little as Home appears
         pushOpacity(hero);
         stars(S);
+        jets(S);
         sun(S, cx, cy, radius);
         clouds(S);
         skyline(S, true);

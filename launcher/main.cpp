@@ -14,6 +14,7 @@
 //       [--frames N]                    N consecutive frames from the start (or from --then): F-000.png...
 //       [--size WxH] [--scale K]        logical size (1100x700) and pixels per unit (1)
 //       [--theme light|dark]            the palette (dark when not given, whatever launcher.ini or Windows say)
+//       [--clock S]                     Home's moving scene S seconds in (its jets, clouds, windows...), plus the run's time
 //       [--step N]                      the old page numbers: 0-3 the setup steps, 4 Saves, 5 Settings, 6 Help
 //       [--action build --every S] [--iso X] [--wait S] [--pick-build-dir PATH]
 //   VCSLauncher.exe --stats             the window with a frame-time overlay (also Ctrl+Shift+F11)
@@ -171,7 +172,7 @@ namespace
     struct Shots
     {
         std::string path, screen, demo, then, action, iso, pickBuildDir, theme;
-        double wait = 3.0, every = 0, at = 1.0;
+        double wait = 3.0, every = 0, at = 1.0, clock = 0;
         int frames = 0;
         int width = 1100, height = 700;
         float scale = 1;
@@ -362,6 +363,7 @@ namespace
         {
             options.screen = shots->screen;
             options.demo = shots->demo;
+            options.clock = shots->clock;
         }
         ui::state.wall = shots ? 0 : platform::now();
         screens::init(app, options);
@@ -531,6 +533,8 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
             shots.wait = std::atof(v.c_str());
         if (const std::string v = argValue(args, "--every"); !v.empty())
             shots.every = std::atof(v.c_str());
+        if (const std::string v = argValue(args, "--clock"); !v.empty())
+            shots.clock = std::atof(v.c_str());
         if (const std::string v = argValue(args, "--at"); !v.empty())
             shots.at = std::atof(v.c_str());
         if (const std::string v = argValue(args, "--frames"); !v.empty())

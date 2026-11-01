@@ -51,6 +51,7 @@ namespace launcher
         std::string afterLaunch = "minimize"; // minimize, close, stay
         std::string opt;                      // "" (keep the build's), lto, none, pgo
         bool checkUpdates = false;            // ask GitHub for a newer release when the launcher starts
+        bool reduceMotion = false;            // the launcher's animations off (Windows' own setting also turns them off)
     };
 
     class App
@@ -68,6 +69,9 @@ namespace launcher
         // tools/doctor.py --json
         Json doctor;
         bool doctorRunning = false, doctorDone = false;
+        // shown from build/launcher_state.json (the last answer) until this run's check answers: the first frame
+        // already has the right layout; nothing in it may act on what the cache says (the UI shows it as checking)
+        bool doctorCached = false;
         std::string doctorError;
         std::string toolsProblem; // the scripts the launcher runs aren't all in tools/ (set by init)
         // the check ran and gave no answer: the steps it decides are unknown, never "missing"

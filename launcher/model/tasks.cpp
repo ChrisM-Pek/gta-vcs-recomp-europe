@@ -225,6 +225,15 @@ namespace launcher
             chooseDisc(pathFrom(iniIso));
         if (!disc.ok)
             scanForDisc();
+        {
+            bool ok = false;
+            Json cached = Json::parse(readFile(build / "launcher_state.json"), &ok);
+            if (ok && cached.isObject() && !cached["next"].str().empty())
+            {
+                doctor = cached;
+                doctorDone = doctorCached = true;
+            }
+        }
         refresh();
         return true;
     }
@@ -280,7 +289,12 @@ namespace launcher
                     {
                         Json parsed = Json::parse(*it, &ok);
                         if (ok)
+                        {
                             doctor = parsed;
+                            std::error_code ec;
+                            fs::create_directories(build, ec);
+                            std::ofstream(build / "launcher_state.json", std::ios::binary | std::ios::trunc) << *it << '\n';
+                        }
                     }
                 doctorError.clear();
                 if (!ok)
@@ -292,6 +306,7 @@ namespace launcher
                 }
                 doctorRunning = false;
                 doctorDone = true;
+                doctorCached = false;
                 m_doctor.reset();
             }
         }
@@ -652,6 +667,8 @@ namespace launcher
                 settings.opt = value;
             else if (key == "check_updates")
                 settings.checkUpdates = value == "1";
+            else if (key == "reduce_motion")
+                settings.reduceMotion = value == "1";
         }
     }
 
@@ -663,6 +680,7 @@ namespace launcher
         out << "# the launcher's own settings (the game's are in vcs.ini)\n"
             << "after_launch=" << settings.afterLaunch << "\n"
             << "opt=" << settings.opt << "\n"
-            << "check_updates=" << (settings.checkUpdates ? 1 : 0) << "\n";
+            << "check_updates=" << (settings.checkUpdates ? 1 : 0) << "\n"
+            << "reduce_motion=" << (settings.reduceMotion ? 1 : 0) << "\n";
     }
 }

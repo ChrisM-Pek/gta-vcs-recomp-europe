@@ -41,10 +41,14 @@ namespace launcher
         void kill();
         int wait();     // blocks; the exit code
 
+        // called from other threads when a process prints or ends, so the UI wakes instead of polling
+        static void setWakeHook(void (*hook)());
+
     private:
         void *m_process = nullptr;
         void *m_job = nullptr;
         void *m_readPipe = nullptr;
+        void *m_exitWait = nullptr; // a thread-pool wait on the process: wakes the UI when it ends
         std::thread m_reader;
         std::mutex m_lock;
         std::vector<std::string> m_lines;

@@ -79,7 +79,8 @@ motion is (2026-11-01, the user's "rethink everything"; before, a sidebar of pag
 - **Home** (`home.cpp`): the name over Vice City at dusk (`backdrop.cpp`, drawn by the renderer: the icon's striped sun
   behind the beach's art deco towers, a hazier row behind them with smaller, dimmer windows, the sea with their
   reflection; stars at night). It moves, gently: the sun's stripes slide into the horizon, cloud streaks drift across
-  the sun, far-off jets cross high up (about one every 30 s) drawing trails that spread, drift and fade over half a
+  the sun, far-off jets cross high up, from either side at irregular times (each with its own height,
+  slant, pace and distance) drawing trails that spread, drift and fade over half a
   minute, windows go on and off and the tallest tower's light blinks, lines roll in on the water and the sun's reflection
   wavers - drawn at 30 frames a second (15 unfocused), only while Home shows, never while the game runs, and still with
   reduce motion on. In front of it,

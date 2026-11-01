@@ -825,7 +825,10 @@ Next (the user): the palms went, the far row got windows of its own (smaller and
 top any more (a parapet instead). Then jets (the user): a speck crossing high up every ~30 s - each flight's height,
 slant, direction and pace from its number, so nothing is stored - laying a trail of soft dots that starts thin behind
 it and widens, sinks and fades over 32 s; white on the light sky (stronger there, or it vanishes), sunlit pink at night
-with a blinking strobe.
+with a blinking strobe. They first all seemed to come from the right (the user): a flight's traits were hashes of
+neighbouring numbers, which came out alike. Each trait is now a hash of the flight and the trait mixed apart; slots
+(24 s, a random moment in each, some left empty) pair up flying opposite ways in a random order, and each flight also
+has its own distance (a far one smaller, fainter, slower), trail life (22-40 s) and patchiness.
 
 Two frame-loop faults turned up on the way: a sleep that ended on its timeout set `needsRedraw`, which also books a
 settle frame, so every timed wake drew two frames (a timed wake now draws one); and minimized, a frame asked for at a

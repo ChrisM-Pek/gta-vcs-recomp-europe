@@ -124,26 +124,42 @@ namespace screens
             }
         }
 
+        // a flight's own random number for one of its traits: the flight and the trait mixed apart first, so neighbouring
+        // flights (and a flight's traits) don't come out alike
+        float trait(int flight, uint32_t which)
+        {
+            return hash(uint32_t(flight) * 0x9E3779B9u ^ (which * 0x85EBCA6Bu + 0x27D4EB2Fu));
+        }
+
         // jets crossing high up, far away: a speck drawing a trail that starts thin and bright behind it, then spreads,
-        // drifts and fades over half a minute. One sets off about every 30 s (each flight's line, direction and pace
-        // from its number), so there are usually one to three trails in the sky
+        // drifts and fades. A flight may set off in each 24 s slot, at a random moment in it (some slots stay empty);
+        // each has its own direction (slots pair up flying opposite ways, in random order), height, slant, pace, distance (a far
+        // one is smaller, fainter, slower), how long its trail lasts and how patchy it is - all from its number, so
+        // nothing is stored. Usually one to three trails are in the sky
         void jets(const Scene &S)
         {
-            constexpr float kEvery = 30, kFade = 32;
+            constexpr float kSlot = 24;
             const float dark = theme::darkness;
-            const int last = int(std::floor(S.t / kEvery));
-            for (int k = last - 3; k <= last; ++k)
+            const int last = int(std::floor(S.t / kSlot));
+            for (int k = last - 5; k <= last; ++k)
             {
-                const uint32_t id = uint32_t(k) * 101u + 7u;
-                const float start = float(k) * kEvery + hash(id) * 12.0f;
-                const float cross = 32.0f + 16.0f * hash(id + 1); // seconds from one side to the other
+                if (trait(k, 0) < 0.15f)
+                    continue; // a quiet spell
+                const float start = float(k) * kSlot + trait(k, 1) * 20.0f;
+                const float far = trait(k, 2);                                             // 0 near .. 1 far
+                const float cross = (30.0f + 22.0f * trait(k, 3)) * (0.9f + 0.3f * far);   // seconds across
+                const float fade = 22.0f + 18.0f * trait(k, 4);                            // how long its trail lasts
                 const float since = S.t - start;
-                if (since < 0 || since > cross + kFade)
+                if (since < 0 || since > cross + fade)
                     continue;
-                // its line: high in the sky, a little slanted, either way
-                const bool rightward = hash(id + 2) < 0.5f;
-                const float y0 = S.h * (0.11f + 0.10f * hash(id + 3)), y1 = y0 + S.h * (hash(id + 4) - 0.5f) * 0.10f;
+                // slots go in pairs flying opposite ways, the order random: never more than two the same way running
+                const int pair = k >= 0 ? k / 2 : (k - 1) / 2;
+                const bool rightward = (trait(pair, 5) < 0.5f) != (k - pair * 2 == 1);
+                const float y0 = S.h * (0.10f + 0.12f * trait(k, 6));
+                const float y1 = y0 + S.h * (trait(k, 7) - 0.5f) * 0.12f;
                 const float ax = rightward ? -0.05f * S.w : 1.05f * S.w, bx = rightward ? 1.05f * S.w : -0.05f * S.w;
+                const float size = 1.25f - 0.5f * far, strength = (0.85f - 0.35f * dark) * (1.0f - 0.35f * far);
+                const float patchy = 0.6f * trait(k, 8), patchFreq = 8.0f + 14.0f * trait(k, 9), patchPhase = 6.28f * trait(k, 10);
                 const float jet = std::min(since / cross, 1.0f);
                 const float pathLen = std::fabs(bx - ax);
 
@@ -152,13 +168,14 @@ namespace screens
                 while (u < jet)
                 {
                     const float age = since - u * cross; // seconds since the jet was here
-                    const float life = 1.0f - smooth(kFade * 0.3f, kFade, age);
-                    const float width = px(1.4f) + age * px(0.45f);
+                    const float life = 1.0f - smooth(fade * 0.3f, fade, age);
+                    const float width = (px(1.4f) + age * px(0.45f)) * size;
                     const float step = std::max(px(2.5f), width * 0.55f);
                     if (age > 0.35f && life > 0.01f) // it forms a little behind the jet
                     {
                         const float x = ax + (bx - ax) * u, y = y0 + (y1 - y0) * u + age * px(0.12f);
-                        const float a = (0.85f - 0.35f * dark) * life * smooth(0.35f, 1.2f, age) * std::min(1.0f, step / width * 1.6f);
+                        const float patch = 1.0f - patchy * (0.5f + 0.5f * std::sin(u * patchFreq + patchPhase));
+                        const float a = strength * life * patch * smooth(0.35f, 1.2f, age) * std::min(1.0f, step / width * 1.6f);
                         shadow({x - width * 0.5f, y - width * 0.5f, width, width}, withAlpha(theme::kContrail, a), width * 0.35f, width * 0.5f);
                     }
                     u += step / pathLen;
@@ -167,11 +184,11 @@ namespace screens
                 if (since < cross)
                 {
                     const float x = ax + (bx - ax) * jet, y = y0 + (y1 - y0) * jet;
-                    circle(x, y, px(1.1f), withAlpha(theme::kContrail, 0.9f));
-                    if (dark > 0.01f && std::fmod(S.t + hash(id + 5), 1.3f) < 0.08f)
+                    circle(x, y, px(1.1f) * size, withAlpha(theme::kContrail, 0.9f));
+                    if (dark > 0.01f && std::fmod(S.t + trait(k, 11), 1.3f) < 0.08f)
                     {
                         shadow({x - px(3), y - px(3), px(6), px(6)}, withAlpha(theme::kText, 0.5f * dark), px(1.5f), px(3));
-                        circle(x, y, px(1.0f), withAlpha(theme::kText, dark));
+                        circle(x, y, px(1.0f) * size, withAlpha(theme::kText, dark));
                     }
                 }
             }

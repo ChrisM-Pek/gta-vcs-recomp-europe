@@ -416,6 +416,7 @@ namespace screens
             Rect row = footer.inset(0, px(14));
             fn(app, body, row, true);
         }
+
         void drawRail(App &app, Rect r, int shown)
         {
             const int n = kStepCount;

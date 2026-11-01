@@ -15,8 +15,9 @@ for the Linux build in detail.
 1. Download the newest `VCS-Recomp-<version>-windows.zip` from the [Releases](../../releases) page and extract it
    somewhere short and local, like `C:\Games\VCS` (not Program Files, not a OneDrive-synced folder such as Desktop or
    Documents: the build writes thousands of files).
-2. Start **`VCSLauncher.exe`** in that folder. It goes through four steps and the big button always shows the next one:
-   - **Folders**: the game is built in `build\` next to the launcher, or in a folder you choose (another drive with
+2. Start **`VCSLauncher.exe`** in that folder. It walks you through four steps, one at a time, then shows a big
+   **Play** button:
+   - **Folder**: the game is built in `build\` next to the launcher, or in a folder you choose (another drive with
      more room, say): *Choose another folder* on this step.
    - **Disc**: it looks for your `.iso` in Downloads, Desktop, Documents and its own folder; otherwise choose it (or
      drag it onto the window, or copy your disc from a DVD drive). It checks that it is the USA release.

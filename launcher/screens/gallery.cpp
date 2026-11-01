@@ -77,8 +77,6 @@ namespace screens
         {
             const char *tags[] = {"VERIFIED", "NEEDS AN UPDATE", "CHOSEN", "NOT FOUND"};
             const Color colors[] = {theme::kTeal, theme::kAmber, theme::kPink, theme::kRed};
-            static float px0 = 0;
-            (void)px0;
             const float pxs = x + px(600) + float(i % 2) * px(150);
             ui::pill({pxs, y + float(i / 2) * px(30), ui::pillWidth(tags[i]), px(22)}, tags[i], colors[i]);
         }

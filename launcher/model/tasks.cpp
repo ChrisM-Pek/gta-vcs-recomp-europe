@@ -222,7 +222,19 @@ namespace launcher
         if (!iniIso.empty() && iniIso.front() == '"')
             iniIso = iniIso.substr(1, iniIso.size() - 2);
         if (!iniIso.empty())
-            chooseDisc(pathFrom(iniIso));
+        {
+            // a relative iso= (written by hand) is the build folder's, or the source folder's, not the launcher's cwd
+            fs::path isoPath = pathFrom(iniIso);
+            std::error_code ec;
+            if (isoPath.is_relative())
+                for (const fs::path &base : {build, root})
+                    if (fs::is_regular_file(base / isoPath, ec))
+                    {
+                        isoPath = base / isoPath;
+                        break;
+                    }
+            chooseDisc(isoPath);
+        }
         if (!disc.ok)
             scanForDisc();
         {

@@ -605,6 +605,12 @@ namespace screens
             shell.mode = mode;
             shell.modeSince = ui::state.time;
             shell.showLog = false;
+            if (mode == Mode::Task)
+            {
+                // Setup opened from Home is done with once something runs: after it, Home (or Setup, if still needed)
+                shell.setupOpen = false;
+                shell.pinnedStep = -1;
+            }
         }
         ui::animate(g_hero, shell.mode == Mode::Home ? 1.0f : 0.0f, 3.5f);
         drawBackdrop(window, g_hero);

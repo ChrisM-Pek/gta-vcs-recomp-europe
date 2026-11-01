@@ -444,7 +444,9 @@ namespace screens
             for (int i = 0; i < n; ++i)
             {
                 const float cx = x0 + gap * float(i);
-                const Rect hit{cx - gap * 0.45f, r.y, gap * 0.9f, r.h};
+                // the badge and its two lines, not the whole gap: nothing beside the rail is covered
+                const float hitW = std::min(gap * 0.9f, px(140));
+                const Rect hit{cx - hitW * 0.5f, r.y, hitW, r.h};
                 const ui::Interaction in = ui::interact(ui::id("#railstep", i), hit, true);
                 if (in.clicked)
                 {
@@ -581,17 +583,6 @@ namespace screens
         const float width = std::min(area.w, px(800));
         area = {area.cx() - width * 0.5f, area.y, width, area.h};
 
-        // everything ready and Setup opened from Home: a way back
-        if (shell.setupOpen && !setupNeeded(app))
-        {
-            const Rect back{r.right() - px(40) - ui::buttonWidth("Done", theme::icon::kCheck), r.y + px(18), ui::buttonWidth("Done", theme::icon::kCheck), px(36)};
-            if (ui::button("Done##setup", back, ButtonStyle::Secondary, theme::icon::kCheck))
-            {
-                shell.setupOpen = false;
-                shell.pinnedStep = -1;
-            }
-        }
-
         pushReveal(since, 0, 10);
         drawRail(app, core::cutTop(area, px(84)), shell.step);
         popReveal();
@@ -623,5 +614,18 @@ namespace screens
             drawStep(app, shell.step, area);
         render::popClip();
         popReveal();
+
+        // everything ready and Setup opened from Home: a way back. Drawn last: the widget drawn last takes the mouse,
+        // and the rail's last step sits beside it
+        if (shell.setupOpen && !setupNeeded(app))
+        {
+            const float w = ui::buttonWidth("Done", theme::icon::kCheck);
+            const Rect back{r.right() - px(40) - w, r.y + px(18), w, px(36)};
+            if (ui::button("Done##setup", back, ButtonStyle::Secondary, theme::icon::kCheck))
+            {
+                shell.setupOpen = false;
+                shell.pinnedStep = -1;
+            }
+        }
     }
 }

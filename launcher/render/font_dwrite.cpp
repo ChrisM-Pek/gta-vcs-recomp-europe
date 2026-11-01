@@ -23,6 +23,15 @@ namespace render::raster
         };
         std::vector<LoadedFace> g_faces;
 
+        std::wstring wide(const char *utf8)
+        {
+            const int n = MultiByteToWideChar(CP_UTF8, 0, utf8, -1, nullptr, 0);
+            std::wstring out(size_t(n > 0 ? n - 1 : 0), L'\0');
+            if (n > 1)
+                MultiByteToWideChar(CP_UTF8, 0, utf8, -1, out.data(), n);
+            return out;
+        }
+
         template <typename T> void release(T *&p)
         {
             if (p)
@@ -75,7 +84,7 @@ namespace render::raster
         {
             UINT32 index = 0;
             BOOL exists = FALSE;
-            if (FAILED(g_collection->FindFamilyName(request.family, &index, &exists)) || !exists)
+            if (FAILED(g_collection->FindFamilyName(wide(request.family).c_str(), &index, &exists)) || !exists)
                 continue;
             IDWriteFontFamily *family = nullptr;
             IDWriteFont *font = nullptr;
@@ -96,8 +105,11 @@ namespace render::raster
         return -1;
     }
 
-    int loadFaceFile(const std::wstring &path)
+    const char *backendName() { return "DirectWrite"; }
+
+    int loadFaceFile(const std::string &utf8Path)
     {
+        const std::wstring path = wide(utf8Path.c_str());
         IDWriteFontFile *file = nullptr;
         LoadedFace loaded;
         BOOL supported = FALSE;

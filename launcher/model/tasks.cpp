@@ -1,9 +1,13 @@
 #include "tasks.h"
 
+#include "os.h"
 #include "system.h"
 
+#ifdef _WIN32
 #include <windows.h>
+#endif
 
+#include <cstdlib>
 #include <fstream>
 #include <map>
 
@@ -19,14 +23,35 @@ namespace launcher
                                           "setup_vs.py", "backup.py", "report.py", "update.py", "rip_disc.py"};
         constexpr size_t kLogLines = 4000;
 
-        std::wstring findOnPath(const wchar_t *name)
+        std::string findOnPath(const char *name)
         {
+#ifdef _WIN32
             wchar_t buffer[MAX_PATH * 2];
-            const DWORD n = SearchPathW(nullptr, name, nullptr, DWORD(std::size(buffer)), buffer, nullptr);
+            const DWORD n = SearchPathW(nullptr, widen(name).c_str(), nullptr, DWORD(std::size(buffer)), buffer, nullptr);
             if (n == 0 || n >= std::size(buffer))
                 return {};
-            return buffer;
+            return narrow(buffer);
+#else
+            const char *path = std::getenv("PATH");
+            std::string_view rest = path ? path : "/usr/local/bin:/usr/bin:/bin";
+            while (!rest.empty())
+            {
+                const size_t colon = rest.find(':');
+                const std::string_view dir = rest.substr(0, colon);
+                rest = colon == std::string_view::npos ? std::string_view() : rest.substr(colon + 1);
+                if (dir.empty())
+                    continue;
+                const fs::path candidate = pathFrom(std::string(dir)) / name;
+                std::error_code ec;
+                if (fs::is_regular_file(candidate, ec) &&
+                    (fs::status(candidate, ec).permissions() & fs::perms::others_exec) != fs::perms::none)
+                    return pathText(candidate);
+            }
+            return {};
+#endif
         }
+
+        std::string toolPath(const fs::path &root, const char *name) { return pathText(root / "tools" / name); }
 
         std::string readFile(const fs::path &path)
         {
@@ -104,11 +129,37 @@ namespace launcher
             {"build_dir_refused", {"That folder can't be used", "Choose another folder for the build."}},
             {"network", {"No connection", "Check the internet connection and try again."}},
         };
+#ifndef _WIN32
+        // the same codes where Linux needs other words, and its own (tools/build.py --install-deps, doctor.py)
+        const std::map<std::string, ErrorHelp> kLinuxErrors = {
+            {"missing_packages", {"Packages the build needs are missing",
+                                  "Use \"Install packages\" on the Build tools step (it asks for your password), or "
+                                  "\"Install in a terminal\"."}},
+            {"no_polkit", {"No password prompt could be shown",
+                           "Use \"Install in a terminal\" on the Build tools step: the command runs there and asks "
+                           "for your password."}},
+            {"elevation_denied", {"The password prompt was cancelled",
+                                  "Installing packages needs your password: use \"Install packages\" again and enter it."}},
+            {"install_failed", {"The package manager didn't finish",
+                                "Open the log for its message. Another update running at the same time locks it: try "
+                                "again once that is done, or use \"Install in a terminal\"."}},
+            {"file_locked", {"A file was locked", "Something else held a file of the build. Build again."}},
+            {"file_dates", {"Files are dated in the future",
+                            "Some files in the folder are newer than the PC's clock, so the build keeps starting over. "
+                            "Check the clock and time zone, then build again."}},
+            {"out_of_memory", {"The PC ran out of memory",
+                               "Close other programs and build again; it continues where it stopped."}},
+        };
+#endif
         const ErrorHelp kUnknown = {"Something went wrong", "Open the log for the details, or copy a report for help."};
     }
 
     const ErrorHelp &errorHelp(const std::string &code)
     {
+#ifndef _WIN32
+        if (const auto it = kLinuxErrors.find(code); it != kLinuxErrors.end())
+            return it->second;
+#endif
         const auto it = kErrors.find(code);
         return it == kErrors.end() ? kUnknown : it->second;
     }
@@ -128,8 +179,8 @@ namespace launcher
         }
         if (root.empty())
         {
-            error = "VCSLauncher.exe must stay in the game's folder, next to tools\\ and src\\ (it builds the game from "
-                    "there). It was started from " + pathText(exePath().parent_path());
+            error = std::string(os::kLauncherExe) + " must stay in the game's folder, next to tools and src (it builds the "
+                    "game from there). It was started from " + pathText(exePath().parent_path());
             return false;
         }
         // the build folder as the tools see it (toolchain.BUILD): VCS_BUILD_DIR, else .vcs-build-dir, else build/
@@ -141,22 +192,30 @@ namespace launcher
         {
             // an update replaces the running launcher by renaming it (tools/update.py set_aside): gone now
             std::error_code ec;
-            fs::remove(root / "VCSLauncher.exe.old", ec);
+            fs::remove(root / (std::string(os::kLauncherExe) + ".old"), ec);
         }
 
         // a release's own python\ first; else the PC's, each tried (a py.exe can exist with no Python behind it, and
-        // the Microsoft Store's python.exe stub only opens the Store)
-        std::vector<std::vector<std::wstring>> candidates;
+        // the Microsoft Store's python.exe stub only opens the Store). Linux: the distro's python3
+        std::vector<std::vector<std::string>> candidates;
+#ifdef _WIN32
         if (fs::path bundled = root / "python" / "python.exe"; fs::is_regular_file(bundled))
-            candidates.push_back({bundled.wstring()});
-        if (std::wstring exe = findOnPath(L"python.exe"); !exe.empty() && exe.find(L"WindowsApps") == std::wstring::npos)
+            candidates.push_back({pathText(bundled)});
+        if (std::string exe = findOnPath("python.exe"); !exe.empty() && exe.find("WindowsApps") == std::string::npos)
             candidates.push_back({exe});
-        if (std::wstring py = findOnPath(L"py.exe"); !py.empty())
-            candidates.push_back({py, L"-3"});
+        if (std::string py = findOnPath("py.exe"); !py.empty())
+            candidates.push_back({py, "-3"});
+#else
+        if (fs::path bundled = root / "python" / "bin" / "python3"; fs::is_regular_file(bundled))
+            candidates.push_back({pathText(bundled)});
+        for (const char *name : {"python3", "python"})
+            if (std::string exe = findOnPath(name); !exe.empty())
+                candidates.push_back({exe});
+#endif
         for (const auto &candidate : candidates)
         {
-            std::vector<std::wstring> argv = candidate;
-            argv.insert(argv.end(), {L"-I", L"-c", L"import sys; print(sys.version_info >= (3, 8))"});
+            std::vector<std::string> argv = candidate;
+            argv.insert(argv.end(), {"-I", "-c", "import sys; print(sys.version_info >= (3, 8))"});
             Process probe;
             Process::Options options;
             std::string ignored;
@@ -172,11 +231,13 @@ namespace launcher
         }
         if (python.empty())
         {
-            error = "Python 3 wasn't found. A release brings its own (the python folder next to the launcher); in a "
-                    "git clone, install Python from python.org (tick \"Add python.exe to PATH\").";
+            error = os::kWindows
+                        ? "Python 3 wasn't found. A release brings its own (the python folder next to the launcher); in a "
+                          "git clone, install Python from python.org (tick \"Add python.exe to PATH\")."
+                        : "Python 3 wasn't found: install your distribution's python3 package (Python 3.8 or newer).";
             return false;
         }
-        pythonText = narrow(python[0]);
+        pythonText = python[0];
 
         // the scripts every button runs: all there, or the folder doesn't match this launcher - a release made from the
         // last commit while the launcher was built from newer, uncommitted code, or files lost on the way
@@ -190,7 +251,7 @@ namespace launcher
                     ++count;
                 }
             if (count)
-                toolsProblem = "The launcher's scripts are missing from tools\\ (" + missing +
+                toolsProblem = "The launcher's scripts are missing from " + std::string(os::kTools) + " (" + missing +
                                "), so nothing can be checked. Download the release again. If you made this release "
                                "yourself, its scripts are older than the launcher: tools/release.py packages the last "
                                "commit - commit first, or make it with --worktree.";
@@ -261,8 +322,8 @@ namespace launcher
             doctorDone = true;
             return;
         }
-        std::vector<std::wstring> argv = python;
-        argv.insert(argv.end(), {L"-I", (root / "tools" / "doctor.py").wstring(), L"--json"});
+        std::vector<std::string> argv = python;
+        argv.insert(argv.end(), {"-I", toolPath(root, "doctor.py"), "--json"});
         Process::Options options;
         options.cwd = root;
         options.env = {{"PYTHONUTF8", "1"}, {"PYTHONIOENCODING", "utf-8"}};
@@ -439,7 +500,7 @@ namespace launcher
         refresh();
     }
 
-    void App::runTool(const std::string &kind, const std::string &title, const std::vector<std::wstring> &args)
+    void App::runTool(const std::string &kind, const std::string &title, const std::vector<std::string> &args)
     {
         if (busy())
             return;
@@ -447,8 +508,8 @@ namespace launcher
         task->kind = kind;
         task->title = title;
         task->startTime = m_now;
-        std::vector<std::wstring> argv = python;
-        argv.push_back(L"-I");
+        std::vector<std::string> argv = python;
+        argv.push_back("-I");
         argv.insert(argv.end(), args.begin(), args.end());
         Process::Options options;
         options.cwd = root;
@@ -467,10 +528,10 @@ namespace launcher
 
     void App::startBuild()
     {
-        std::vector<std::wstring> args = {(root / "tools" / "build.py").wstring(), L"--recompile-if-needed",
-                                          iso.wstring(), L"--progress", L"json"};
+        std::vector<std::string> args = {toolPath(root, "build.py"), "--recompile-if-needed", pathText(iso), "--progress",
+                                         "json"};
         if (!settings.opt.empty())
-            args.insert(args.end(), {L"--opt", widen(settings.opt)});
+            args.insert(args.end(), {"--opt", settings.opt});
         runTool("build", "Building the game", args);
         if (busy())
             keepAwake(true);
@@ -478,37 +539,43 @@ namespace launcher
 
     void App::startInstallTools()
     {
-        runTool("tools", "Installing the build tools", {(root / "tools" / "setup_vs.py").wstring(), L"install"});
+#ifdef _WIN32
+        runTool("tools", "Installing the build tools", {toolPath(root, "setup_vs.py"), "install"});
+#else
+        // the distribution's packages, through pkexec (the desktop's password prompt): build.py --install-deps
+        runTool("tools", "Installing the packages the build needs",
+                {toolPath(root, "build.py"), "--install-deps", "--progress", "json"});
+#endif
     }
 
-    void App::startBackup() { runTool("backup", "Backing up your saves", {(root / "tools" / "backup.py").wstring(), L"create"}); }
+    void App::startBackup() { runTool("backup", "Backing up your saves", {toolPath(root, "backup.py"), "create"}); }
 
-    void App::startBackupList() { runTool("backup_list", "Listing backups", {(root / "tools" / "backup.py").wstring(), L"list"}); }
+    void App::startBackupList() { runTool("backup_list", "Listing backups", {toolPath(root, "backup.py"), "list"}); }
 
     void App::startRestore(const std::string &name)
     {
-        runTool("restore", "Restoring saves", {(root / "tools" / "backup.py").wstring(), L"restore", widen(name)});
+        runTool("restore", "Restoring saves", {toolPath(root, "backup.py"), "restore", name});
     }
 
-    void App::startReport() { runTool("report", "Making a report", {(root / "tools" / "report.py").wstring()}); }
+    void App::startReport() { runTool("report", "Making a report", {toolPath(root, "report.py")}); }
 
     void App::startUpdateCheck(bool quiet)
     {
         updateQuiet = quiet;
-        runTool("update_check", "Checking for updates", {(root / "tools" / "update.py").wstring(), L"check"});
+        runTool("update_check", "Checking for updates", {toolPath(root, "update.py"), "check"});
     }
 
-    void App::startUpdate() { runTool("update", "Updating", {(root / "tools" / "update.py").wstring(), L"apply"}); }
+    void App::startUpdate() { runTool("update", "Updating", {toolPath(root, "update.py"), "apply"}); }
 
     void App::startBuildDirCheck(const fs::path &path)
     {
         buildDirCheck = Json();
-        runTool("build_dir_check", "Checking the folder", {(root / "tools" / "build_dir.py").wstring(), L"check", path.wstring()});
+        runTool("build_dir_check", "Checking the folder", {toolPath(root, "build_dir.py"), "check", pathText(path)});
     }
 
     void App::startBuildDirSet(const fs::path &path)
     {
-        runTool("build_dir_set", "Changing the build folder", {(root / "tools" / "build_dir.py").wstring(), L"set", path.wstring()});
+        runTool("build_dir_set", "Changing the build folder", {toolPath(root, "build_dir.py"), "set", pathText(path)});
     }
 
     bool App::buildCustom() const
@@ -517,11 +584,11 @@ namespace launcher
         return !fs::equivalent(build, root / "build", ec);
     }
 
-    void App::startRipList() { runTool("rip_list", "Looking for discs", {(root / "tools" / "rip_disc.py").wstring(), L"list"}); }
+    void App::startRipList() { runTool("rip_list", "Looking for discs", {toolPath(root, "rip_disc.py"), "list"}); }
 
     void App::startRip(const std::string &drive, const fs::path &out)
     {
-        runTool("rip", "Copying the disc", {(root / "tools" / "rip_disc.py").wstring(), L"rip", widen(drive), out.wstring()});
+        runTool("rip", "Copying the disc", {toolPath(root, "rip_disc.py"), "rip", drive, pathText(out)});
         if (busy())
             keepAwake(true);
     }
@@ -544,7 +611,7 @@ namespace launcher
         discChecked = true;
         discFound = byScan;
         if (disc.ok && !writeIsoToIni(path))
-            say("Could not write build\\vcs.ini - is the folder read-only?");
+            say(std::string("Could not write ") + os::kBuildIni + " - is the folder read-only?");
         if (!byScan)
             refresh();
     }
@@ -584,10 +651,10 @@ namespace launcher
     {
         if (gameRunning)
             return true;
-        const fs::path exe = build / "vcs.exe";
+        const fs::path exe = build / os::kGameExe;
         if (!fs::is_regular_file(exe))
         {
-            error = "build\\vcs.exe isn't there: build the game first";
+            error = std::string(os::kBuildGame) + " isn't there: build the game first";
             return false;
         }
         gameLog = build / "run" / "launcher_game.log";
@@ -596,7 +663,7 @@ namespace launcher
         options.outputFile = gameLog;
         options.killOnClose = false; // the game plays on when the launcher closes
         game = std::make_unique<Process>();
-        if (!game->start({exe.wstring(), iso.wstring()}, options, error))
+        if (!game->start({pathText(exe), pathText(iso)}, options, error))
         {
             game.reset();
             return false;
@@ -639,7 +706,7 @@ namespace launcher
             error = "no Desktop folder";
             return false;
         }
-        return createShortcut(desktop / L"GTA Vice City Stories.lnk", exePath(), root,
+        return createShortcut(desktop / os::kShortcutName, exePath(), root,
                               "GTA: Vice City Stories (PC port) - launcher", error);
     }
 

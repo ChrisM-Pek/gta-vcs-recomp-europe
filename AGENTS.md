@@ -51,7 +51,7 @@ choices).
 | `third_party/PS2Recomp/ps2xRuntime` | The runtime (EE, VIF, VU1, GS HW backend, IOP host, stubs); our changes marked `[gta-recomp]` |
 | `game/vcs/` | Recompiler config, function map, VU1 upload list |
 | `tools/` | Python 3 tools (standard library only) - see below |
-| `launcher/` | `VCSLauncher.exe` (a CMake project of its own, no third-party code: its own Win32 window, D3D11 renderer, DirectWrite text and animated UI, after uppies): disc, build tools, build, play - a front end over `tools/` (docs/LAUNCHER.md) |
+| `launcher/` | `VCSLauncher.exe` / Linux `VCSLauncher` (a CMake project of its own, no third-party code: its own window - Win32, or X11 / Wayland -, renderer - D3D11 or Vulkan, one `ui.hlsl` -, DirectWrite / FreeType text, its own icons, animated UI, after uppies): disc, build tools, build, play - a front end over `tools/` (docs/LAUNCHER.md) |
 
 ## Build and run
 
@@ -64,7 +64,8 @@ python tools/build.py --check-deps          # Linux: missing packages and the co
 python tools/build.py --opt none|lto|pgo    # game optimisation, kept until changed (lto: the default; pgo: ThinLTO + profile, trains if needed)
 python tools/bench.py [OUT]                  # game-thread benchmark: fixed city spots + an AI drive (game / worker ms)
 python tools/clean.py [--apply] [--keep-days 7]   # delete test output in build/ (lists first; builds, saves, baselines kept)
-python tools/build.py --launcher             # the launcher (VCSLauncher.exe in the root; no disc, ~20 s the first time)
+python tools/build.py --launcher             # the launcher (VCSLauncher(.exe) in the root; no disc, ~20 s the first time)
+python3 tools/build.py --install-deps        # Linux: the missing packages through pkexec (what the launcher's button runs)
 python tools/build.py --recompile-if-needed  # recompile only when generated/ is stale (generated/recompile_stamp.json)
 python tools/doctor.py [--json]              # folder, compiler, disc, build state, the next step (the launcher reads --json)
 python tools/build_dir.py [check|set P|reset] # the build folder elsewhere (.vcs-build-dir, VCS_BUILD_DIR): tc.BUILD follows;

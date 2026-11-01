@@ -2,6 +2,7 @@
 // Escape, the scrim or the title bar's button close them.
 #include "shell.h"
 
+#include "model/os.h"
 #include "model/system.h"
 #include "platform/platform.h"
 
@@ -125,7 +126,13 @@ namespace screens
             divider(r, y);
 
             section(r, y, "UPDATES");
-            if (app.updateInfo["newer"].boolean())
+            if (!launcher::os::kWindows)
+            {
+                // releases (and tools/update.py) are Windows zips for now: a clone updates with git
+                y += row({r.x, y, r.w, 0}, "This version", app.sourceVersion);
+                text(r, y, "Update this folder with git pull, then build again (Update the build on Home).", theme::kFaint);
+            }
+            else if (app.updateInfo["newer"].boolean())
             {
                 const std::string tag = "VERSION " + app.updateInfo["latest"].str() + " AVAILABLE";
                 ui::pill({r.x, y, ui::pillWidth(tag), px(22)}, tag, theme::kPink);
@@ -142,15 +149,19 @@ namespace screens
             }
             else
                 y += row({r.x, y, r.w, 0}, "This version", app.sourceVersion);
+            if (launcher::os::kWindows)
             {
                 const Rect line{r.x, y, r.w, px(30)};
                 ui::label(kFontBody, px(theme::kBody), {line.x, line.y, line.w - px(60), line.h}, theme::kText, "Check for a new release at start");
                 changed |= ui::toggle("#check-updates", {line.right() - px(44), line.y, px(44), line.h}, app.settings.checkUpdates);
                 y += px(34);
             }
-            text(r, y, "One request to GitHub; nothing about you or your PC is sent.", theme::kFaint);
-            if (action(r, y, app.busy() && app.task->kind == "update_check" ? "Checking..." : "Check now", ButtonStyle::Secondary, theme::icon::kSync, !app.busy()))
-                app.startUpdateCheck(false);
+            if (launcher::os::kWindows)
+            {
+                text(r, y, "One request to GitHub; nothing about you or your PC is sent.", theme::kFaint);
+                if (action(r, y, app.busy() && app.task->kind == "update_check" ? "Checking..." : "Check now", ButtonStyle::Secondary, theme::icon::kSync, !app.busy()))
+                    app.startUpdateCheck(false);
+            }
             divider(r, y);
 
             section(r, y, "APPEARANCE");
@@ -166,7 +177,7 @@ namespace screens
                     changed = true;
                 }
                 y += px(48);
-                text(r, y, selected == 0 ? std::string("Follows Windows' app mode, now ") + (platform::window.darkMode ? "dark." : "light.")
+                text(r, y, selected == 0 ? std::string(launcher::os::kWindows ? "Follows Windows' app mode, now " : "Follows the desktop's style, now ") + (platform::window.darkMode ? "dark." : "light.")
                                          : std::string("Always ") + (selected == 1 ? "light." : "dark."),
                      theme::kFaint);
             }

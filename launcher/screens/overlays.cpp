@@ -2,6 +2,7 @@
 // (short messages that rise at the bottom and leave on their own).
 #include "shell.h"
 
+#include "model/os.h"
 #include "model/system.h"
 #include "platform/platform.h"
 
@@ -85,7 +86,7 @@ namespace screens
                 if (!current)
                 {
                     std::error_code ec;
-                    const bool built = fs::is_regular_file(app.build / "vcs.exe", ec);
+                    const bool built = fs::is_regular_file(app.build / launcher::os::kGameExe, ec);
                     text.push_back({std::string("The game is built again there (10 to 60 minutes, once); your game settings and disc choice come along.") +
                                         (built ? " The current build stays in " + launcher::pathText(app.build) + " until you delete it." : ""),
                                     0});

@@ -63,7 +63,7 @@ namespace launcher
 
         // the repository (where tools/build.py is) and its build folder
         std::filesystem::path root, build;
-        std::vector<std::wstring> python; // the interpreter (+ args): a release's python\, else py -3 / python
+        std::vector<std::string> python; // the interpreter (+ args): a release's python\, else py -3 / python (Linux: python3)
         std::string pythonText;
         std::string sourceVersion;        // VERSION, or the clone's commit
 
@@ -132,7 +132,7 @@ namespace launcher
         std::unique_ptr<Process> m_doctor;
         std::vector<std::string> m_doctorOut;
         double m_now = 0;
-        void runTool(const std::string &kind, const std::string &title, const std::vector<std::wstring> &args);
+        void runTool(const std::string &kind, const std::string &title, const std::vector<std::string> &args);
         void handleLine(Task &t, const std::string &line);
         void finishTask(Task &t);
         void loadSettings();

@@ -6,8 +6,15 @@
 // browsers and design tools do, so what is picked is what appears. Output is premultiplied alpha.
 //
 // Keep Instance in sync with render::Instance in render/draw.h.
+//
+// One source for both backends: fxc compiles it for Direct3D 11, glslang (tools/hlsl_spirv.py, VCS_SPIRV) for Vulkan,
+// where the frame constants are push constants and the viewport is flipped (render/vulkan/renderer_vulkan.cpp).
 
+#ifdef VCS_SPIRV
+[[vk::push_constant]] cbuffer Frame // no register: a push constant block has no binding
+#else
 cbuffer Frame : register(b0)
+#endif
 {
     float2 viewport_size;  // pixels
     float2 atlas_inv_size; // 1 / glyph atlas size in texels

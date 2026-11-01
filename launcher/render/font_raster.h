@@ -1,4 +1,5 @@
-// What font.cpp needs from the OS's rasteriser (font_dwrite.cpp on Windows). Internal to render/.
+// What font.cpp needs from the OS's rasteriser (font_dwrite.cpp on Windows, font_freetype.cpp on Linux). Internal to
+// render/.
 #pragma once
 
 #include <cstdint>
@@ -21,16 +22,17 @@ namespace render::raster
 
     struct FaceRequest
     {
-        const wchar_t *family;
+        const char *family; // UTF-8
         int weight; // 400 regular, 600 semibold, 700 bold
     };
 
     bool init(std::string &error);
     void shutdown();
+    const char *backendName();
     // the first family of the list that exists; -1 when none does
     int loadFace(const std::vector<FaceRequest> &candidates);
     // a font file (the first face in it); -1 when it can't be read
-    int loadFaceFile(const std::wstring &path);
+    int loadFaceFile(const std::string &utf8Path);
     FaceMetrics faceMetrics(int face);
     uint16_t glyphIndex(int face, char32_t codepoint); // 0: the face has no glyph for it
     float advance(int face, uint16_t glyph);           // font units

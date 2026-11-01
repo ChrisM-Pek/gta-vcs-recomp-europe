@@ -1,3 +1,4 @@
+// The launcher's OS pieces on Windows (model/system.h).
 #include "system.h"
 
 #include <windows.h>
@@ -131,6 +132,12 @@ namespace launcher
         return SUCCEEDED(hr);
     }
 
+    void openTerminal(const std::string &command)
+    {
+        const std::wstring args = L"/k " + widen(command);
+        ShellExecuteW(nullptr, L"open", L"cmd.exe", args.c_str(), nullptr, SW_SHOWNORMAL);
+    }
+
     void keepAwake(bool on)
     {
         SetThreadExecutionState(on ? (ES_CONTINUOUS | ES_SYSTEM_REQUIRED) : ES_CONTINUOUS);
@@ -176,5 +183,13 @@ namespace launcher
         if (!GetDiskFreeSpaceExW(dir.c_str(), &free, nullptr, nullptr))
             return 0;
         return free.QuadPart;
+    }
+
+    double processCpuSeconds()
+    {
+        FILETIME created, exited, kernel, user;
+        GetProcessTimes(GetCurrentProcess(), &created, &exited, &kernel, &user);
+        auto seconds = [](const FILETIME &f) { return double((uint64_t(f.dwHighDateTime) << 32) | f.dwLowDateTime) / 1e7; };
+        return seconds(kernel) + seconds(user);
     }
 }

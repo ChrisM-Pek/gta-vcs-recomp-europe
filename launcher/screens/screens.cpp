@@ -2,6 +2,7 @@
 // share, and the actions several screens start.
 #include "shell.h"
 
+#include "model/os.h"
 #include "model/system.h"
 #include "platform/platform.h"
 
@@ -357,8 +358,8 @@ namespace screens
     {
         shell.pending = [] {
             fs::path picked;
-            if (platform::openFileDialog(picked, L"Choose your GTA: Vice City Stories disc image",
-                                         {{L"PS2 disc image (*.iso)", L"*.iso"}, {L"All files", L"*.*"}}))
+            if (platform::openFileDialog(picked, "Choose your GTA: Vice City Stories disc image",
+                                         {{"PS2 disc image (*.iso)", "*.iso"}, {"All files", "*"}}))
             {
                 shell.app->chooseDisc(picked);
                 if (!shell.app->disc.ok)
@@ -371,7 +372,7 @@ namespace screens
     {
         shell.pending = [start] {
             fs::path picked;
-            if (platform::openFolderDialog(picked, L"Choose where the game is built", start))
+            if (platform::openFolderDialog(picked, "Choose where the game is built", start))
             {
                 shell.app->startBuildDirCheck(picked);
                 shell.awaitingBuildDir = true;
@@ -383,8 +384,8 @@ namespace screens
     {
         shell.pending = [] {
             fs::path picked;
-            const fs::path suggested = launcher::knownFolder(launcher::Folder::Documents) / L"Grand Theft Auto - Vice City Stories (USA).iso";
-            if (platform::saveFileDialog(picked, L"Save the disc image as", suggested, {{L"Disc image (*.iso)", L"*.iso"}}, L"iso"))
+            const fs::path suggested = launcher::knownFolder(launcher::Folder::Documents) / "Grand Theft Auto - Vice City Stories (USA).iso";
+            if (platform::saveFileDialog(picked, "Save the disc image as", suggested, {{"Disc image (*.iso)", "*.iso"}}, "iso"))
                 shell.app->startRip(shell.ripDrive, picked);
         };
     }
@@ -606,7 +607,8 @@ namespace screens
             shell.minimizedForGame = false;
         }
         g_wasPlaying = app.gameRunning;
-        if (!g_checkedUpdates && app.settings.checkUpdates && app.doctorDone && !app.doctorCached && !app.busy())
+        if (launcher::os::kWindows && !g_checkedUpdates && app.settings.checkUpdates && app.doctorDone && !app.doctorCached &&
+            !app.busy())
         {
             g_checkedUpdates = true;
             app.startUpdateCheck(true);

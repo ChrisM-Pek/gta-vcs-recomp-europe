@@ -5,7 +5,8 @@
     python tools/build.py --recompile [ISO]     recompile from your disc first, then build - the whole pipeline
     python tools/build.py --recompile-if-needed [ISO]   the same, recompiling only when generated/ is not current
                                                 (generated/recompile_stamp.json; what the launcher runs)
-    python tools/build.py --launcher            build the launcher (VCSLauncher.exe in the repository root; no disc)
+    python tools/build.py --launcher            build the launcher (VCSLauncher(.exe) in the repository root; no disc)
+    python tools/build.py --install-deps        Linux: install the missing packages (the desktop's password prompt)
     python tools/build.py --progress json       also print `@vcs {...}` events for the launcher (toolchain.py)
     python tools/build.py --quick               no link-time optimisation: fast rebuilds while changing code
     python tools/build.py --iop-tests           build and run the IOP / SPU2 unit tests (build/iop_tests, no disc)
@@ -64,6 +65,8 @@ def main():
     ap.add_argument("--quick", action="store_true", help="same as --opt none: fast rebuilds, slower game")
     ap.add_argument("--train", action="store_true", help="with --opt pgo: train a new profile first")
     ap.add_argument("--check-deps", action="store_true", help="Linux: check the build dependencies and stop")
+    ap.add_argument("--install-deps", action="store_true",
+                    help="Linux: install the missing packages (pkexec: the desktop's password prompt) and stop")
     ap.add_argument("--recompile-if-needed", nargs="?", const="", metavar="ISO",
                     help="recompile first only when the generated code is not current")
     ap.add_argument("--launcher", action="store_true", help="build the launcher (VCSLauncher.exe) instead of the game")
@@ -80,7 +83,13 @@ def main():
 
     env = tc.build_env()
     if a.check_deps:
-        sys.exit(0 if tc.IS_WINDOWS or tc.check_linux_deps(env) else 1)
+        if tc.IS_WINDOWS:
+            sys.exit(0)
+        game = tc.check_linux_deps(env)
+        launcher = tc.check_linux_deps(env, tc.LAUNCHER_LINUX_DEPS)
+        sys.exit(0 if game and launcher else 1)
+    if a.install_deps:
+        sys.exit(install_deps(env))
     tc.fix_future_files()  # else Ninja re-runs CMake until it gives up (a release zip from another time zone)
     if not tc.IS_WINDOWS and not os.path.isfile(os.path.join(tc.BUILD_DIR, "build.ninja")) and not tc.check_linux_deps(env):
         tc.fail("missing build dependencies (above)")
@@ -148,6 +157,8 @@ def build_launcher(env, verbose):
     """launcher/ is a CMake project of its own (no generated code, no disc): build/launcher, the exe in the
     repository root."""
     tc.stage("launcher", "Building the launcher")
+    if not tc.IS_WINDOWS and not tc.check_linux_deps(env, tc.LAUNCHER_LINUX_DEPS):
+        tc.fail("missing packages for the launcher (above)", "missing_packages")
     if tc.drop_foreign_cache(LAUNCHER_BUILD, os.path.join(tc.ROOT, "launcher")) or tc.stale_tools(LAUNCHER_BUILD) or \
             not os.path.isfile(os.path.join(LAUNCHER_BUILD, "build.ninja")):
         cmd = ["cmake", "-S", os.path.join(tc.ROOT, "launcher"), "-B", LAUNCHER_BUILD, "-G", "Ninja",
@@ -161,6 +172,42 @@ def build_launcher(env, verbose):
     print("[build] ok: " + tc.exe("VCSLauncher"))
     tc.event(result="ok", exe=tc.exe("VCSLauncher"))
     return True
+
+
+def install_deps(env):
+    """Linux: the packages the game's build (and the launcher's) lacks, installed through pkexec - the desktop's own
+    password prompt, so the launcher can do it without a terminal. Without a polkit agent (or pkexec) it fails with
+    no_polkit and the command to run in a terminal; a refused prompt is elevation_denied."""
+    if tc.IS_WINDOWS:
+        tc.fail("--install-deps is for Linux (Windows: tools/setup_vs.py install)", "unsupported")
+    tc.stage("packages", "Installing the packages the build needs")
+    missing = tc.linux_missing(env, quiet=True) + tc.linux_missing(env, tc.LAUNCHER_LINUX_DEPS)
+    if not missing:
+        print("[deps] nothing to install: every build dependency is there")
+        tc.event(result="ok", installed=[])
+        return 0
+    packages = [p for _, p in missing]
+    for label, pkgs in missing:
+        print("[deps] missing: %s (%s)" % (label, pkgs))
+    terminal = " ".join(tc.linux_install_command(packages))
+    if not shutil.which("pkexec"):
+        tc.fail("pkexec isn't installed: run this in a terminal, then check again:\n    " + terminal, "no_polkit")
+    cmd = tc.linux_install_command(packages, sudo="pkexec")
+    print("[deps] " + " ".join(cmd))
+    code = subprocess.call(cmd)
+    if code == 126:  # the prompt was dismissed
+        tc.fail("the password prompt was cancelled; nothing was installed", "elevation_denied")
+    if code == 127:  # no authentication agent, or not authorised
+        tc.fail("no password prompt could be shown (no polkit agent): run this in a terminal, then check again:\n    " +
+                terminal, "no_polkit")
+    if code != 0:
+        tc.fail("the package manager stopped with exit code %d (above)" % code, "install_failed")
+    still = tc.linux_missing(env, quiet=True) + tc.linux_missing(env, tc.LAUNCHER_LINUX_DEPS)
+    if still:
+        tc.fail("still missing after the install: " + ", ".join(label for label, _ in still), "install_failed")
+    print("[deps] installed: " + " ".join(packages))
+    tc.event(result="ok", installed=packages)
+    return 0
 
 
 def configured_without_game():

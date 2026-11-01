@@ -113,6 +113,7 @@ namespace render
                 char name[128] = {};
                 WideCharToMultiByte(CP_UTF8, 0, desc.Description, -1, name, sizeof(name) - 1, nullptr, nullptr);
                 rendererStats.adapter = name;
+                rendererStats.api = "Direct3D 11";
             }
             release(adapter);
             release(dxgi);

@@ -1,5 +1,6 @@
-# The launcher (docs/LAUNCHER.md): built and self-tested on every change to it or the tools it runs; on a tag v*, the
-# Windows release zip is made (tools/release.py: source, launcher, embeddable Python, the libraries - no game code,
+# The launcher (docs/LAUNCHER.md): built and self-tested on every change to it or the tools it runs, on Windows and on
+# Linux (Vulkan through lavapipe, with the validation layer: any message fails the job); on a tag v*, the Windows
+# release zip is made (tools/release.py: source, launcher, embeddable Python, the libraries - no game code,
 # which only ever exists on a player's PC) and published as a GitHub release.
 name: launcher
 
@@ -16,6 +17,44 @@ permissions:
   contents: write
 
 jobs:
+  linux:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      # docs/LINUX.md's packages for the launcher; mesa-vulkan-drivers brings lavapipe (no GPU on the runner)
+      - name: Packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends clang-19 lld-19 cmake ninja-build pkg-config glslang-tools \
+            libvulkan-dev libfreetype-dev libfontconfig-dev libx11-dev libxcursor-dev libxrandr-dev libwayland-dev \
+            wayland-protocols libxkbcommon-dev libdbus-1-dev mesa-vulkan-drivers vulkan-validationlayers fonts-dejavu-core
+
+      - name: Build the launcher
+        run: python3 tools/build.py --launcher
+
+      - name: Self-test
+        run: |
+          ./VCSLauncher --self-test --out "$RUNNER_TEMP/selftest.txt"; code=$?
+          cat "$RUNNER_TEMP/selftest.txt"
+          exit $code
+
+      # offscreen (no display on the runner), validated: a [vulkan] line is a failure
+      - name: Screenshots
+        env:
+          VCS_LAUNCHER_VK_DEBUG: "1"
+        run: |
+          mkdir -p "$RUNNER_TEMP/shots"
+          for screen in home gallery setup:disc setup:tools sheet:settings; do
+            ./VCSLauncher --screenshot "$RUNNER_TEMP/shots/${screen/:/-}.png" --screen "$screen" 2>&1 | tee -a "$RUNNER_TEMP/shots/log.txt"
+          done
+          if grep -q '^\[vulkan\]' "$RUNNER_TEMP/shots/log.txt"; then echo "validation messages above"; exit 1; fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: launcher-linux-screenshots
+          path: ${{ runner.temp }}/shots
+
   windows:
     runs-on: windows-2022
     steps:

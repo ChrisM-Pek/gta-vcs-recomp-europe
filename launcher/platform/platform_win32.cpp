@@ -25,6 +25,28 @@ namespace platform
 
     namespace
     {
+        std::wstring wide(const char *utf8)
+        {
+            if (!utf8 || !*utf8)
+                return {};
+            const int n = MultiByteToWideChar(CP_UTF8, 0, utf8, -1, nullptr, 0);
+            std::wstring out(size_t(n > 0 ? n - 1 : 0), L'\0');
+            if (n > 1)
+                MultiByteToWideChar(CP_UTF8, 0, utf8, -1, out.data(), n);
+            return out;
+        }
+
+        std::string utf8(const wchar_t *text)
+        {
+            if (!text || !*text)
+                return {};
+            const int n = WideCharToMultiByte(CP_UTF8, 0, text, -1, nullptr, 0, nullptr, nullptr);
+            std::string out(size_t(n > 0 ? n - 1 : 0), '\0');
+            if (n > 1)
+                WideCharToMultiByte(CP_UTF8, 0, text, -1, out.data(), n, nullptr, nullptr);
+            return out;
+        }
+
         constexpr UINT kWakeMessage = WM_APP + 1;
         constexpr UINT_PTR kModalTimer = 1;
 
@@ -502,9 +524,15 @@ namespace platform
 
         void setTypes(IFileDialog *dialog, const std::vector<FileType> &types)
         {
-            std::vector<COMDLG_FILTERSPEC> specs;
+            std::vector<std::wstring> text;
             for (const FileType &t : types)
-                specs.push_back({t.name, t.pattern});
+            {
+                text.push_back(wide(t.name));
+                text.push_back(wide(t.pattern));
+            }
+            std::vector<COMDLG_FILTERSPEC> specs;
+            for (size_t i = 0; i + 1 < text.size(); i += 2)
+                specs.push_back({text[i].c_str(), text[i + 1].c_str()});
             if (!specs.empty())
                 dialog->SetFileTypes(UINT(specs.size()), specs.data());
         }
@@ -523,7 +551,7 @@ namespace platform
         }
     }
 
-    bool init(const wchar_t *title, int logicalWidth, int logicalHeight, int minLogicalWidth, int minLogicalHeight,
+    bool init(const char *title, int logicalWidth, int logicalHeight, int minLogicalWidth, int minLogicalHeight,
               std::string &error)
     {
         now();
@@ -552,7 +580,7 @@ namespace platform
         g_cursors[int(Cursor::Text)] = LoadCursorW(nullptr, IDC_IBEAM);
 
         // hidden at a placeholder size; sized and centred once the monitor's DPI is known
-        g_hwnd = CreateWindowExW(WS_EX_NOREDIRECTIONBITMAP | WS_EX_APPWINDOW, wc.lpszClassName, title, WS_OVERLAPPEDWINDOW,
+        g_hwnd = CreateWindowExW(WS_EX_NOREDIRECTIONBITMAP | WS_EX_APPWINDOW, wc.lpszClassName, wide(title).c_str(), WS_OVERLAPPEDWINDOW,
                                  CW_USEDEFAULT, CW_USEDEFAULT, 800, 600, nullptr, nullptr, instance, nullptr);
         if (!g_hwnd)
         {
@@ -718,12 +746,12 @@ namespace platform
             Sleep(DWORD(seconds * 1000.0));
     }
 
-    bool openFileDialog(std::filesystem::path &out, const wchar_t *title, const std::vector<FileType> &types)
+    bool openFileDialog(std::filesystem::path &out, const char *title, const std::vector<FileType> &types)
     {
         IFileOpenDialog *dialog = nullptr;
         if (FAILED(CoCreateInstance(CLSID_FileOpenDialog, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&dialog))))
             return false;
-        dialog->SetTitle(title);
+        dialog->SetTitle(wide(title).c_str());
         setTypes(dialog, types);
         DWORD options = 0;
         dialog->GetOptions(&options);
@@ -733,16 +761,16 @@ namespace platform
         return ok;
     }
 
-    bool saveFileDialog(std::filesystem::path &out, const wchar_t *title, const std::filesystem::path &suggested,
-                        const std::vector<FileType> &types, const wchar_t *defaultExtension)
+    bool saveFileDialog(std::filesystem::path &out, const char *title, const std::filesystem::path &suggested,
+                        const std::vector<FileType> &types, const char *defaultExtension)
     {
         IFileSaveDialog *dialog = nullptr;
         if (FAILED(CoCreateInstance(CLSID_FileSaveDialog, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&dialog))))
             return false;
-        dialog->SetTitle(title);
+        dialog->SetTitle(wide(title).c_str());
         setTypes(dialog, types);
         if (defaultExtension)
-            dialog->SetDefaultExtension(defaultExtension);
+            dialog->SetDefaultExtension(wide(defaultExtension).c_str());
         setFolder(dialog, suggested.parent_path());
         dialog->SetFileName(suggested.filename().c_str());
         DWORD options = 0;
@@ -753,12 +781,12 @@ namespace platform
         return ok;
     }
 
-    bool openFolderDialog(std::filesystem::path &out, const wchar_t *title, const std::filesystem::path &start)
+    bool openFolderDialog(std::filesystem::path &out, const char *title, const std::filesystem::path &start)
     {
         IFileOpenDialog *dialog = nullptr;
         if (FAILED(CoCreateInstance(CLSID_FileOpenDialog, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&dialog))))
             return false;
-        dialog->SetTitle(title);
+        dialog->SetTitle(wide(title).c_str());
         DWORD options = 0;
         dialog->GetOptions(&options);
         dialog->SetOptions(options | FOS_PICKFOLDERS | FOS_FORCEFILESYSTEM | FOS_PATHMUSTEXIST);
@@ -767,4 +795,20 @@ namespace platform
         dialog->Release();
         return ok;
     }
+
+    void errorBox(const std::string &text)
+    {
+        MessageBoxW(nullptr, wide(text.c_str()).c_str(), L"VCS Launcher", MB_ICONERROR);
+    }
+}
+
+int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
+{
+    int argc = 0;
+    wchar_t **argvW = CommandLineToArgvW(GetCommandLineW(), &argc);
+    std::vector<std::string> args;
+    for (int i = 1; i < argc; ++i)
+        args.push_back(platform::utf8(argvW[i]));
+    LocalFree(argvW);
+    return launcherMain(args);
 }

@@ -770,6 +770,13 @@ Python scripts still usable on their own. docs/LAUNCHER.md has the whole of it; 
         on the next build; a simulated 0xC000001D through `run_logged` gives the named exit code in the log and the
         `illegal_instruction` event.
       Not run on a real pre-Haswell CPU (none here): the reporter's PC is the check.
+- [x] **The launcher on Linux** (2026-11-01, the user's request; DECISIONS.md, docs/LAUNCHER.md "Linux"): native X11
+      and Wayland, Vulkan (opened at run time), FreeType + fontconfig, the portal's file dialogs, `pkexec` package
+      installs (`build.py --install-deps`), our own icons on both OSes. Checked on the dev laptop (Mint 22, XFCE, HD 520):
+      self-test, every screen offscreen with Vulkan validation clean; the window on X11 (move, resize, maximise,
+      minimise, close through xfwm4) and on Wayland (nested weston: the same, plus un-maximise back to the floating size);
+      idle: 7 frames in 20 s (the entrance), then none - 5 ms of CPU. Not checked: GNOME / KDE Wayland by hand, a drop from a file manager, the
+      portal dialog with a real click, `--install-deps` for real, the Windows build (CI compiles it).
 
 ## Useful switches
 | Env var | Effect |

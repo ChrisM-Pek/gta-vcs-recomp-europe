@@ -1,15 +1,15 @@
 # Launcher and releases
 
-`VCSLauncher.exe`, shipped in every Windows release, takes a player from "extracted the zip" to "playing" without a
+`VCSLauncher.exe` (Linux: `VCSLauncher`), shipped in every Windows release, takes a player from "extracted the zip" to "playing" without a
 terminal: it finds and checks the disc, installs what the build needs, recompiles and builds the game with a progress
 bar, and starts it. It is a front end over the Python tools in `tools/` - every button runs a script people can also
 run by hand - so the launcher and the README's manual install are one pipeline.
 
 Status (2026-11-01): rebuilt as a native app of its own - its own window, Direct3D 11 renderer, DirectWrite text and
 animated UI, after uppies - with a rethought flow (Setup, Home, Task); before, SDL3 + Dear ImGui (2026-10-30, checked
-end to end from a release zip in a fresh folder, below). Windows only; another platform is a platform file, a renderer
-backend and a rasteriser ("The launcher's own code"). Decisions: DECISIONS.md 2026-10-30 "A launcher for releases",
-2026-11-01 "The launcher draws itself".
+end to end from a release zip in a fresh folder, below). Windows and Linux (2026-11-01: X11 and Wayland, Vulkan,
+FreeType - "Linux" below; Linux releases later, a clone builds it with `python3 tools/build.py --launcher`). Decisions:
+DECISIONS.md 2026-10-30 "A launcher for releases", 2026-11-01 "The launcher draws itself", "The launcher on Linux".
 
 ## Why
 
@@ -166,8 +166,8 @@ static exe, 17 s from scratch. Layers, each using only those below it:
 | `launcher/main.cpp` | entry, the command-line forms, the frame loop, `--screenshot` |
 | `launcher/screens/` | the window: `screens.cpp` (which mode, transitions, the model's readings), `titlebar`, `backdrop`, `setup`, `home`, `task`, `sheets`, `overlays` (dialogs, toasts), `gallery` |
 | `launcher/ui/` | immediate-mode widgets with retained animation state (`ui.cpp`: ids, hover / press / focus, input layers, `animate` / `spring`, `wakeAt`, tooltips; `widgets.cpp`: buttons, segmented control, toggle, choice rows, cards, pills, status badges that morph, progress bar, rolling numbers, scroll areas, the log view), `theme.h` (every colour and size) |
-| `launcher/render/` | `draw.cpp`: the draw list - one 96-byte instance per primitive (rounded rect with gradient and border, glyph - sharp or Gaussian-blurred, sampled only inside its own texels -, Gaussian shadow, line, arc), base and overlay layers, clip / opacity / offset stacks; `font.cpp`: the glyph atlas (R8, shelf-packed, grows 1024 -> 4096 without moving glyphs, quarter-pixel variants), layout, ellipsis, wrapping; `font_dwrite.cpp`: DirectWrite rasterises; `renderer.h` and `d3d11/` (`ui.hlsl`, compiled by fxc at build time) |
-| `launcher/platform/` | `platform.h` (window, input, time, wake, dialogs); `platform_win32.cpp` |
+| `launcher/render/` | `icons.cpp`: the icons, drawn from distance shapes into the atlas (both OSes); `draw.cpp`: the draw list - one 96-byte instance per primitive (rounded rect with gradient and border, glyph - sharp or Gaussian-blurred, sampled only inside its own texels -, Gaussian shadow, line, arc), base and overlay layers, clip / opacity / offset stacks; `font.cpp`: the glyph atlas (R8, shelf-packed, grows 1024 -> 4096 without moving glyphs, quarter-pixel variants), layout, ellipsis, wrapping; `font_dwrite.cpp` / `font_freetype.cpp`: DirectWrite / FreeType rasterise; `renderer.h`, `d3d11/` (`ui.hlsl`, compiled by fxc at build time) and `vulkan/` (the same `ui.hlsl` through glslang) |
+| `launcher/platform/` | `platform.h` (window, input, time, wake, dialogs); `platform_win32.cpp`; `platform_linux.cpp` + `linux/` (`x11.cpp`, `wayland.cpp`, `dbus.cpp`) |
 | `launcher/core/` | `math.h` (rects and rect cutting, sRGB colours, `damp`, a sub-stepped `Spring`, easings), `png.cpp` |
 | `launcher/model/` | the state and the tools it runs: `tasks.cpp` (App, Task, the `@vcs` events, `errorHelp`, settings), `process.cpp` (Job Objects; output and exit wake the UI), `disc_check.cpp`, `system.cpp`, `json.cpp` |
 
@@ -186,8 +186,11 @@ static exe, 17 s from scratch. Layers, each using only those below it:
   there is no GPU.
 - **Text**: DirectWrite (grayscale, natural symmetric, grid-fitted at text sizes), cached per font / pixel size /
   code point / quarter pixel; kerning from the font. Fonts from Windows: Segoe UI Variable Text (Windows 11) else
-  Segoe UI, Bahnschrift for the name and the big numbers, Segoe Fluent Icons else Segoe MDL2 Assets, Cascadia Mono else
-  Consolas for the log. Nothing bundled. **Pricedown** (GTA's lettering, Typodermic) for the few prominent things - the
+  Segoe UI, Bahnschrift for the name and the big numbers, Cascadia Mono else Consolas for the log. Nothing bundled.
+  **Icons** are no font (since 2026-11-01, both OSes): `render/icons.cpp` draws each from a few distance shapes on a
+  24-unit grid (strokes with round caps, arcs, discs, rounded rectangles, polygons) at the exact pixel size into the
+  glyph atlas - one glyph instance to draw, overlapping strokes never darker where they meet, axis-aligned 1-pixel
+  strokes snapped to pixel centres below 25 px. `theme::icon`'s Segoe code points are only their identifiers now. **Pricedown** (GTA's lettering, Typodermic) for the few prominent things - the
   name on Home, Home's big button, the build percentage - when the player has it installed (`render::kFontBrand`,
   `fontFound`), else the display font. Its desktop EULA lets each person install it, not ship it in software or in
   open-source projects (4.1, 4.3, 4.6), so it is looked up by name and never in the repository or the exe
@@ -196,9 +199,52 @@ static exe, 17 s from scratch. Layers, each using only those below it:
   resize edges, the caption (drag, double-click, system menu, snapping) and `HTMAXBUTTON` over the maximise button
   (Windows 11's snap layouts); dark mode, Windows 11 corners and border through DWM attributes; the DWM shadow from a
   one-pixel frame extension.
-- **Other platforms**: the renderer interface takes the same draw list on any API (a Vulkan backend and a port of
-  `ui.hlsl`), the platform layer is one file per OS, the rasteriser one file (FreeType on Linux); `model/` has the
-  Windows process and folder code that docs/LINUX.md lists.
+
+### Linux (2026-11-01)
+
+The same launcher; what differs is in files of its own (DECISIONS.md 2026-11-01 "The launcher on Linux"). Built with
+`python3 tools/build.py --launcher` (the packages: docs/LINUX.md; `--check-deps` names them), `VCSLauncher` in the
+repository root, ~1 MB stripped, 27 s from scratch on the dev laptop.
+
+- **Window**: X11 (Xlib) or Wayland (libwayland-client), picked at startup - Wayland when `WAYLAND_DISPLAY` is set,
+  else X11; `VCS_LAUNCHER_VIDEO=x11|wayland` forces one. The title bar is ours on both: X11 gets an undecorated window
+  (Motif hints), Wayland client-side decorations (xdg-decoration asked for them; GNOME has none anyway). A press on the
+  caption or a resize edge (6 logical px) goes to the window manager / compositor - `_NET_WM_MOVERESIZE`,
+  `xdg_toplevel.move` / `resize` - so it moves, snaps and tiles as every other window; double-click maximises,
+  right-click on Wayland opens the compositor's window menu.
+- **Waiting**: `poll()` on the display connection, an eventfd that `wake()` writes (tool output, a process ending) and
+  Wayland's key-repeat timerfd - no polling, no CPU while idle.
+- **Scale**: X11 from `Xft.dpi` (`VCS_LAUNCHER_SCALE` overrides); Wayland from fractional-scale-v1 with viewporter (the
+  buffer has physical pixels), else the output's integer scale.
+- **Input**: keys as Windows virtual keys (platform.h's contract) from the unshifted keysym; text through the X input
+  method or xkbcommon with compose (dead keys); key repeat Wayland's own rate. Pointer shapes: Xcursor's theme on X11,
+  cursor-shape-v1 on Wayland (else libwayland-cursor). Dropped files: XDND / `wl_data_device` (`text/uri-list`).
+- **Desktop settings**: dark / light from the portal's `color-scheme`, else the GTK theme's name (portal, or XSETTINGS'
+  `Net/ThemeName` on X11 - XFCE, MATE, Cinnamon); animations (`Gtk/EnableAnimations`, `enable-animations`) and the
+  double-click time likewise. Read at start and when the window gets focus (XSETTINGS: when it changes).
+- **Rendering**: Vulkan 1.1+, opened with `dlopen("libvulkan.so.1")` (no link to the loader; no driver: a message). One
+  pipeline, the instance buffer as a per-instance vertex buffer, push constants, the atlas by its dirty rectangle
+  through a staging buffer; two frames in flight with persistently mapped buffers; FIFO with vsync, else MAILBOX /
+  IMMEDIATE; `VK_KHR_present_wait` for one frame of latency where the driver has it. Integrated GPU first, then
+  discrete, virtual, CPU (lavapipe: CI) - `VCS_LAUNCHER_VK_DEVICE=<part of the name>` picks one. A lost device is
+  rebuilt (Ctrl+Shift+F10 simulates it). `VCS_LAUNCHER_VK_DEBUG=1`: the validation layer, messages as `[vulkan]`.
+  Offscreen (`--screenshot`, `--hidden`) needs no display at all.
+- **Text**: FreeType (grayscale, light hinting - vertical only, so the quarter-pixel positions hold) from fonts
+  fontconfig finds: Inter, Cantarell, Noto Sans, Ubuntu, DejaVu Sans, `sans-serif`; Bahnschrift / Barlow Semi Condensed
+  / Noto Sans Display for the name; Cascadia / JetBrains / Noto Sans / DejaVu Sans Mono for the log; Pricedown when
+  installed.
+- **Processes** (`model/process_posix.cpp`): fork + execvpe; a tool leads a process group of its own, so Cancel and
+  closing the launcher stop the tree (SIGTERM, SIGKILL after 2 s), and `PR_SET_PDEATHSIG` stops it if the launcher
+  dies; the game gets a session of its own and plays on. A waiter thread in `waitpid` and a reader in `poll` wake the
+  UI. A death by signal N is exit code 128 + N.
+- **The rest** (`model/system_linux.cpp`, `platform/linux/dbus.cpp`): XDG folders (saves in `$XDG_DATA_HOME/VCSRecomp`,
+  as the game), `xdg-open`, the file manager over D-Bus (`FileManager1.ShowItems`), a `.desktop` shortcut on the
+  Desktop and in the applications menu (icon: `launcher/launcher.png`, from `make_icon.py`), logind's sleep inhibitor
+  during a build, file dialogs from the portal (else zenity, else kdialog), errors before the window as a zenity box
+  when no terminal shows them.
+- **Setup's build tools step**: doctor.py lists the missing packages and the command; *Install packages* runs
+  `build.py --install-deps` (pkexec: the desktop's password prompt); *Install in a terminal* opens one with the same
+  command where there is no polkit agent. Copying a DVD and update checks are hidden (Windows-only tools for now).
 
 ## How it fits together
 
@@ -316,6 +362,22 @@ runs the real window and frame loop without showing it and prints the frames dra
   that's missing or too old (`no_cmake`). The four Linux archives were downloaded, matched their pins and unpacked;
   **the Linux search and the downloaded programs running there are untested** (no Linux machine).
 
+## Checked (2026-11-01, Linux)
+
+On the dev laptop (Mint 22.3, XFCE on X11, i7-6600U, HD 520, Mesa 25), the launcher built by `build.py --launcher`:
+- `--self-test`: all ok (`renderer: Vulkan 1.4 (Intel(R) HD Graphics 520 (SKL GT2)), FreeType`).
+- `--screenshot` of Home, the gallery, the setup steps, Settings and Help, with `VCS_LAUNCHER_VK_DEBUG=1`: the same
+  pictures as Windows' (fonts aside: Noto Sans), **0 validation messages**.
+- X11, in a nested Xephyr with xfwm4 driven through XTest: caption drag moves the window exactly, the right edge resizes
+  it exactly, double-click maximises and restores, minimise hides it (`_NET_WM_STATE_HIDDEN`), a click opens Settings,
+  the close button quits. The real window on the desktop: undecorated, centred, class `VCSLauncher`, the icon set.
+- Wayland, in a nested weston (X11 backend inside Xephyr, pixman, lavapipe) driven the same way: move, resize,
+  maximise, close; fixed on the way: un-maximising kept the maximised size (a 0x0 configure now means the floating size).
+  On the desktop's weston (GPU): HD 520, 60 Hz pacing, one draw call.
+- Not checked: GNOME / KDE Wayland by hand, a drop from a file manager, the portal's file dialog clicked for real, the
+  shortcut, `--install-deps` for real (it installs packages), the Windows build (UTF-8 interfaces, the icons) - CI
+  compiles and self-tests it on the next push.
+
 ## Numbers
 
 | | |
@@ -325,6 +387,9 @@ runs the real window and frame loop without showing it and prints the frames dra
 | Idle cost (`--hidden --quit-after 20`) | 62 frames in 20 s - the entrance animation and the doctor's run - then none; 94 ms of CPU in all (before Home moved) |
 | Home, moving (2026-11-01) | 783 frames in 20 s - the entrance, then ~33 a second; 0.16 ms of CPU a frame (about 0.5% of one core); every other screen still draws nothing when idle |
 | A frame | 0.67 ms CPU on average (the first ones, rasterising glyphs: up to 14 ms); one draw call, a few hundred instances |
+| Linux: build from scratch (laptop, clang 20, ThinLTO) | **27 s**; `VCSLauncher` 1.0 MB stripped (the X11 icon is 0.17 MB of it) |
+| Linux: idle (reduce motion, `--hidden --quit-after 20`) | 7 frames in 20 s (the entrance and the doctor's answer), then none; **5 ms of CPU in all** |
+| Linux: Home, moving (`--hidden --quit-after 10`, paced at 60 Hz) | 346 frames in 10 s (~33 a second after the entrance); 0.96 ms a frame on the laptop at its idle clock (0.33 of it the renderer: upload + submit); 40 ms of CPU a second |
 | `doctor.py` | 0.8 s |
 | Release zip | 82 MB; 1 min to make with the libraries cached, +17 s to fetch them |
 | First build from the release, through the hidden launcher (i7-7700K, 8 threads, ThinLTO, offline) | **8 min 42 s**: configure 52 s (with the recompiler), MIPS -> C++ 36 s, configure again 41 s, compile + link 6 min 25 s (786 steps) |
@@ -332,6 +397,10 @@ runs the real window and frame loop without showing it and prints the frames dra
 | The built game started by `--play` (hidden, a test card) | boots from the disc, the intro movie 321 pictures, 0 dropped |
 
 ## Not done / next
+
+- Linux: a release tarball (`release.py`) and `update.py` for it; `rip_disc.py` on Linux; a clipboard (the terminal
+  fallback stands in for *Copy the command*); xdg-foreign for the portal dialog's parent on Wayland; GNOME / KDE checked
+  by hand.
 
 - A run on a PC with nothing installed (Windows Sandbox: no Python, no Git, no Visual Studio) - the real test of
   setup_vs.py's install path.

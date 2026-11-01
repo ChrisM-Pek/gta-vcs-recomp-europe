@@ -1214,17 +1214,33 @@ def _linux_family():
     return 0
 
 
-def check_linux_deps(env):
-    """Missing build dependencies on Linux, with the install command for this distro; True when nothing is missing."""
+# what the launcher needs on top (launcher/CMakeLists.txt): its Vulkan headers (the game fetches its own) and fonts;
+# X11, Wayland, xkbcommon and D-Bus come with the game's list
+LAUNCHER_LINUX_DEPS = [
+    ("Vulkan headers (launcher)", "pc:vulkan", ("libvulkan-dev", "vulkan-headers vulkan-loader-devel",
+                                                "vulkan-headers vulkan-icd-loader")),
+    ("fonts (launcher)", "pc:freetype2 fontconfig", ("libfreetype-dev libfontconfig-dev", "freetype-devel fontconfig-devel",
+                                                     "freetype2 fontconfig")),
+]
+
+PACKAGE_MANAGERS = ("apt", "dnf", "pacman")  # by _linux_family()
+
+
+def linux_missing(env, deps=None, quiet=False):
+    """The missing Linux build dependencies: a list of (label, packages for this distro). deps: LINUX_DEPS (the game,
+    the default) or LAUNCHER_LINUX_DEPS. CMake / Ninja / LLVM are checked with the game's list only."""
+    family = _linux_family()
     missing = []
-    for label, check, packages in LINUX_DEPS:
+    for label, check, packages in (LINUX_DEPS if deps is None else deps):
         if check.startswith("pc:"):
             mods = check[3:].split()
             ok = bool(_which("pkg-config", env)) and subprocess.run(["pkg-config", "--exists"] + mods, env=env).returncode == 0
         else:
             ok = bool(_which(check, env))
         if not ok:
-            missing.append((label, packages))
+            missing.append((label, packages[family]))
+    if deps is not None:
+        return missing
     tools = build_tools(env, download=False)
     for tool, title, minimum, packages, downloads in (
             ("cmake", "CMake", MIN_CMAKE, ("cmake", "cmake", "cmake"), CMAKE_DOWNLOADS),
@@ -1232,24 +1248,42 @@ def check_linux_deps(env):
         if tools[tool]:
             continue
         if download_platform() in downloads:
-            print("[deps] no %s %s or newer found: the build downloads one (%s)" % (
-                title, _version_text(minimum), downloads[download_platform()][0].rsplit("/", 1)[1]))
+            if not quiet:
+                print("[deps] no %s %s or newer found: the build downloads one (%s)" % (
+                    title, _version_text(minimum), downloads[download_platform()][0].rsplit("/", 1)[1]))
         else:
-            missing.append(("%s %s+" % (title, _version_text(minimum)), packages))
-    family = _linux_family()
+            missing.append(("%s %s+" % (title, _version_text(minimum)), packages[family]))
     llvm = _linux_llvm_bin(env)
     if not llvm:
-        missing.append(("clang %d+ / lld / llvm" % MIN_CLANG, ("clang-20 lld-20 llvm-20", "clang lld llvm", "clang lld llvm")))
+        missing.append(("clang %d+ / lld / llvm" % MIN_CLANG, ("clang-20 lld-20 llvm-20", "clang lld llvm", "clang lld llvm")[family]))
     elif not os.path.isfile(os.path.join(llvm, "ld.lld")) and not _which("ld.lld", env):
-        missing.append(("lld", ("lld-%d" % clang_version(os.path.join(llvm, "clang")), "lld", "lld")))
+        missing.append(("lld", ("lld-%d" % clang_version(os.path.join(llvm, "clang")), "lld", "lld")[family]))
+    return missing
+
+
+def linux_install_command(packages, sudo="sudo"):
+    """The command that installs these packages on this distro (a list; `sudo` may be "pkexec" or "")."""
+    family = _linux_family()
+    cmd = [sudo] if sudo else []
+    if family == 0:
+        cmd += ["apt", "install"] if sudo == "sudo" else ["env", "DEBIAN_FRONTEND=noninteractive", "apt-get", "install", "-y"]
+    elif family == 1:
+        cmd += ["dnf", "install"] + ([] if sudo == "sudo" else ["-y"])
+    else:
+        cmd += ["pacman", "-S", "--needed"] + ([] if sudo == "sudo" else ["--noconfirm"])
+    return cmd + " ".join(packages).split()
+
+
+def check_linux_deps(env, deps=None):
+    """Missing build dependencies on Linux, with the install command for this distro; True when nothing is missing."""
+    missing = linux_missing(env, deps)
     if not missing:
+        llvm = _linux_llvm_bin(env) if deps is None else None
         print("[deps] all build dependencies found" + (" (LLVM: %s)" % llvm if llvm else ""))
         return True
     for label, _ in missing:
         print("[deps] missing: " + label)
-    pkgs = " ".join(p[family] for _, p in missing)
-    cmd = ("sudo apt install " if family == 0 else "sudo dnf install " if family == 1 else "sudo pacman -S --needed ") + pkgs
-    print("[deps] install them with:\n    " + cmd)
+    print("[deps] install them with:\n    " + " ".join(linux_install_command([p for _, p in missing])))
     return False
 
 

@@ -419,8 +419,8 @@ namespace screens
         const float cy = S.horizon - radius * (0.15f + 0.45f * e); // it rises a little as Home appears
         pushOpacity(hero);
         stars(S);
-        jets(S);
         sun(S, cx, cy, radius);
+        jets(S); // in front of the sun; behind the cloud streaks and the towers
         clouds(S, cx, radius);
         skyline(S, true);
         sea(S, cx, radius);

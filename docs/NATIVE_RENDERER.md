@@ -478,7 +478,9 @@ it is 1920x1080, 3 x 2.41 pixels per PS2 pixel.
   depth output (SHADER_DEPTH); Vulkan uses the rasterised depth - the same value with a 0..1 depth range - so early depth
   rejection works; D3D11 keeps the shader depth until checked on Windows (`PS2X_HW_SHADER_DEPTH`). The draw constants are
   written only when they change (`updateConstants`), and the Vulkan backend records viewport, scissor, blend constants
-  and buffers only when they differ from what the command buffer has.
+  and buffers only when they differ from what the command buffer has. Depth test / write / compare are dynamic state:
+  pipelines that differ only there share one VkPipeline (`PS2X_RHI_STATIC_DEPTH=1` = baked in), and a dynamic vertex
+  buffer's ring slice holds only the bytes last written (`PS2X_RHI_FULL_COPY=1`; PERFORMANCE.md 27).
 - **The GS bilinear by Gather** (2026-10-30, PERFORMANCE.md section 15): with filtering off, the same draws (power-of-two
   textures without a mip chain) keep the GS's bilinear but fetch its 2x2 texels with `Gather` through a nearest sampler
   of their wrapping (`linearIipFgeAte.x == 3`, `m_gatherSampler`), drawn with a pixel shader built for that path alone

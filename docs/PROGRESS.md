@@ -819,6 +819,7 @@ Python scripts still usable on their own. docs/LAUNCHER.md has the whole of it; 
 | `VCS_PERF_OVERLAY=0\|1` | the perf overlay setting for one run |
 | `VCS_PROFILE=s` | sampling profiler (guest functions + host symbols) |
 | `VCS_PROFILE_LINES=name` | with `VCS_PROFILE`: source lines of the host functions whose name contains `name` |
+| `VCS_PROFILE_RAW=<file>` | with `VCS_PROFILE` (Linux): the samples dladdr cannot name, appended as `module offset count` lines per report - for `llvm-symbolizer --obj=<module>` (anonymous namespaces, static libraries: gs_hw, the RHI; PERFORMANCE.md 27) |
 | `PS2X_VIF_UNPACK_FAST=0\|verify` | VIF1 UNPACK general loop only / both, compared |
 | `PS2X_GS_RECT_VERIFY=1` | every 64th rect upload also written pixel by pixel and compared |
 | `PS2X_HW_LAZY_INDEX=0` | lazy uploads to write found by rescanning the queue (the old way) |
@@ -962,6 +963,8 @@ Python scripts still usable on their own. docs/LAUNCHER.md has the whole of it; 
 | `PS2X_RHI_GPU_TIME=1` | Vulkan: GPU time of the passes and the whole frame (`PS2X_GPU_TIMING=1`: per draw, breaking passes) |
 | `PS2X_HOST_SPIKES=<ms>` | main-loop frames whose work went over it, by phase (events, begin, frames, ui, window, present) with the main thread's CPU time; Vulkan: the frame's waits, draws with their CPU time in `prepareDraw` / `vkCmdDraw`, pipeline binds, descriptor pushes, passes, uploads, and the fence wait after it (PERFORMANCE.md 26) |
 | `PS2X_RHI_LOG_MEMORY=1` | Vulkan: every device memory allocation / free VMA makes, with its size and time |
+| `PS2X_RHI_STATIC_DEPTH=1` | Vulkan: depth test / write / compare in each pipeline, as before 2026-11-02 (now dynamic state, pipelines differing only there shared: PERFORMANCE.md 27) |
+| `PS2X_RHI_FULL_COPY=1` | Vulkan: a dynamic vertex / index buffer's whole capacity copied into the frame's ring, as before 2026-11-02 (now the bytes last written) |
 | `PS2X_RHI_REDUNDANT=1` | Vulkan: viewport, scissor, blend constants and vertex / index buffers recorded at every draw that set them, as before 2026-11-02 (now only when they change) |
 | `PS2X_HW_CB_DEDUPE=0`, `PS2X_HW_CB_LOG=1` | the GS draw / native constants written at every draw, as before 2026-11-02 (now only when they change); writes and skips every 5 s |
 | `PS2X_HW_SHADER_DEPTH=1` / `=0` | the GS pixel shader writes the depth (the default with D3D11) / uses the rasterised depth, early depth rejection on (the default with Vulkan; PERFORMANCE.md 26) |

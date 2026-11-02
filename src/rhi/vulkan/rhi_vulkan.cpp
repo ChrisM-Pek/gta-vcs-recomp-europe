@@ -99,6 +99,28 @@ namespace rhi
             return on ? std::chrono::steady_clock::now().time_since_epoch().count() : 0;
         }
 
+        // Depth test / write / compare as dynamic state (core Vulkan 1.3): pipelines that differ only there are one
+        // VkPipeline, so a depth change is no pipeline bind - two thirds of the binds while driving were only that
+        // (PERFORMANCE.md 27). PS2X_RHI_STATIC_DEPTH=1: the depth state in each pipeline, as before.
+        bool dynamicDepth()
+        {
+            static const bool on = [] {
+                const char *e = std::getenv("PS2X_RHI_STATIC_DEPTH");
+                return !(e && *e && *e != '0');
+            }();
+            return on;
+        }
+
+        // PS2X_RHI_FULL_COPY=1: a dynamic vertex / index buffer's whole capacity copied into the frame's ring, as before
+        bool fullCopy()
+        {
+            static const bool on = [] {
+                const char *e = std::getenv("PS2X_RHI_FULL_COPY");
+                return e && *e && *e != '0';
+            }();
+            return on;
+        }
+
         // PS2X_RHI_REDUNDANT=1: viewport, scissor and buffers recorded at every draw that set them, as before
         bool redundantState()
         {
@@ -355,6 +377,7 @@ namespace rhi
             VmaAllocation allocation = VK_NULL_HANDLE;
             // dynamic buffers: the latest contents and where the current frame has them in its ring
             std::vector<uint8_t> shadow;
+            size_t used = 0; // vertex / index buffers: the bytes the last update wrote (the rest is undefined: WRITE_DISCARD)
             VkBuffer sliceBuffer = VK_NULL_HANDLE;
             VkDeviceSize sliceOffset = 0;
             uint64_t sliceFrame = 0; // the frame serial the slice belongs to (0: none yet)
@@ -382,6 +405,8 @@ namespace rhi
             ~VkPipe() override
             {
                 core->forget(this);
+                if (sharedVariants) // the device's shared pipelines (dynamic depth): destroyed with the device
+                    return;
                 Core *c = core.get();
                 std::vector<VkPipeline> all;
                 for (auto &[key, p] : variants)
@@ -396,6 +421,7 @@ namespace rhi
             std::string name;
             VkShaderModule vs = VK_NULL_HANDLE, ps = VK_NULL_HANDLE; // owned by the device's module cache
             std::unordered_map<uint64_t, VkPipeline> variants;     // by target formats / samples
+            bool sharedVariants = false;                            // variants from the device's shared cache (dynamicDepth)
         };
 
         // A frame's upload memory: host-visible chunks, reset when the frame slot comes round again
@@ -533,6 +559,9 @@ namespace rhi
                     vkDestroyPipelineLayout(d, m_pipelineLayout, nullptr);
                 if (m_setLayout)
                     vkDestroyDescriptorSetLayout(d, m_setLayout, nullptr);
+                for (auto &[key, pipeline] : m_sharedPipelines)
+                    if (pipeline)
+                        vkDestroyPipeline(d, pipeline, nullptr);
                 if (m_pipelineCache)
                     vkDestroyPipelineCache(d, m_pipelineCache, nullptr);
             }
@@ -812,6 +841,7 @@ namespace rhi
                 if (desc.dynamic)
                 {
                     b->shadow.assign(size, 0);
+                    b->used = size;
                     if (data)
                         std::memcpy(b->shadow.data(), data, desc.size);
                     return b;
@@ -847,8 +877,12 @@ namespace rhi
                     return;
                 if (b.desc().dynamic)
                 {
-                    // WRITE_DISCARD: the rest of the buffer is undefined in D3D; ours keeps the old bytes
+                    // WRITE_DISCARD: the rest of the buffer is undefined in D3D; ours keeps the old bytes. A vertex / index
+                    // buffer's slice holds only what was written: the renderer's are sized for the largest frame seen and
+                    // each frame copied all of it (~1 ms a frame on the laptop, PERFORMANCE.md 27; PS2X_RHI_FULL_COPY=1); a constant buffer's
+                    // descriptor covers the whole buffer, so it is copied whole
                     std::memcpy(b.shadow.data(), data, size);
+                    b.used = (b.desc().usage == BufferUsage::Constant || fullCopy()) ? b.shadow.size() : std::max<size_t>(size, 4);
                     b.sliceFrame = 0; // a new slice at the next use
                     if (&b == m_vertexBuffer || &b == m_indexBuffer)
                         m_buffersDirty = true;
@@ -1885,6 +1919,8 @@ namespace rhi
                     m_pipeline = nullptr;
                     m_boundPipeline = VK_NULL_HANDLE;
                 }
+                if (object == m_boundPipe)
+                    m_boundPipe = nullptr;
                 if (m_inPass && (object == m_passColor || object == m_passDepth))
                 {
                     // a target destroyed inside its pass: the pass ends here
@@ -2024,8 +2060,9 @@ namespace rhi
             {
                 if (b.sliceFrame == m_frameSerial)
                     return;
-                const Slice s = ringAlloc(b.shadow.size());
-                std::memcpy(s.data, b.shadow.data(), b.shadow.size());
+                const size_t n = std::min(b.used, b.shadow.size());
+                const Slice s = ringAlloc(n);
+                std::memcpy(s.data, b.shadow.data(), n);
                 b.sliceBuffer = s.buffer;
                 b.sliceOffset = s.offset;
                 b.sliceFrame = m_frameSerial;
@@ -2088,10 +2125,41 @@ namespace rhi
                     vkCmdBindPipeline(m_cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
                     m_boundPipeline = pipeline;
                     ++m_stats.pipelineBinds;
+                    if (statsOn() && m_boundPipe) // what changed: the shaders / vertex layout, or only fixed-function state
+                    {
+                        const PipelineDesc &a = m_boundPipe->desc, &b = m_pipeline->desc;
+                        if (m_boundPipe->vs != m_pipeline->vs || m_boundPipe->ps != m_pipeline->ps)
+                            ++m_stats.bindsShader;
+                        else if (a.stride != b.stride || a.topology != b.topology || a.attributes.size() != b.attributes.size())
+                            ++m_stats.bindsLayout;
+                        else
+                        {
+                            ++m_stats.bindsState;
+                            m_stats.bindsBlend += std::memcmp(&a.blend, &b.blend, sizeof(a.blend)) != 0;
+                            m_stats.bindsDepth += a.depth.test != b.depth.test || a.depth.write != b.depth.write || a.depth.func != b.depth.func;
+                        }
+                    }
+                    m_boundPipe = m_pipeline;
                     if (t0)
                         m_stats.bindNs += spikeClock() - t0;
                 }
                 m_pipelineDirty = false;
+                if (dynamicDepth()) // the pipeline's depth state, set only when it differs from what the command buffer has
+                {
+                    const DepthState &ds = m_pipeline->desc.depth;
+                    const VkBool32 test = (ds.test || ds.write) ? VK_TRUE : VK_FALSE, write = ds.write ? VK_TRUE : VK_FALSE;
+                    const VkCompareOp op = ds.test ? compare(ds.func) : VK_COMPARE_OP_ALWAYS;
+                    if (!m_emitted.depthValid || test != m_emitted.depthTest)
+                        vkCmdSetDepthTestEnable(m_cmd, test);
+                    if (!m_emitted.depthValid || write != m_emitted.depthWrite)
+                        vkCmdSetDepthWriteEnable(m_cmd, write);
+                    if (!m_emitted.depthValid || op != m_emitted.depthOp)
+                        vkCmdSetDepthCompareOp(m_cmd, op);
+                    m_emitted.depthTest = test;
+                    m_emitted.depthWrite = write;
+                    m_emitted.depthOp = op;
+                    m_emitted.depthValid = true;
+                }
                 // [redundant state] viewport, scissor and buffers are recorded only when they differ from what this
                 // command buffer has: the renderer sets them before every draw, and each one recorded made the driver
                 // send that state again at the draw (Intel: ~5 us a draw on the laptop, PERFORMANCE.md 26)
@@ -2154,6 +2222,7 @@ namespace rhi
                         {
                             was = ubo[i];
                             write(i, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, &ubo[i], nullptr);
+                            ++m_stats.writesUbo;
                         }
                     }
                     for (uint32_t i = 0; i < kTextureSlots; ++i)
@@ -2163,6 +2232,7 @@ namespace rhi
                         {
                             m_pushed.view[i] = images[i].imageView;
                             write(kTextureBinding + i, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, nullptr, &images[i]);
+                            ++m_stats.writesTexture;
                         }
                         samplers[i] = {(m_samplers[i] ? m_samplers[i] : m_defaultSampler.get())->sampler, VK_NULL_HANDLE,
                                        VK_IMAGE_LAYOUT_UNDEFINED};
@@ -2170,6 +2240,7 @@ namespace rhi
                         {
                             m_pushed.sampler[i] = samplers[i].sampler;
                             write(kSamplerBinding + i, VK_DESCRIPTOR_TYPE_SAMPLER, nullptr, &samplers[i]);
+                            ++m_stats.writesSampler;
                         }
                     }
                     if (n)
@@ -2242,6 +2313,34 @@ namespace rhi
                 if (it != p.variants.end())
                     return it->second;
                 const PipelineDesc &d = p.desc;
+                // dynamic depth: everything the VkPipeline holds but the depth state, as a key into the shared cache
+                std::string shared;
+                if (dynamicDepth())
+                {
+                    auto put = [&shared](const void *v, size_t n) { shared.append(static_cast<const char *>(v), n); };
+                    put(&p.vs, sizeof(p.vs));
+                    put(&p.ps, sizeof(p.ps));
+                    put(&d.stride, sizeof(d.stride));
+                    put(&d.topology, sizeof(d.topology));
+                    for (const VertexAttribute &a : d.attributes)
+                    {
+                        put(&a.format, sizeof(a.format));
+                        put(&a.offset, sizeof(a.offset));
+                    }
+                    const uint8_t blend[] = {d.blend.enable, static_cast<uint8_t>(d.blend.srcColor), static_cast<uint8_t>(d.blend.dstColor),
+                                             static_cast<uint8_t>(d.blend.colorOp), static_cast<uint8_t>(d.blend.srcAlpha),
+                                             static_cast<uint8_t>(d.blend.dstAlpha), static_cast<uint8_t>(d.blend.alphaOp), d.blend.writeMask,
+                                             d.scissor, d.depthClip};
+                    put(blend, sizeof(blend));
+                    put(&key, sizeof(key));
+                    p.sharedVariants = true;
+                    auto found = m_sharedPipelines.find(shared);
+                    if (found != m_sharedPipelines.end())
+                    {
+                        p.variants[key] = found->second;
+                        return found->second;
+                    }
+                }
                 VkPipelineShaderStageCreateInfo stages[2] = {{VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO},
                                                              {VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO}};
                 stages[0].stage = VK_SHADER_STAGE_VERTEX_BIT;
@@ -2291,9 +2390,11 @@ namespace rhi
                 VkPipelineColorBlendStateCreateInfo cb{VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO};
                 cb.attachmentCount = color != VK_FORMAT_UNDEFINED ? 1u : 0u;
                 cb.pAttachments = &att;
-                const VkDynamicState dyn[] = {VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR, VK_DYNAMIC_STATE_BLEND_CONSTANTS};
+                const VkDynamicState dyn[] = {VK_DYNAMIC_STATE_VIEWPORT,           VK_DYNAMIC_STATE_SCISSOR,
+                                              VK_DYNAMIC_STATE_BLEND_CONSTANTS,    VK_DYNAMIC_STATE_DEPTH_TEST_ENABLE,
+                                              VK_DYNAMIC_STATE_DEPTH_WRITE_ENABLE, VK_DYNAMIC_STATE_DEPTH_COMPARE_OP};
                 VkPipelineDynamicStateCreateInfo dy{VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO};
-                dy.dynamicStateCount = 3;
+                dy.dynamicStateCount = dynamicDepth() ? 6u : 3u;
                 dy.pDynamicStates = dyn;
                 VkPipelineRenderingCreateInfo ri{VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO};
                 ri.colorAttachmentCount = cb.attachmentCount;
@@ -2321,6 +2422,8 @@ namespace rhi
                     made = VK_NULL_HANDLE;
                 }
                 p.variants[key] = made;
+                if (!shared.empty() && made)
+                    m_sharedPipelines[shared] = made;
                 ++m_stats.pipelines;
                 m_stats.pipelineMs += std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
                 return made;
@@ -2763,6 +2866,14 @@ namespace rhi
                              m_stats.draws / f, m_stats.descriptorWrites / f, m_stats.passes / f, m_stats.suspends / f, m_stats.barriers / f,
                              m_stats.waits / f, m_stats.uploaded / f / 1024.0, static_cast<unsigned long long>(m_stats.pipelines),
                              m_stats.pipelineMs, m_stats.fenceMs / f, m_stats.acquireMs / f, m_stats.submitMs / f, m_stats.presentMs / f);
+                std::fprintf(stderr,
+                             "[rhi] per frame: %.0f pipeline binds (%.0f shaders, %.0f vertex layout, %.0f state only: %.0f blend, %.0f "
+                             "depth); %.0f pushes (%.0f buffer, %.0f texture, %.0f sampler writes); CPU ms (PS2X_HOST_SPIKES): prepareDraw "
+                             "%.2f (binds %.2f, pushes %.2f), vkCmdDraw %.2f\n",
+                             m_stats.pipelineBinds / f, m_stats.bindsShader / f, m_stats.bindsLayout / f, m_stats.bindsState / f,
+                             m_stats.bindsBlend / f, m_stats.bindsDepth / f, m_stats.pushes / f, m_stats.writesUbo / f,
+                             m_stats.writesTexture / f, m_stats.writesSampler / f, m_stats.prepareNs / f / 1e6, m_stats.bindNs / f / 1e6,
+                             m_stats.pushNs / f / 1e6, m_stats.drawNs / f / 1e6);
                 if (!m_stats.inputDelays.empty())
                 {
                     std::vector<double> d = m_stats.inputDelays;
@@ -2844,6 +2955,8 @@ namespace rhi
             // bound state (D3D11-style, kept across draws and passes)
             VkPipe *m_pipeline = nullptr;
             VkPipeline m_boundPipeline = VK_NULL_HANDLE;
+            VkPipe *m_boundPipe = nullptr; // PS2X_RHI_STATS: the RHI pipeline last bound (what a bind changes)
+            std::unordered_map<std::string, VkPipeline> m_sharedPipelines; // dynamicDepth: one VkPipeline per all-but-depth state
             VkBuf *m_vertexBuffer = nullptr, *m_indexBuffer = nullptr;
             uint32_t m_vertexOffset = 0;
             bool m_index32 = false;
@@ -2870,7 +2983,9 @@ namespace rhi
                 VkViewport viewport{};
                 VkRect2D scissor{};
                 float blend[4] = {};
-                bool viewportValid = false, scissorValid = false, blendValid = false;
+                bool viewportValid = false, scissorValid = false, blendValid = false, depthValid = false;
+                VkBool32 depthTest = VK_FALSE, depthWrite = VK_FALSE;
+                VkCompareOp depthOp = VK_COMPARE_OP_ALWAYS;
                 VkBuffer vertexBuffer = VK_NULL_HANDLE, indexBuffer = VK_NULL_HANDLE;
                 VkDeviceSize vertexOffset = 0, indexOffset = 0;
                 VkIndexType indexType = VK_INDEX_TYPE_MAX_ENUM;
@@ -2887,6 +3002,8 @@ namespace rhi
                 uint64_t frames = 0, draws = 0, passes = 0, suspends = 0, barriers = 0, waits = 0, uploaded = 0, pipelines = 0;
                 uint64_t descriptorWrites = 0;
                 uint64_t pipelineBinds = 0, pushes = 0;                          // PS2X_HOST_SPIKES
+                uint64_t bindsShader = 0, bindsLayout = 0, bindsState = 0, bindsBlend = 0, bindsDepth = 0; // PS2X_RHI_STATS
+                uint64_t writesUbo = 0, writesTexture = 0, writesSampler = 0;
                 int64_t prepareNs = 0, drawNs = 0, bindNs = 0, pushNs = 0; // ... the CPU time in prepareDraw / vkCmdDraw / binds / pushes
                 std::vector<double> inputDelays; // ms, input snapshot -> GPU done, per shown frame
                 double pipelineMs = 0.0, fenceMs = 0.0, acquireMs = 0.0, submitMs = 0.0, presentMs = 0.0;

@@ -676,6 +676,39 @@ depth state as dynamic state, VK_EXT_extended_dynamic_state3), textures through 
 per draw, or the frame's commands recorded off the main thread; on the GPU, the window pass (1.2-1.5 ms at 1920x993)
 and the bloom / trails (~3.7 ms).
 
+### 27. Linux: the main thread's Vulkan cost per draw (2026-11-02)
+
+After section 26 the main thread's slow host frames were mostly its own CPU in Intel's driver (~4.5 us a draw). What
+changes between draws (`PS2X_RHI_STATS=1` now splits pipeline binds and descriptor writes): 450-650 pipeline binds a
+frame, two thirds of them only the depth state (test / write / compare), the rest shader changes (the vertex kinds and
+dual-source variants - `PS2X_HW_SPECIALISE=0` changes nothing); ~1,000 descriptor writes (two thirds constant buffers).
+Mesa 25.2 here has extended dynamic state 1-3, shader objects and descriptor buffers.
+
+- **Depth state as dynamic state** (core Vulkan 1.3): pipelines that differ only in depth share one VkPipeline (the
+  device's cache keyed by everything else), and the depth state is set per draw when it differs from what the command
+  buffer has. No change in gs_hw. Binds 450-650 -> 140-270 a frame, nearly all of them shader changes now.
+  `PS2X_RHI_STATIC_DEPTH=1` = the depth state in each pipeline.
+- **Vertex buffers copy what was written**: the renderer's dynamic vertex buffers are sized for the largest frame seen,
+  and each frame's ring slice copied the whole capacity. Now the bytes the last update wrote (WRITE_DISCARD: the rest is
+  undefined; constant buffers stay whole - their descriptors cover the buffer). Uploads 3.3-4.2 -> 1.4-2.9 MB a frame,
+  the binding step 1.0-1.5 -> 0.4-0.7 ms. `PS2X_RHI_FULL_COPY=1`.
+- New `VCS_PROFILE_RAW=<file>` (Linux): the samples dladdr cannot name, for llvm-symbolizer - gs_hw and the RHI live in
+  anonymous namespaces. The main thread's busy samples now: Intel's driver 46%, libc (copies) 25%, ours 28% - of that,
+  `RhiExecutor::draw` 39% (mostly its `m_meshes` / `m_textures` lookups: node-based maps of thousands), `prepareDraw` 25%.
+
+Checked: Vulkan validation over the reference scenes (no errors; the no-depth shaders' unread vertex output is a
+performance warning), scenes against section 26's: static ones and two of the three flyover shots identical (0.00).
+
+**Result** (the same binary, both off vs on, two runs each alternated): the main thread's frame execution (`gl_ms`)
+8.48 / 8.47 -> 7.09 / 7.49 ms; frames over 33 ms 86 / 89 vs 82 / 96 - at the laptop's state that day the hitch count did
+not separate. With `PS2X_HOST_SPIKES=20`: main-thread frames over 20 ms 61 -> 24 (its own CPU 39 -> 14, the GPU fence
+12 -> 7). What remains of the ~70-90 frames over 33 ms: frames where the game thread itself takes 24-26 ms (guest code),
+texture bursts (~30: the GS stage's decode), and main-thread frames just over 16.7 ms.
+
+**Next here**: the per-draw map lookups (a flat table, or the resolved pointer carried in the command), the constant
+buffers' descriptor pushes (dynamic offsets in a set of their own: the SPIR-V's set for cbuffers, a set cache), and the
+game thread's own slow frames (`VCS_PROFILE_SPIKES`).
+
 ## Next
 
 - **The heavy views (~120 fps)**: the game thread's chain submission there (1.4-1.6 ms: the VIF1 chain copy, the walker

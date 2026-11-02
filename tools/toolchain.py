@@ -396,6 +396,7 @@ def run_with_progress(cmd, log, label, cwd=ROOT, env=None):
     """Runs `cmd` with its output to `log` under an elapsed-time line; returns the exit code. A failure ends the log
     with how the program ended (describe_exit): a crash leaves nothing else there."""
     cmd = resolve(cmd, env)
+    os.makedirs(os.path.dirname(os.path.abspath(log)), exist_ok=True)  # a fresh checkout has no build/ yet
     with open(log, "w", encoding="utf-8") as f, Progress(label) as progress:
         try:
             code = subprocess.run(cmd, cwd=cwd, env=env, stdout=f, stderr=subprocess.STDOUT).returncode

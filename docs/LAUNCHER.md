@@ -408,8 +408,14 @@ On the dev laptop (Mint 22.3, i7-6600U, HD 520), an AppImage made by `release.py
   changed files in place (the edited docs, `VERSION`, `RELEASE.json`, and zlib's `zconf.h`, which zlib's configure
   moves aside) and `--build` took **1.7 s** in all: no recompile, two Ninja steps.
 - The real window: first start shows "Putting the game's files in place" with its progress, then setup at the disc.
-- Not run here: the AppImage built by CI on Ubuntu 22.04 (glibc 2.35), on an older distribution; apt.llvm.org added
-  for real (no 22.04 / Debian 12 machine or container on the dev laptop); a download from a real GitHub release.
+- CI (2026-11-03, manual run 41540234607, Ubuntu 22.04): the launcher built with 22.04's own compiler and the pinned
+  wayland-protocols, needing **glibc 2.35**; self-test and validated screenshots on llvmpipe; the AppImage made
+  (appimagetool without FUSE) and self-tested there. The same AppImage on the dev laptop: checksum, self-test through
+  FUSE on the HD 520, the window - all ok. On real 22.04 doctor chose LLVM's repository for the old clang
+  (`--llvm-repo jammy:20`). Two fixes from CI's first runs: `build.py --launcher` checked the game's packages too, and
+  a fresh checkout had no `build/` for the configure log.
+- Not run: the AppImage on an older distribution's desktop; apt.llvm.org added for real; a download from a real
+  GitHub release (the first is v0.2.0).
 
 ## Checked (2026-11-01, Linux)
 

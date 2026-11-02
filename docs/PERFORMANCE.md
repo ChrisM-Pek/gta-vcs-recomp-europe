@@ -582,6 +582,15 @@ The same uncapped profile, next items on the game thread:
 
 Uncapped cruise after 22 and 23: 182-185 fps (from 168), game thread p50 5.2 ms.
 
+**The player's build** (ThinLTO, `--opt lto`; sections 21-23 all off by their switches vs on, the 60 cap):
+
+| | max ms | frames > 33 / 50 / 100 ms | hitch time lost a minute |
+|---|---|---|---|
+| defaults, before / now | 370 / **45.6** | 17 / 4 / 4 -> 5 / 0 / 0 | 546 / **47 ms** |
+| 3x 16:9, MSAA 4x, AF 8x, before / now | 346 / **45.0** | 20 / 9 / 5 -> 7 / 0 / 0 | 666 / **58 ms** |
+
+Uncapped (defaults): 188 fps, frame p50 5.1 ms.
+
 ## Next
 
 - **The heavy views (~120 fps)**: the game thread's chain submission there (1.4-1.6 ms: the VIF1 chain copy, the walker
@@ -594,5 +603,17 @@ Uncapped cruise after 22 and 23: 182-185 fps (from 168), game thread p50 5.2 ms.
   registers across calls). The kick's item resolve copies (~2% driving) and the write-watch fold (~2%) are the largest
   host-side items.
 - GS stage: per-upload / per-CLUT-load bookkeeping; content-derived page generations (more texture-bind memo hits).
+- **Stutter, what the cruise still shows** (section 21): the level swap's one ~40 ms game frame, half of it zlib's
+  inflate of the new level (`src/game/vcs_inflate.cpp`, ~275 MB/s; a wider bit buffer would be faster, but must stop
+  each call at the same symbol as zlib's loop, or the outer inflate's state differs per call); a texture burst's frame
+  missing its 60 Hz slot (~33 ms) when the GS stage's decode (~3 ms for 140 textures) lands on an already full frame -
+  the palette mapping could move to the helper threads with the creation, leaving only the texel fetch on the stage.
+- **GPU at high resolutions** (`PS2X_GPU_TIMING=1`, 3x 16:9 MSAA 4x: ~8 ms a frame on a GTX 1080 Ti, so a GTX 1060 is
+  near 16.7): the trails' blend back is two full-screen passes into the multisampled frame (1.2 ms), ~3 ms falls between
+  the markers (resolves of the frame for the effects that read it, copies). Changes there change pixels: a scenes
+  compare at 3x with MSAA for each.
+- The script VM's dispatch (`FUN_002560D8`, 1.7%): natively it would be a guest tail call into the handler, but the
+  original sign-extends the handler's byte result after `jalr` - the tail call skips that, so it needs a return through
+  the original's tail (0x256164) or proof that every handler returns a clean byte.
 - Playtest missions above 100 fps; sprint at 1/240 s (-11%).
 - The RSL recordings' memory (an LRU bound).

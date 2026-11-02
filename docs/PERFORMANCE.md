@@ -733,6 +733,13 @@ After section 27 the cruise's slow frames on the laptop include 40-75 a run wher
   - The page snapshots skipped without write watch (they only serve the skip test, off on Linux): no change in game time
     or hitches.
 
+**End to end, sections 26-27 together** (2026-11-03, the same binary with all their switches back vs the defaults, two
+runs each alternated, the laptop cool): frames over 33 ms 61 / 61 vs 66 / 65, over 50 ms 12 / 12 vs 11 / 14; GPU frame
+13.7 / 13.4 -> 11.9 / 11.9 ms; the main thread's frame execution 7.3 / 7.3 vs 7.4 / 7.1 ms; game thread 10.0 vs 9.8. So the
+GPU saving holds; the main-thread saving of 27 (8.5 -> 7.1-7.5 ms) showed only with the laptop warm, when the CPU was the
+limit; the hitch count follows the machine's state (133 the first morning, 120-230 warm, ~60 cool) more than these
+changes.
+
 **Next here**: the VU0 natives' remaining cost (register copies in and out, the per-operation VU float rules), the RSL
 observer's per-block work, and natives that keep the guest clock's accounting (a native step must charge the cycles the
 original would have run, or the game's timing moves - worth checking for the natives already in).

@@ -709,6 +709,34 @@ texture bursts (~30: the GS stage's decode), and main-thread frames just over 16
 buffers' descriptor pushes (dynamic offsets in a set of their own: the SPIR-V's set for cbuffers, a set cache), and the
 game thread's own slow frames (`VCS_PROFILE_SPIKES`).
 
+### 28. Linux: the game thread's slow frames (2026-11-02)
+
+After section 27 the cruise's slow frames on the laptop include 40-75 a run where the game thread itself takes 24-26 ms
+(the CSV's `game_ms`, the host-tick wait not in it). Looked at with the profiler's spike mode and `VCS_PROFILE_RAW`:
+- They are not waits for the render side: `PS2X_RENDER_THREAD_LOG=1` shows no fences and almost no full queues;
+  `PS2X_WAIT_LOG=5` shows no scheduler idling during the drive. Their samples are a flat spread of game code (streaming in
+  a new area, building texture uploads, game logic) with our host code on top - no single cause.
+- **A profiler bug (Linux, fixed):** a host function dladdr cannot name - a hook in an anonymous namespace installed
+  with replaceFunction - was taken for generated code with a 1 MB window, so the host code laid out after a hook was
+  charged to the hooked guest function. `FUN_003298D8` (texture upload REFs) showed 5.3% of the game thread that way;
+  its hook really costs ~270 cycles a call (~0.1 ms a frame). Generated functions are exported (-rdynamic), so an unnamed
+  one is never generated code now. With that, the game thread's samples on the cruise: guest code 27%, our host code 37%
+  - the VU0 natives `boxClip` / `matrixTimes3From` (~1,100 cycles a call, ~11 M calls each a run: ~0.8 ms a frame) and the
+  RSL observer (`closeBlock`, `observe`, `flattenBlock`, `settleRegion`, the page snapshots) about equal - and waits.
+- **Tried, not kept:**
+  - `FUN_003298D8` natively while a material cache is filled (40-70k calls a second, all going to the original): the
+    same bytes (3.2 M calls compared as the original returned; game-internals.md 6i has what it writes) but the cruise
+    hitched more - frames over 33 ms 97-126 against 52-76 in four runs each way, both orders, isolated from the other
+    change. Most likely the emulated EE clock: the recompiled code advances it as it runs, and ~200 guest instructions
+    55k times a second no longer did, which moves timers / interrupts against the game's work. Average game time did not
+    drop either.
+  - The page snapshots skipped without write watch (they only serve the skip test, off on Linux): no change in game time
+    or hitches.
+
+**Next here**: the VU0 natives' remaining cost (register copies in and out, the per-operation VU float rules), the RSL
+observer's per-block work, and natives that keep the guest clock's accounting (a native step must charge the cycles the
+original would have run, or the game's timing moves - worth checking for the natives already in).
+
 ## Next
 
 - **The heavy views (~120 fps)**: the game thread's chain submission there (1.4-1.6 ms: the VIF1 chain copy, the walker

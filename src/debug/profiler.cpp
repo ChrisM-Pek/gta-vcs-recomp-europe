@@ -649,7 +649,10 @@ namespace vcs
                     uintptr_t start = 0;
                     uint64_t size = 0;
                     const bool known = hostSymbol(host, &name, &start, &size);
-                    info.generated = !known || name.find("FUN_") != std::string::npos;
+                    // generated functions are exported (-rdynamic): one dladdr cannot name is a hook (an anonymous
+                    // namespace's replaceFunction target) - counting it as generated with a 1 MB window charged the host
+                    // code after it to the hooked guest function (FUN_003298D8's 5%, PERFORMANCE.md 28)
+                    info.generated = known && name.find("FUN_") != std::string::npos;
                     if (known && size && start == host)
                         info.size = size;
                     found = generatedCache.emplace(host, info).first;

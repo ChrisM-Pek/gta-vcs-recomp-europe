@@ -1020,6 +1020,15 @@ reference ops since FULLY_NATIVE.md step 5b):
   BITBLTBUF (0x50), TRXPOS (0x51), TRXREG (0x52) from the sizes, TRXDIR (0x53) and the IMAGE GIFtag
   (`bytes >> 4 | 1 << 59`). A missing node is made from the pool at `*0x488760` (used / max `0x4CD58C` / `0x4CD588`);
   with the pool full both REFs are written empty (qwc 0).
+  On the found path (2026-11-02, from the recompiled code's disassembly) it writes exactly: +0 the header REF
+  (`0x30000006`, node), +8 `0x10000000` (FLUSHE), +0xC `0x51000006`, +0x10 the pixel REF (`bytes >> 4 | 0x30000000`,
+  source), +0x1C `bytes >> 4 | 0x51000000`; +0x18 is left alone. Besides the slot only its own stack frame (the key at
+  sp - 0x20, the search direction at sp - 0x18, `$s0` saved at sp - 0x10); no calls; it leaves `$v0` = the pixel REF
+  dword, `$v1` = `0x51000000`. The recompiled tree search can leave for the EE scheduler at its loop's back edge and be
+  resumed later (a check right after the call saw a few hundred of 3.2 M calls unfinished). While driving it runs
+  40-70k times a second, nearly all of them while a material cache is filled (the RSL item path's "a cache being
+  filled", so the step 5b hook calls the original). Doing those natively was byte-exact (3.2 M calls compared) but made
+  the cruise hitch more (PERFORMANCE.md 28) - not kept.
 - `FUN_002F62B8` (the bind into a VRAM slot) reserves 32 bytes per mip level and calls it for each (128 bytes and
   `FUN_00266608` instead when `*0x488318 == 0` - not seen), then writes a CNT 5 with DIRECTHL 5 (A+D: TEXFLUSH, MIPTBP1,
   MIPTBP2 for the slot, register 0x42, TEXFLUSH) at the cursor, and queues TEX0 into `0x4882E0 + slot * 8` with the

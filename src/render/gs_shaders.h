@@ -23,6 +23,8 @@ namespace render
         rhi::ShaderCode presentPS;
         rhi::ShaderCode uiVS;         // Dear ImGui through the RHI (render/ui_renderer.cpp)
         rhi::ShaderCode uiPS;
+        // drawPS without the depth output (SHADER_DEPTH=0): the rasterised depth, early depth rejection on
+        rhi::ShaderCode drawPSNoDepth[kSampleModes][2];
     };
 
     // The backend's shaders (empty for the null backend, which never runs them).

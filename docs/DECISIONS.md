@@ -963,3 +963,11 @@ per new texture (~8 ms a 350-texture burst; D3D11's creation was 52 ms), and on 
 slowed the GS stage's decode more than they saved. `PS2X_HW_EARLY_TEXTURES=1` turns it on; a 4+ core Linux machine
 should decide the default. The cruise takes a copy of the player's card (`build/rig/saves/user`) where the rig's
 Fort Baxter card is missing; never the live card, and no new game (its first mission keeps the player out of the car).
+
+## 2026-11-02 - Vulkan drops the GS shader's depth output; D3D11 keeps it until checked
+
+The user's city hitches on the Linux laptop are partly the GPU (PERFORMANCE.md 26). The GS pixel shader's depth output
+dates from the GL renderer, where NDC lost precision; with D3D / Vulkan's 0..1 depth the rasterised value is the same,
+and dropping the output brings early depth rejection back (~1.5 ms of a ~10.7 ms GPU frame on the HD 520). Reference
+scenes on Vulkan show no change beyond run-to-run noise. D3D11 is the reference renderer and its GPU has the headroom,
+so it keeps the shader depth until a scenes compare on Windows says the same; then both can share the default.

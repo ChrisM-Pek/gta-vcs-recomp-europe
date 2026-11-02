@@ -633,6 +633,49 @@ Sections 21-24 were made and measured on Windows (D3D11). On Linux:
 - **What the cruise shows on this laptop**: the largest hitches are game-thread frames of 58-76 ms with nothing to
   upload - the level swaps on a slower CPU (Windows: 36-46 ms) - and frames held behind the GPU (`wait_ms` 30-60).
 
+### 26. Linux: hitches driving in the city (2026-11-02)
+
+The user felt hitches driving around the city on the laptop (i7-6600U, 2 cores / 4 threads, HD 520, 15 W shared by
+both; the 60 cap with frame-rate independent timing, 1x, the window maximised at 1920x993), apart from the level swaps.
+The cruise from the player's card shows them: 120-230 frames over 33 ms in 140 s.
+
+**What they are.** ~70% of the slow game frames are 33.3 ms (one 60 Hz slot missed) with the game thread only ~11 ms
+busy and ~20 ms waiting for its tick: the main thread's host frame ran over 16.7 ms. New: `PS2X_HOST_SPIKES=<ms>` (the
+main loop's phases and its CPU time per slow frame; Vulkan: the frame's waits, draws, binds, pushes, CPU time in
+`prepareDraw` / `vkCmdDraw`). In those frames the main thread either
+- spends 16-24 ms of its own CPU executing one game frame (`UploadFrame`: wall ~ CPU, so not blocked or preempted) -
+  dense views, 1,300-2,200 draws at ~4.5 us each, almost all of it in Intel's driver (`vkCmdDraw` ~2 us, a pipeline bind
+  ~2.5 us; 40-60% of draws change pipeline), or
+- waits 10-20 ms for the GPU fence: the GPU's frame averaged 13-15 ms (`PS2X_RHI_GPU_TIME`), so heavier views pass
+  16.7. At 2x the game's frame takes 3.6x as long: the GPU is bound by pixels, not draws.
+Ruled out on the way: device memory churn (`PS2X_RHI_LOG_MEMORY=1`: 6 allocations a run, all at boot), new pipelines,
+readback waits, swapchain acquire, texture creation (section 25), the specialised shaders' pipeline count
+(`PS2X_HW_SPECIALISE=0`: the same binds per draw).
+
+**What was done** (each with a switch back):
+- **No shader depth on Vulkan.** The GS pixel shader wrote its depth (SV_Depth) for every draw - GL's fix for its NDC
+  precision (PS2RECOMP_PATCHES.md), not needed with D3D / Vulkan's 0..1 depth: the rasterised value is the same vertex
+  depth interpolated linearly in screen space. A shader depth turns early depth rejection off, so every hidden pixel of
+  the city's overdraw was shaded and textured. Pixel shaders without it (`drawPSNoDepth`, SHADER_DEPTH=0): the game's
+  frame 10.7 -> 9.3 ms of GPU. Reference scenes: static ones as before (0.02, and the map's player arrow), moving ones
+  within run-to-run noise, the ground decals intact. Default with Vulkan; D3D11 keeps the shader depth until a Windows
+  scenes compare (`PS2X_HW_SHADER_DEPTH=1` / `0` forces either way).
+- **Constants written only when they change** (`gs_hw` `updateConstants`): 45% of the draw constants' and 63% of the
+  native constants' writes were the same bytes as the draw before; each was a ring slice and a descriptor push.
+  Descriptor writes ~2,900 -> ~1,700 a frame. `PS2X_HW_CB_DEDUPE=0`.
+- **Redundant state not recorded** (Vulkan): viewport, scissor, blend constants and vertex / index buffers only when they
+  differ from what the command buffer has (the renderer sets them before every draw; each recorded one made the driver
+  send that state again). ~9% less CPU per draw in the slow frames. Static scenes identical (0.00). `PS2X_RHI_REDUNDANT=1`.
+
+**Result** (the same binary, all three off vs on, two runs each alternated, the laptop warm): GPU frame 13.2 / 13.1 ->
+11.9 / 11.9 ms; the main thread's frame execution (`gl_ms`) 9.1 / 9.7 -> 8.3 / 8.3 ms; frames over 33 ms 191 / 228 ->
+189 / 172. Real, but the hitches remain: in the dense views the laptop's CPU and GPU are both at the 60 Hz budget.
+
+**Next, for this class of machine:** the driver's per-draw CPU on the main thread - fewer pipeline variants (blend and
+depth state as dynamic state, VK_EXT_extended_dynamic_state3), textures through one descriptor array instead of a push
+per draw, or the frame's commands recorded off the main thread; on the GPU, the window pass (1.2-1.5 ms at 1920x993)
+and the bloom / trails (~3.7 ms).
+
 ## Next
 
 - **The heavy views (~120 fps)**: the game thread's chain submission there (1.4-1.6 ms: the VIF1 chain copy, the walker

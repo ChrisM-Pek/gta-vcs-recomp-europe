@@ -474,6 +474,11 @@ it is 1920x1080, 3 x 2.41 pixels per PS2 pixel.
   its first contents; the recording thread records the copies into the set-up commands at its next submit
   (`stage` / `drainStaged`). Off by default with Vulkan (no gain measured on a 2-core laptop, PERFORMANCE.md 25):
   `PS2X_HW_EARLY_TEXTURES=1` turns it on, `=0` off everywhere.
+- **No shader depth on Vulkan** (2026-11-02, PERFORMANCE.md 26): the GS pixel shader is built with and without its
+  depth output (SHADER_DEPTH); Vulkan uses the rasterised depth - the same value with a 0..1 depth range - so early depth
+  rejection works; D3D11 keeps the shader depth until checked on Windows (`PS2X_HW_SHADER_DEPTH`). The draw constants are
+  written only when they change (`updateConstants`), and the Vulkan backend records viewport, scissor, blend constants
+  and buffers only when they differ from what the command buffer has.
 - **The GS bilinear by Gather** (2026-10-30, PERFORMANCE.md section 15): with filtering off, the same draws (power-of-two
   textures without a mip chain) keep the GS's bilinear but fetch its 2x2 texels with `Gather` through a nearest sampler
   of their wrapping (`linearIipFgeAte.x == 3`, `m_gatherSampler`), drawn with a pixel shader built for that path alone

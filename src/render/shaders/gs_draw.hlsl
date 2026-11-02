@@ -10,6 +10,11 @@
 #ifndef SAMPLE_MODE
 #define SAMPLE_MODE 0
 #endif
+// SHADER_DEPTH: 1 the pixel shader writes the GS depth (SV_Depth), 0 the rasterised depth is used - the same value
+// (both the vertex depth interpolated linearly in screen space) and early depth rejection stays on (PERFORMANCE.md 26)
+#ifndef SHADER_DEPTH
+#define SHADER_DEPTH 1
+#endif
 
 cbuffer Draw : register(b0)
 {
@@ -302,14 +307,19 @@ struct PSOut
 #if DUAL_SOURCE
     float4 blend : SV_Target1;
 #endif
+#if SHADER_DEPTH
     float depth : SV_Depth;
+#endif
 };
 
 PSOut ps_main(VSOut i)
 {
     PSOut o;
-    // GS Z is Z24/Z32 / 2^n: written directly (going through NDC rounded near values and collapsed far ones)
+    // GS Z is Z24/Z32 / 2^n: written directly (going through GL's NDC rounded near values and collapsed far ones; with
+    // D3D / Vulkan's 0..1 depth the rasterised value is the same: SHADER_DEPTH 0)
+#if SHADER_DEPTH
     o.depth = i.depth;
+#endif
     const float4 vc = floor((linearIipFgeAte.y == 1 ? i.col : i.colFlat) * 255.0 + 0.5);
     float4 c = vc;
 #if SAMPLE_MODE != 1

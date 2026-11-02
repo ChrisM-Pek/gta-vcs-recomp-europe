@@ -1530,6 +1530,20 @@ namespace
             return linear == 0 ? 2 : 3;     // nearest / the GS's bilinear by four loads
         }
 
+        // [gta-recomp] Does the GS pixel shader write the depth (SV_Depth)? A shader depth turns early depth rejection off:
+        // every hidden pixel of the city's overdraw shaded and textured (on the laptop's HD 520 ~1.8 of ~10.7 ms of the
+        // frame, PERFORMANCE.md 26). D3D / Vulkan take the 0..1 depth as given, so the rasterised value is the shader's
+        // (the explicit write was GL's: its NDC lost the precision). PS2X_HW_SHADER_DEPTH=1 / 0 forces it; unset: off
+        // with Vulkan, on with D3D11 until checked against the Windows reference there.
+        bool shaderDepth() const
+        {
+            static const int forced = [] {
+                const char *e = std::getenv("PS2X_HW_SHADER_DEPTH");
+                return e && *e ? (*e == '0' ? 0 : 1) : -1;
+            }();
+            return forced >= 0 ? forced == 1 : m_dev.backend() != rhi::Backend::Vulkan;
+        }
+
         rhi::Pipeline &drawPipeline(const GsBlend &b, uint8_t mask, bool depthTest, uint32_t ztst, bool zwrite, uint8_t mode,
                                     uint8_t sample = 0)
         {
@@ -1545,7 +1559,8 @@ namespace
                 const render::GsShaders &sh = render::gsShaders(m_dev.backend()); // [gta-recomp] the device's backend (DXBC / SPIR-V)
                 rhi::PipelineDesc d;
                 // [gta-recomp] the pixel shader built for the draw's texture read (drawSampleMode)
-                d.pixel = sh.drawPS[sample < render::GsShaders::kSampleModes ? sample : 0][dual ? 1 : 0];
+                // [gta-recomp] ... and without the depth output where the rasterised depth does (shaderDepth)
+                d.pixel = (shaderDepth() ? sh.drawPS : sh.drawPSNoDepth)[sample < render::GsShaders::kSampleModes ? sample : 0][dual ? 1 : 0];
                 if (mode == 4)
                 {
                     // [gta-recomp] native VCS lit model (GSNativeDraw::VcsLit): skinned on the CPU, lit / transformed here
@@ -2155,6 +2170,39 @@ namespace
             endPass();
         }
 
+        // [gta-recomp] A constant buffer written only when its contents change: consecutive draws often share them (a
+        // model's meshes its world constants, a run of draws its draw state). Each write was a new slice and descriptor
+        // push per draw on Vulkan and a Map(DISCARD) on D3D11, and on the GPU a constant reload (PERFORMANCE.md 26).
+        // `last` holds what the buffer has now. PS2X_HW_CB_DEDUPE=0: every draw writes, as before; PS2X_HW_CB_LOG=1:
+        // writes and skips every 5 s.
+        void updateConstants(rhi::Buffer &buffer, const void *data, size_t size, std::vector<uint8_t> &last, int which)
+        {
+            static const bool dedupe = [] {
+                const char *e = std::getenv("PS2X_HW_CB_DEDUPE");
+                return !(e && *e == '0');
+            }();
+            static const bool log = std::getenv("PS2X_HW_CB_LOG") != nullptr;
+            const bool same = dedupe && last.size() == size && std::memcmp(last.data(), data, size) == 0;
+            if (log)
+            {
+                static uint64_t n[2][2] = {};
+                static auto since = std::chrono::steady_clock::now();
+                ++n[which][same ? 1 : 0];
+                if (std::chrono::steady_clock::now() - since > std::chrono::seconds(5))
+                {
+                    since = std::chrono::steady_clock::now();
+                    std::fprintf(stderr, "[gs-hw] constants: draw %llu written, %llu skipped; world %llu written, %llu skipped\n",
+                                 (unsigned long long)n[0][0], (unsigned long long)n[0][1], (unsigned long long)n[1][0],
+                                 (unsigned long long)n[1][1]);
+                    std::memset(n, 0, sizeof(n));
+                }
+            }
+            if (same)
+                return;
+            m_dev.updateBuffer(buffer, data, size);
+            last.assign(static_cast<const uint8_t *>(data), static_cast<const uint8_t *>(data) + size);
+        }
+
         void draw(const HwState &s, uint32_t first, uint32_t count, const NativeDrawCmd *native, const LayerTarget *layer = nullptr)
         {
             rhi::Buffer *vertices = layer ? (layer->vertices ? layer->vertices : m_hudVb.get()) : m_vb.get();
@@ -2164,14 +2212,14 @@ namespace
                 vertices = m_nativeVb.get();
                 vertexOffset = native->transientOffset;
                 if (vertices)
-                    m_dev.updateBuffer(*m_worldCb, native->constants, sizeof(native->constants));
+                    updateConstants(*m_worldCb, native->constants, sizeof(native->constants), m_worldCbLast, 1);
             }
             else if (native)
             {
                 auto mesh = m_meshes.find(native->meshKey);
                 vertices = mesh != m_meshes.end() ? mesh->second.get() : nullptr;
                 if (vertices)
-                    m_dev.updateBuffer(*m_worldCb, native->constants, sizeof(native->constants));
+                    updateConstants(*m_worldCb, native->constants, sizeof(native->constants), m_worldCbLast, 1);
             }
             if (!count || !vertices)
                 return;
@@ -2345,7 +2393,7 @@ namespace
             {
                 m_dev.setPipeline(pipeline);
                 m_dev.setVertexBuffer(*vertices, vertexOffset);
-                m_dev.updateBuffer(*m_drawCb, &c, sizeof(c));
+                updateConstants(*m_drawCb, &c, sizeof(c), m_drawCbLast, 0);
                 m_dev.setConstants(0, *m_drawCb);
                 if (native)
                     m_dev.setConstants(1, *m_worldCb);
@@ -2384,6 +2432,7 @@ namespace
         uint32_t m_scale;
         bool m_ready = false;
         std::unique_ptr<rhi::Buffer> m_vb, m_drawCb, m_quadCb, m_worldCb;
+        std::vector<uint8_t> m_drawCbLast, m_worldCbLast; // [gta-recomp] updateConstants: what the two buffers hold
         std::unordered_map<uint64_t, std::unique_ptr<rhi::Buffer>> m_meshes; // native draws' vertex data
         std::unique_ptr<rhi::Buffer> m_nativeVb; // transient native vertices of the frame
         size_t m_nativeVbCapacity = 0;

@@ -960,6 +960,11 @@ Python scripts still usable on their own. docs/LAUNCHER.md has the whole of it; 
 | `PS2X_RHI_DEBUG=1` | the API's validation layer: D3D11 debug layer / Vulkan's Khronos validation |
 | `PS2X_RHI_STATS=1` | Vulkan: draws, descriptor writes, passes, suspended passes, barriers, uploads, CPU waits per frame, and input to GPU done (avg / p50 / p95) every 5 s; gs_hw: the input delay by stage |
 | `PS2X_RHI_GPU_TIME=1` | Vulkan: GPU time of the passes and the whole frame (`PS2X_GPU_TIMING=1`: per draw, breaking passes) |
+| `PS2X_HOST_SPIKES=<ms>` | main-loop frames whose work went over it, by phase (events, begin, frames, ui, window, present) with the main thread's CPU time; Vulkan: the frame's waits, draws with their CPU time in `prepareDraw` / `vkCmdDraw`, pipeline binds, descriptor pushes, passes, uploads, and the fence wait after it (PERFORMANCE.md 26) |
+| `PS2X_RHI_LOG_MEMORY=1` | Vulkan: every device memory allocation / free VMA makes, with its size and time |
+| `PS2X_RHI_REDUNDANT=1` | Vulkan: viewport, scissor, blend constants and vertex / index buffers recorded at every draw that set them, as before 2026-11-02 (now only when they change) |
+| `PS2X_HW_CB_DEDUPE=0`, `PS2X_HW_CB_LOG=1` | the GS draw / native constants written at every draw, as before 2026-11-02 (now only when they change); writes and skips every 5 s |
+| `PS2X_HW_SHADER_DEPTH=1` / `=0` | the GS pixel shader writes the depth (the default with D3D11) / uses the rasterised depth, early depth rejection on (the default with Vulkan; PERFORMANCE.md 26) |
 | `PS2X_RHI_FULL_BARRIERS=1` | Vulkan: whole-pipeline barriers, as before the layout-based ones |
 | `PS2X_HOST_PACED=0`, `PS2X_FRAME_LEAD=0`, `PS2X_FRAME_LEAD_MARGIN_US=<us>` | frame-rate independent timing: the game's own deadline instead of the host's frames; no frame lead; the lead's margin (1500) - PERFORMANCE.md 19 |
 | `PS2X_WRITE_WATCH=1` (Linux) / `=0` (Windows) | the guest RAM write watch on Linux (opt-in there) / off on Windows - PERFORMANCE.md 20 |

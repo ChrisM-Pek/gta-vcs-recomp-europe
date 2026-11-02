@@ -66,6 +66,49 @@ namespace rhi
                                                          VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT;
         constexpr VkAccessFlags2 kBufferReads = VK_ACCESS_2_VERTEX_ATTRIBUTE_READ_BIT | VK_ACCESS_2_INDEX_READ_BIT | VK_ACCESS_2_UNIFORM_READ_BIT;
 
+        // PS2X_RHI_LOG_MEMORY=1: every device memory allocation / free VMA makes, with its size and the time it took
+        // (block churn while driving: a new block is a driver buffer made, cleared and mapped on the calling thread)
+        bool logMemory()
+        {
+            static const bool on = std::getenv("PS2X_RHI_LOG_MEMORY") != nullptr;
+            return on;
+        }
+        PFN_vkAllocateMemory g_realAllocateMemory = nullptr;
+        PFN_vkFreeMemory g_realFreeMemory = nullptr;
+        double nowSeconds() { return std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count(); }
+        VKAPI_ATTR VkResult VKAPI_CALL loggedAllocateMemory(VkDevice device, const VkMemoryAllocateInfo *info, const VkAllocationCallbacks *cb,
+                                                            VkDeviceMemory *memory)
+        {
+            const double t0 = nowSeconds();
+            const VkResult r = g_realAllocateMemory(device, info, cb, memory);
+            std::fprintf(stderr, "[vk-mem] t=%.3f allocate %.1f MB type %u: %.2f ms\n", t0, info->allocationSize / 1048576.0,
+                         info->memoryTypeIndex, (nowSeconds() - t0) * 1e3);
+            return r;
+        }
+        VKAPI_ATTR void VKAPI_CALL loggedFreeMemory(VkDevice device, VkDeviceMemory memory, const VkAllocationCallbacks *cb)
+        {
+            const double t0 = nowSeconds();
+            g_realFreeMemory(device, memory, cb);
+            std::fprintf(stderr, "[vk-mem] t=%.3f free: %.2f ms\n", t0, (nowSeconds() - t0) * 1e3);
+        }
+
+        // PS2X_HOST_SPIKES: a clock for the per-draw timers, 0 when off (no clock reads then)
+        int64_t spikeClock()
+        {
+            static const bool on = std::getenv("PS2X_HOST_SPIKES") != nullptr;
+            return on ? std::chrono::steady_clock::now().time_since_epoch().count() : 0;
+        }
+
+        // PS2X_RHI_REDUNDANT=1: viewport, scissor and buffers recorded at every draw that set them, as before
+        bool redundantState()
+        {
+            static const bool on = [] {
+                const char *e = std::getenv("PS2X_RHI_REDUNDANT");
+                return e && *e && *e != '0';
+            }();
+            return on;
+        }
+
         bool statsOn()
         {
             static const bool on = std::getenv("PS2X_RHI_STATS") != nullptr;
@@ -978,10 +1021,18 @@ namespace rhi
 
             void draw(uint32_t vertexCount, uint32_t firstVertex) override
             {
+                const int64_t t0 = spikeClock();
                 if (!vertexCount || !prepareDraw(false))
                     return;
+                const int64_t t1 = spikeClock();
                 vkCmdDraw(m_cmd, vertexCount, 1, firstVertex, 0);
                 ++m_stats.draws;
+                if (t0)
+                {
+                    const int64_t t2 = spikeClock();
+                    m_stats.prepareNs += t1 - t0;
+                    m_stats.drawNs += t2 - t1;
+                }
             }
 
             void drawIndexed(uint32_t indexCount, uint32_t firstIndex, int32_t baseVertex) override
@@ -1083,9 +1134,41 @@ namespace rhi
                     m_presentMode = mode;
                     m_swapchainDirty = !m_offscreen;
                 }
+                // PS2X_HOST_SPIKES=<ms>: a frame whose span (the end of the last one to this present) or waits went over
+                // it, with its own counts (the runtime's [host-spike] line gives the main loop's phases)
+                static const double spikeMs = std::getenv("PS2X_HOST_SPIKES") ? std::atof(std::getenv("PS2X_HOST_SPIKES")) : 0.0;
+                const auto spikeNow = std::chrono::steady_clock::now();
+                const Stats &n = m_stats, &o = m_spikePrev;
+                const double span = std::chrono::duration<double, std::milli>(spikeNow - m_spikeFrameEnd).count();
+                const double waited = (n.acquireMs - o.acquireMs) + (n.submitMs - o.submitMs) + (n.presentMs - o.presentMs) +
+                                      (n.pipelineMs - o.pipelineMs);
+                char spikeLine[512] = "";
+                if (spikeMs > 0.0 && m_spikeFrameEnd.time_since_epoch().count() && (span > spikeMs || waited > spikeMs * 0.5))
+                    std::snprintf(spikeLine, sizeof(spikeLine),
+                                  "[rhi-spike] t=%.3f span %.1f ms: acquire %.1f, submit %.1f, present %.1f, new pipelines %llu (%.1f ms); "
+                                  "%llu draws (prepare %.1f ms, vkCmdDraw %.1f), %llu pipeline binds (%.1f ms), %llu pushes (%.1f ms), "
+                                  "%llu passes, %llu suspended, %llu barriers, %llu waits, %llu descriptor writes, %.0f KB up",
+                                  std::chrono::duration<double>(spikeNow.time_since_epoch()).count(), span, n.acquireMs - o.acquireMs,
+                                  n.submitMs - o.submitMs, n.presentMs - o.presentMs,
+                                  static_cast<unsigned long long>(n.pipelines - o.pipelines), n.pipelineMs - o.pipelineMs,
+                                  static_cast<unsigned long long>(n.draws - o.draws), (n.prepareNs - o.prepareNs) / 1e6,
+                                  (n.drawNs - o.drawNs) / 1e6, static_cast<unsigned long long>(n.pipelineBinds - o.pipelineBinds),
+                                  (n.bindNs - o.bindNs) / 1e6, static_cast<unsigned long long>(n.pushes - o.pushes), (n.pushNs - o.pushNs) / 1e6,
+                                  static_cast<unsigned long long>(n.passes - o.passes),
+                                  static_cast<unsigned long long>(n.suspends - o.suspends),
+                                  static_cast<unsigned long long>(n.barriers - o.barriers), static_cast<unsigned long long>(n.waits - o.waits),
+                                  static_cast<unsigned long long>(n.descriptorWrites - o.descriptorWrites), (n.uploaded - o.uploaded) / 1024.0);
                 if (statsOn())
                     reportStats();
+                const double fence0 = m_stats.fenceMs;
                 beginFrame();
+                const double fence = m_stats.fenceMs - fence0;
+                if (spikeLine[0] || (spikeMs > 0.0 && fence > spikeMs * 0.5))
+                    std::fprintf(stderr, "%s%sfence after it %.1f ms\n", spikeLine[0] ? spikeLine : "[rhi-spike]", spikeLine[0] ? "; " : " ",
+                                 fence);
+                m_spikePrev = m_stats;
+                m_spikePrev.inputDelays.clear();
+                m_spikeFrameEnd = std::chrono::steady_clock::now();
             }
 
             void setFrameInputTime(int64_t steadyNs) override { m_pendingInputNs = steadyNs; }
@@ -1349,6 +1432,13 @@ namespace rhi
                 VmaVulkanFunctions fns{};
                 fns.vkGetInstanceProcAddr = vkGetInstanceProcAddr;
                 fns.vkGetDeviceProcAddr = vkGetDeviceProcAddr;
+                if (logMemory())
+                {
+                    g_realAllocateMemory = vkAllocateMemory;
+                    g_realFreeMemory = vkFreeMemory;
+                    fns.vkAllocateMemory = loggedAllocateMemory;
+                    fns.vkFreeMemory = loggedFreeMemory;
+                }
                 VmaAllocatorCreateInfo ai{};
                 ai.vulkanApiVersion = VK_API_VERSION_1_3;
                 ai.physicalDevice = m_core->physical;
@@ -1664,6 +1754,7 @@ namespace rhi
                 // a new command buffer has no state: everything is set again at the next draw
                 m_boundPipeline = VK_NULL_HANDLE;
                 m_pushed.valid = false;
+                m_emitted = {};
                 m_pipelineDirty = m_descriptorsDirty = m_buffersDirty = true;
                 m_viewportDirty = m_scissorDirty = m_blendDirty = true;
                 m_markerDepth = 0;
@@ -1993,13 +2084,25 @@ namespace rhi
                     return false;
                 if (pipeline != m_boundPipeline)
                 {
+                    const int64_t t0 = spikeClock();
                     vkCmdBindPipeline(m_cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
                     m_boundPipeline = pipeline;
+                    ++m_stats.pipelineBinds;
+                    if (t0)
+                        m_stats.bindNs += spikeClock() - t0;
                 }
                 m_pipelineDirty = false;
+                // [redundant state] viewport, scissor and buffers are recorded only when they differ from what this
+                // command buffer has: the renderer sets them before every draw, and each one recorded made the driver
+                // send that state again at the draw (Intel: ~5 us a draw on the laptop, PERFORMANCE.md 26)
                 if (m_viewportDirty)
                 {
-                    vkCmdSetViewport(m_cmd, 0, 1, &m_viewport);
+                    if (redundantState() || !m_emitted.viewportValid || std::memcmp(&m_emitted.viewport, &m_viewport, sizeof(m_viewport)) != 0)
+                    {
+                        vkCmdSetViewport(m_cmd, 0, 1, &m_viewport);
+                        m_emitted.viewport = m_viewport;
+                        m_emitted.viewportValid = true;
+                    }
                     m_viewportDirty = false;
                 }
                 if (m_scissorDirty)
@@ -2007,12 +2110,22 @@ namespace rhi
                     VkRect2D r = m_scissor;
                     r.extent.width = std::min<uint32_t>(r.extent.width, r.offset.x < static_cast<int32_t>(m_passWidth) ? m_passWidth - r.offset.x : 0);
                     r.extent.height = std::min<uint32_t>(r.extent.height, r.offset.y < static_cast<int32_t>(m_passHeight) ? m_passHeight - r.offset.y : 0);
-                    vkCmdSetScissor(m_cmd, 0, 1, &r);
+                    if (redundantState() || !m_emitted.scissorValid || std::memcmp(&m_emitted.scissor, &r, sizeof(r)) != 0)
+                    {
+                        vkCmdSetScissor(m_cmd, 0, 1, &r);
+                        m_emitted.scissor = r;
+                        m_emitted.scissorValid = true;
+                    }
                     m_scissorDirty = false;
                 }
                 if (m_blendDirty)
                 {
-                    vkCmdSetBlendConstants(m_cmd, m_blendConstant);
+                    if (redundantState() || !m_emitted.blendValid || std::memcmp(m_emitted.blend, m_blendConstant, sizeof(m_blendConstant)) != 0)
+                    {
+                        vkCmdSetBlendConstants(m_cmd, m_blendConstant);
+                        std::memcpy(m_emitted.blend, m_blendConstant, sizeof(m_blendConstant));
+                        m_emitted.blendValid = true;
+                    }
                     m_blendDirty = false;
                 }
                 if (m_descriptorsDirty)
@@ -2060,7 +2173,13 @@ namespace rhi
                         }
                     }
                     if (n)
+                    {
+                        const int64_t t0 = spikeClock();
                         vkCmdPushDescriptorSetKHR(m_cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, m_pipelineLayout, 0, n, writes);
+                        ++m_stats.pushes;
+                        if (t0)
+                            m_stats.pushNs += spikeClock() - t0;
+                    }
                     m_pushed.valid = true;
                     m_stats.descriptorWrites += n;
                     m_descriptorsDirty = false;
@@ -2072,13 +2191,25 @@ namespace rhi
                         VkDeviceSize offset = 0;
                         VkBuffer vb = bufferOf(*m_vertexBuffer, offset);
                         offset += m_vertexOffset;
-                        vkCmdBindVertexBuffers(m_cmd, 0, 1, &vb, &offset);
+                        if (redundantState() || vb != m_emitted.vertexBuffer || offset != m_emitted.vertexOffset)
+                        {
+                            vkCmdBindVertexBuffers(m_cmd, 0, 1, &vb, &offset);
+                            m_emitted.vertexBuffer = vb;
+                            m_emitted.vertexOffset = offset;
+                        }
                     }
                     if (m_indexBuffer)
                     {
                         VkDeviceSize offset = 0;
                         VkBuffer ib = bufferOf(*m_indexBuffer, offset);
-                        vkCmdBindIndexBuffer(m_cmd, ib, offset, m_index32 ? VK_INDEX_TYPE_UINT32 : VK_INDEX_TYPE_UINT16);
+                        const VkIndexType type = m_index32 ? VK_INDEX_TYPE_UINT32 : VK_INDEX_TYPE_UINT16;
+                        if (redundantState() || ib != m_emitted.indexBuffer || offset != m_emitted.indexOffset || type != m_emitted.indexType)
+                        {
+                            vkCmdBindIndexBuffer(m_cmd, ib, offset, type);
+                            m_emitted.indexBuffer = ib;
+                            m_emitted.indexOffset = offset;
+                            m_emitted.indexType = type;
+                        }
                     }
                     m_buffersDirty = false;
                 }
@@ -2734,6 +2865,16 @@ namespace rhi
                 VkSampler sampler[kTextureSlots]{};
             } m_pushed;
             bool m_viewportDirty = true, m_scissorDirty = true, m_blendDirty = true;
+            struct Emitted // what the command buffer being recorded has (redundant state; reset by beginCommands)
+            {
+                VkViewport viewport{};
+                VkRect2D scissor{};
+                float blend[4] = {};
+                bool viewportValid = false, scissorValid = false, blendValid = false;
+                VkBuffer vertexBuffer = VK_NULL_HANDLE, indexBuffer = VK_NULL_HANDLE;
+                VkDeviceSize vertexOffset = 0, indexOffset = 0;
+                VkIndexType indexType = VK_INDEX_TYPE_MAX_ENUM;
+            } m_emitted;
 
             // what unbound slots read
             std::unique_ptr<VkTexture> m_dummyTexture;
@@ -2745,9 +2886,13 @@ namespace rhi
             {
                 uint64_t frames = 0, draws = 0, passes = 0, suspends = 0, barriers = 0, waits = 0, uploaded = 0, pipelines = 0;
                 uint64_t descriptorWrites = 0;
+                uint64_t pipelineBinds = 0, pushes = 0;                          // PS2X_HOST_SPIKES
+                int64_t prepareNs = 0, drawNs = 0, bindNs = 0, pushNs = 0; // ... the CPU time in prepareDraw / vkCmdDraw / binds / pushes
                 std::vector<double> inputDelays; // ms, input snapshot -> GPU done, per shown frame
                 double pipelineMs = 0.0, fenceMs = 0.0, acquireMs = 0.0, submitMs = 0.0, presentMs = 0.0;
             } m_stats;
+            Stats m_spikePrev;                                       // PS2X_HOST_SPIKES: m_stats at the last frame's end
+            std::chrono::steady_clock::time_point m_spikeFrameEnd{}; // ... and when it ended
             std::chrono::steady_clock::time_point m_statsStart = std::chrono::steady_clock::now();
         };
     }

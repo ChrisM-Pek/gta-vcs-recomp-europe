@@ -1605,6 +1605,10 @@ vehicle-mission monitors (`paramon`, `vigmon`, `firemon`, `taximon`...), `ga_*` 
   9 float32, 10 NUL-terminated string. A byte >= 0x0B is a variable (`FUN_00254ff8`): 0x0B / 0x0C the two timers,
   0x0D-0x6C local variable (byte - 0x0D + frame base), 0x6D-0xCC local arrays, 0xCD-0xE5 global
   ((byte - 0xCD) << 8 | next byte; address ScriptSpace + 4 * index), >= 0xE6 global arrays.
+- **CollectParameters runs natively** (2026-11-02, `collectParamsNative` in src/game/vcs_overrides.cpp, PERFORMANCE.md
+  23): these rules, the same `*ip` and return value (a type-0 byte returns the count left - 1); `VCS_NATIVE_PARAMS=0`.
+  Its callers often write a command's results back into the parameter block (word 0, sometimes more) before the next
+  call - which is why the verifier compares words 1.. only.
 - **Arrays** (read from FUN_00254ff8, 2026-10-27): a global array is 4 bytes - (byte - 0xE6) << 8 | next byte = the
   base global, then the number of the *local* holding the index, then the array's size; address ScriptSpace + 4 *
   (base + index). A local array is 3 bytes - byte - 0x6D = the base local, the index local, the size; address script +

@@ -560,6 +560,28 @@ register (stored once at the end); every operation is the same one, ACC still cl
 `PS2X_VU0_VERIFY=1` over a whole cruise: 5.06 M matrix products and 5.56 M box clips, 0 differed. Game thread: 9.4% ->
 7.9% for the three; the uncapped cruise 168.3 -> 171.1 fps (`--opt none`).
 
+### 23. The script VM's CollectParameters natively; the RSL skip test's lookups (2026-11-02)
+
+The same uncapped profile, next items on the game thread:
+- **FUN_00254B90, CollectParameters** (game-internals.md 11c): the script VM decodes every command's typed arguments
+  through it (1,100 call sites; 1.4% of the game thread in guest code). Natively in `src/game/vcs_overrides.cpp`
+  (`collectParamsNative`): the same reads of ScriptSpace and the script's locals, FUN_00254FF8's variable rules (timers,
+  locals, local / global arrays with the dummy word for an index out of range), the same `*ip` and `$v0`; anything
+  outside main RAM runs the original. Check: `VCS_NATIVE_PARAMS_VERIFY=1` lets the original run and compares its words
+  with the native decode at the next call - words 1.. only, since a command often writes its result into word 0 (a new
+  handle) before the next call. A cruise: 24 M calls, the types checked there int8 3.3 M, int16 0.1 M, packed floats
+  2.2 M, zero 2.7 M, locals 1.7 M, globals 0.3 M, global arrays 2.4 M, strings and int32 a few hundred; 40 differed, all
+  early, two call sites whose command writes its outputs into the block (a float result, a counter). 1.4% -> 0.6%:
+  below what an A/B of the whole frame resolves (game thread 4.79 / 4.80 ms off vs 4.76 / 4.86 on), kept as measured
+  in the profile. `VCS_NATIVE_PARAMS=0` = the original.
+- **rslworld's `skippable`** (2.4%): per marked block (~2,000 a frame) two `std::unordered_map` lookups and an
+  out-of-line call into the runtime per page for its write-watch generation. Now an open-addressing table
+  (`FlatMap`: lookups and inserts only) and `ps2writewatch::generation` / `unchangedSince` inline over an exported view
+  of the generations: 2.4% -> 1.3%. `VCS_RSL_SKIP_VERIFY=1 VCS_RSL_WORLD_LOG=1` over a cruise: 2,163,873 skip decisions
+  would have replayed their recording rightly, 0 wrongly.
+
+Uncapped cruise after 22 and 23: 182-185 fps (from 168), game thread p50 5.2 ms.
+
 ## Next
 
 - **The heavy views (~120 fps)**: the game thread's chain submission there (1.4-1.6 ms: the VIF1 chain copy, the walker

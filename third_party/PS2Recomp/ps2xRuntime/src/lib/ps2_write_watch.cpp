@@ -38,6 +38,12 @@ namespace ps2writewatch
         size_t g_bytes = 0;
         std::vector<uint32_t> g_generation;
         std::vector<void *> g_written; // GetWriteWatch's output, kept
+
+        void publishGenerations() // [gta-recomp] the header's inline generation() / unchangedSince() read these
+        {
+            g_generations = g_generation.empty() ? nullptr : g_generation.data();
+            g_generationPages = static_cast<uint32_t>(g_generation.size());
+        }
 #if defined(PS2X_LINUX_WRITE_WATCH)
         int g_uffd = -1, g_pagemap = -1;
         uint8_t *g_mapped = nullptr; // the mmap'd guest RAM (stays mapped after a failed scan ends watching)
@@ -180,6 +186,7 @@ namespace ps2writewatch
                 g_base = static_cast<uint8_t *>(p);
                 g_bytes = bytes;
                 g_generation.assign((bytes + kPageSize - 1u) >> kPageShift, 1u);
+                publishGenerations();
                 g_written.resize(g_generation.size());
                 ResetWriteWatch(p, bytes); // committed memory is zero: nothing written yet
                 return g_base;
@@ -195,6 +202,7 @@ namespace ps2writewatch
                 g_base = g_mapped = ram;
                 g_bytes = g_mappedBytes = bytes;
                 g_generation.assign((bytes + kPageSize - 1u) >> kPageShift, 1u);
+                publishGenerations();
                 std::fprintf(stderr, "[write-watch] guest RAM watched (userfaultfd write-protect, PAGEMAP_SCAN)\n");
                 return g_base; // anonymous memory: zero
             }
@@ -217,6 +225,7 @@ namespace ps2writewatch
             g_base = nullptr;
             g_bytes = 0;
             g_generation.clear();
+            publishGenerations();
             return;
         }
 #elif defined(PS2X_LINUX_WRITE_WATCH)
@@ -228,6 +237,7 @@ namespace ps2writewatch
             g_mappedBytes = 0;
             g_bytes = 0;
             g_generation.clear();
+            publishGenerations();
             return;
         }
 #endif
@@ -276,7 +286,6 @@ namespace ps2writewatch
 #endif
     }
 
-    uint32_t generation(uint32_t page) { return page < g_generation.size() ? g_generation[page] : 0u; }
-
-    bool unchangedSince(uint32_t page, uint32_t gen) { return g_base && page < g_generation.size() && g_generation[page] == gen; }
+    const uint32_t *g_generations = nullptr; // [gta-recomp] the header's inline view of g_generation (publishGenerations)
+    uint32_t g_generationPages = 0;
 }

@@ -392,6 +392,278 @@ namespace
         ctx->pc = GPR_U32(ctx, 31);
     }
 
+    // FUN_00254B90(script, &ip, n, out): the script VM's CollectParameters (game-internals.md 11c) - n typed arguments
+    // from ScriptSpace at *ip into out[] (u32 each), *ip moved past them; a type-0 byte (the end of a variable list)
+    // returns the count left - 1, else 0. Variables through FUN_00254FF8's address rules. Called for nearly every
+    // script command (1,100 call sites): ~1.4% of the game thread in guest code (PERFORMANCE.md 23). Natively the same
+    // reads and writes, $v0 the same; no guest call, no checkpoint. ScriptSpace or a pointer outside main RAM runs the
+    // original. VCS_NATIVE_PARAMS=0: the original; VCS_NATIVE_PARAMS_VERIFY=1: the original runs, the native result is
+    // computed first and compared with what the original left at the next call.
+    PS2Runtime::RecompiledFunction g_origCollectParams = nullptr;
+    constexpr uint32_t kScriptSpacePtr = 0x0048741Cu, kArrayDummy = 0x0050C140u;
+
+    struct ParamsResult
+    {
+        bool valid = false;
+        uint32_t ipPtr = 0, outPtr = 0, n = 0, ip = 0, startIp = 0;
+        int32_t ret = 0;
+        uint32_t out[48]; // (not cleared: n of them are written)
+        uint8_t types[48];
+    };
+
+    // the work; false when something is outside main RAM (the original then runs)
+    bool collectParams(const uint8_t *ram, uint32_t script, uint32_t ipPtr, int64_t n64, uint32_t outPtr, ParamsResult &r)
+    {
+        constexpr uint32_t kRam = 0x02000000u;
+        uint32_t space;
+        std::memcpy(&space, ram + kScriptSpacePtr, 4);
+        space &= 0x1FFFFFFFu;
+        script &= 0x1FFFFFFFu;
+        ipPtr &= 0x1FFFFFFFu;
+        outPtr &= 0x1FFFFFFFu;
+        if (space >= kRam || script >= kRam - 0x218u || ipPtr >= kRam - 4u || outPtr >= kRam)
+            return false;
+        uint32_t ip;
+        std::memcpy(&ip, ram + ipPtr, 4);
+        r.startIp = ip;
+        // the arguments are read from ScriptSpace + ip on: 48 arguments of at most 5 bytes fit in 256, a string is checked
+        // byte by byte
+        if (ip >= kRam || space + ip > kRam - 256u)
+            return false;
+        const uint8_t *code = ram + space;
+        auto byteAt = [&](uint32_t off, uint32_t &v) {
+            if (space + off >= kRam)
+                return false;
+            v = code[off];
+            return true;
+        };
+        auto bytes = [&](uint32_t off, uint32_t count, uint32_t &v) { // little-endian, as lwl / lwr / lbu pairs read it
+            if (off - r.startIp > 250u) // (outside the window checked above)
+                return false;
+            v = 0;
+            std::memcpy(&v, code + off, count);
+            return true;
+        };
+        auto local = [&](uint32_t index, uint32_t &v) {
+            const uint64_t a = uint64_t(script) + 0x54u + uint64_t(index) * 4u;
+            if (a + 4u > kRam)
+                return false;
+            std::memcpy(&v, ram + a, 4);
+            return true;
+        };
+        r.n = static_cast<uint32_t>(n64);
+        r.ret = 0;
+        int32_t left = static_cast<int32_t>(n64) - 1;
+        uint32_t written = 0;
+        if (n64 != 0)
+            do
+            {
+                if (written >= 48u || outPtr + written * 4u + 4u > kRam)
+                    return false;
+                const uint32_t at = ip;
+                uint32_t type;
+                if (!byteAt(ip, type))
+                    return false;
+                ip += 1u;
+                uint32_t v = 0;
+                switch (type)
+                {
+                case 0:
+                    r.ret = left;
+                    r.ip = ip;
+                    r.valid = true;
+                    r.outPtr = outPtr;
+                    r.ipPtr = ipPtr;
+                    r.n = written; // the words written
+                    return true;
+                case 1:
+                case 2:
+                    v = 0;
+                    break;
+                case 3:
+                    if (!bytes(ip, 1, v))
+                        return false;
+                    v <<= 24;
+                    ip += 1u;
+                    break;
+                case 4:
+                    if (!bytes(ip, 2, v))
+                        return false;
+                    v <<= 16;
+                    ip += 2u;
+                    break;
+                case 5:
+                {
+                    uint32_t lo, hi;
+                    if (!bytes(ip, 1, lo) || !bytes(ip + 1u, 2, hi))
+                        return false;
+                    v = (lo << 8) | (hi << 16);
+                    ip += 3u;
+                    break;
+                }
+                case 6:
+                case 9:
+                    if (!bytes(ip, 4, v))
+                        return false;
+                    ip += 4u;
+                    break;
+                case 7:
+                    if (!bytes(ip, 1, v))
+                        return false;
+                    v = static_cast<uint32_t>(static_cast<int32_t>(static_cast<int8_t>(v)));
+                    ip += 1u;
+                    break;
+                case 8:
+                    if (!bytes(ip, 2, v))
+                        return false;
+                    v = static_cast<uint32_t>(static_cast<int32_t>(static_cast<int16_t>(v)));
+                    ip += 2u;
+                    break;
+                case 10: // a string: its IP, then past its NUL
+                {
+                    v = ip;
+                    uint32_t len = 0, c;
+                    for (;;)
+                    {
+                        if (!byteAt(ip + len, c))
+                            return false;
+                        if (!c)
+                            break;
+                        ++len;
+                    }
+                    ip += 1u + len;
+                    break;
+                }
+                default: // a variable (FUN_00254FF8 from the type byte)
+                {
+                    ip = at + 1u;
+                    uint32_t addr;
+                    uint32_t frame;
+                    std::memcpy(&frame, ram + script + 0x1FCu, 4);
+                    if (type > 0xCCu)
+                    {
+                        uint32_t lo;
+                        if (!byteAt(ip, lo))
+                            return false;
+                        ip += 1u;
+                        int32_t index;
+                        if (type < 0xE6u)
+                            index = static_cast<int32_t>((type - 0xCDu) * 0x100u);
+                        else
+                        {
+                            uint32_t idxLocal, size, idx;
+                            if (!byteAt(ip, idxLocal) || !byteAt(ip + 1u, size))
+                                return false;
+                            ip += 2u;
+                            if (!local(idxLocal + frame, idx))
+                                return false;
+                            if (static_cast<int32_t>(idx) < 0 || static_cast<int32_t>(size) <= static_cast<int32_t>(idx))
+                            {
+                                addr = kArrayDummy;
+                                goto read;
+                            }
+                            index = static_cast<int32_t>((type - 0xE6u) * 0x100u + idx);
+                        }
+                        addr = space + (lo + static_cast<uint32_t>(index)) * 4u;
+                    }
+                    else if (type < 0x6Du)
+                        addr = script + 0x54u + (type < 0x0Du ? type + 0x5Du : type + frame - 0x0Du) * 4u;
+                    else
+                    {
+                        uint32_t idxLocal, size, idx;
+                        if (!byteAt(ip, idxLocal) || !byteAt(ip + 1u, size))
+                            return false;
+                        ip += 2u;
+                        if (!local(idxLocal + frame, idx))
+                            return false;
+                        if (static_cast<int32_t>(idx) < 0 || static_cast<int32_t>(size) <= static_cast<int32_t>(idx))
+                            addr = kArrayDummy;
+                        else
+                            addr = script + 0x54u + (type + frame - 0x6Du + idx) * 4u;
+                    }
+                read:
+                    addr &= 0x1FFFFFFFu;
+                    if (addr >= kRam - 4u)
+                        return false;
+                    std::memcpy(&v, ram + addr, 4);
+                    break;
+                }
+                }
+                r.types[written] = static_cast<uint8_t>(type);
+                r.out[written++] = v;
+                --left;
+            } while (left != -1);
+        r.ip = ip;
+        r.valid = true;
+        r.outPtr = outPtr;
+        r.ipPtr = ipPtr;
+        r.n = written;
+        return true;
+    }
+
+    PS2_GUEST_CC void collectParamsNative(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
+    {
+        static const bool verify = std::getenv("VCS_NATIVE_PARAMS_VERIFY") != nullptr;
+        static ParamsResult last;
+        static uint64_t checked = 0, differed = 0;
+        static uint32_t lastRa = 0;
+        if (verify && last.valid) // what the original left at its last call
+        {
+            // Word 0 is often a command's result by then (the handler writes it into the parameter block before storing
+            // it - a new handle, say), and a caller's stack block may be reused: only words 1.. are compared. Each word
+            // is decoded by the same code whatever its position, so the types seen there cover the decoder.
+            static uint64_t typeSeen[256] = {};
+            ++checked;
+            for (uint32_t i = 1; i < last.n; ++i)
+            {
+                uint32_t v;
+                std::memcpy(&v, rdram + last.outPtr + i * 4u, 4);
+                ++typeSeen[last.types[i]];
+                if (v != last.out[i])
+                {
+                    ++differed;
+                    if (differed <= 40)
+                        std::fprintf(stderr, "[params] verify: call %llu word %u differs (ip 0x%x, ra 0x%08x): type %02x native %08x original %08x\n",
+                                     static_cast<unsigned long long>(checked), i, last.startIp, lastRa, last.types[i], last.out[i], v);
+                    break;
+                }
+            }
+            if (checked % 2000000u == 0u)
+            {
+                uint64_t locals = 0, localArrays = 0, globals = 0, globalArrays = 0;
+                for (int t = 0x0B; t < 256; ++t)
+                    (t < 0x6D ? locals : t < 0xCD ? localArrays : t < 0xE6 ? globals : globalArrays) += typeSeen[t];
+                std::fprintf(stderr, "[params] verify: %llu calls, %llu differed in words 1..; types checked: int8 %llu int16 %llu int32 %llu "
+                                     "float32 %llu float24/16/8 %llu/%llu/%llu zero %llu string %llu, locals %llu local arrays %llu globals %llu "
+                                     "global arrays %llu\n",
+                             static_cast<unsigned long long>(checked), static_cast<unsigned long long>(differed),
+                             (unsigned long long)typeSeen[7], (unsigned long long)typeSeen[8], (unsigned long long)typeSeen[6],
+                             (unsigned long long)typeSeen[9], (unsigned long long)typeSeen[5], (unsigned long long)typeSeen[4],
+                             (unsigned long long)typeSeen[3], (unsigned long long)(typeSeen[1] + typeSeen[2]),
+                             (unsigned long long)typeSeen[10], (unsigned long long)locals, (unsigned long long)localArrays,
+                             (unsigned long long)globals, (unsigned long long)globalArrays);
+            }
+            last.valid = false;
+        }
+        ParamsResult r;
+        if (!collectParams(rdram, GPR_U32(ctx, 4), GPR_U32(ctx, 5), GPR_S64(ctx, 6), GPR_U32(ctx, 7), r))
+        {
+            g_origCollectParams(rdram, ctx, runtime);
+            return;
+        }
+        if (verify)
+        {
+            last = r;
+            lastRa = GPR_U32(ctx, 31);
+            g_origCollectParams(rdram, ctx, runtime); // it does the work; compared at the next call
+            return;
+        }
+        std::memcpy(rdram + r.outPtr, r.out, r.n * 4u);
+        std::memcpy(rdram + r.ipPtr, &r.ip, 4);
+        SET_GPR_S32(ctx, 2, r.ret);
+        ctx->pc = GPR_U32(ctx, 31);
+    }
+
     // VCS_TRACE_IMMEDIATE=1: callers of the immediate-mode draw entries (kImmediateEntries) with their first three
     // arguments, counted, every 5 s - which game code draws a given Im2D / Im3D primitive
     struct ImmediateEntry
@@ -914,6 +1186,12 @@ namespace
         const bool sound = vcs::installSoundHooks(runtime);   // sound without the IOP (game/vcs_sound.h)
         vcs::retireIop(stream && sound);                      // then no emulated IOP at all
         vcs::installInflate(runtime);                         // zlib's inflate_fast natively (game/vcs_inflate.h)
+        if (!std::getenv("VCS_NATIVE_PARAMS") || std::getenv("VCS_NATIVE_PARAMS")[0] != '0')
+        {
+            g_origCollectParams = runtime.lookupFunction(0x00254B90u);
+            if (g_origCollectParams)
+                runtime.replaceFunction(0x00254B90u, &collectParamsNative);
+        }
         if (!std::getenv("VCS_NATIVE_MODEL_INDEX") || std::getenv("VCS_NATIVE_MODEL_INDEX")[0] != '0')
         {
             g_origModelIndex = runtime.lookupFunction(0x00255188u);

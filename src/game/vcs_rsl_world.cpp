@@ -863,9 +863,71 @@ namespace vcs::rslworld
             uint32_t units = 0;                                 // its length as copied (8-byte units)
             uint64_t stableSince = 0;                           // the copy (g_chainSeq) since which its pages are unchanged
         };
-        std::unordered_map<uint64_t, uint64_t> g_confirmed; // recording key -> latest chain the worker confirmed it in
+        // [perf] Open addressing for the two maps the skip test reads per marked block (~2,000 a frame): a probe in one
+        // array instead of std::unordered_map's bucket list (rslworld's `skippable` was 2.4% of the game thread,
+        // PERFORMANCE.md 23). Only lookups and inserts (nothing is erased); a key of ~0 is never used (kind << 56).
+        template <typename V>
+        class FlatMap
+        {
+        public:
+            V *find(uint64_t key)
+            {
+                if (m_keys.empty())
+                    return nullptr;
+                for (size_t i = slot(key);; i = (i + 1) & m_mask)
+                {
+                    if (m_keys[i] == key)
+                        return &m_values[i];
+                    if (m_keys[i] == kEmpty)
+                        return nullptr;
+                }
+            }
+            V &operator[](uint64_t key)
+            {
+                if ((m_count + 1) * 2 > m_keys.size())
+                    grow();
+                for (size_t i = slot(key);; i = (i + 1) & m_mask)
+                {
+                    if (m_keys[i] == key)
+                        return m_values[i];
+                    if (m_keys[i] == kEmpty)
+                    {
+                        m_keys[i] = key;
+                        ++m_count;
+                        return m_values[i];
+                    }
+                }
+            }
+
+        private:
+            static constexpr uint64_t kEmpty = ~0ull;
+            size_t slot(uint64_t key) const
+            {
+                key ^= key >> 33; // (murmur3's finaliser)
+                key *= 0xFF51AFD7ED558CCDull;
+                key ^= key >> 33;
+                return static_cast<size_t>(key) & m_mask;
+            }
+            void grow()
+            {
+                std::vector<uint64_t> keys(std::max<size_t>(1024u, m_keys.size() * 2u), kEmpty);
+                std::vector<V> values(keys.size());
+                std::swap(keys, m_keys);
+                std::swap(values, m_values);
+                m_mask = m_keys.size() - 1u;
+                m_count = 0;
+                for (size_t i = 0; i < keys.size(); ++i)
+                    if (keys[i] != kEmpty)
+                        (*this)[keys[i]] = std::move(values[i]);
+            }
+            std::vector<uint64_t> m_keys;
+            std::vector<V> m_values;
+            size_t m_mask = 0, m_count = 0;
+        };
+
+        FlatMap<uint64_t> g_confirmed; // recording key -> latest chain the worker confirmed it in
         bool g_skip = false;
-        std::unordered_map<uint64_t, PageSnapshot> g_snapshots;
+        FlatMap<PageSnapshot> g_snapshots;
         struct OpenBlock
         {
             bool open = false;
@@ -886,13 +948,13 @@ namespace vcs::rslworld
             static const unsigned kinds = std::getenv("VCS_RSL_SKIP_KINDS") ? unsigned(std::strtoul(std::getenv("VCS_RSL_SKIP_KINDS"), nullptr, 0)) : 0xFu;
             if (!g_skip || !((kinds >> kind) & 1u))
                 return false;
-            const auto it = g_snapshots.find(snapshotKey);
-            if (it == g_snapshots.end() || !unchanged(it->second))
+            const PageSnapshot *snap = g_snapshots.find(snapshotKey);
+            if (!snap || !unchanged(*snap))
                 return false;
-            const auto c = g_confirmed.find(recordingKey(kind, addr, it->second.units));
-            if (c == g_confirmed.end() || c->second < it->second.stableSince)
+            const uint64_t *c = g_confirmed.find(recordingKey(kind, addr, snap->units));
+            if (!c || *c < snap->stableSince)
                 return false;
-            units = it->second.units;
+            units = snap->units;
             return true;
         }
 

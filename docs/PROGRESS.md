@@ -928,6 +928,9 @@ Python scripts still usable on their own. docs/LAUNCHER.md has the whole of it; 
 | `PS2X_HW_PALETTE_TABLE=0` | paletted textures decoded with the CLUT lookup per texel instead of a 256-entry table (PERFORMANCE.md 21) |
 | `PS2X_HW_CPU_MIPS=0` | anisotropic filtering's mip chains by a render-target texture and `GenerateMips` on the main thread, as before 2026-11-02 |
 | `PS2X_HW_EARLY_TEXTURES=0` | new textures made on the main thread at their `TexCreate` instead of by the helper threads (D3D11) |
+| `VCS_NATIVE_PARAMS=0`, `VCS_NATIVE_PARAMS_VERIFY=1` | the script VM's CollectParameters (FUN_00254B90) recompiled as before; the original runs and its words 1.. are compared with the native decode (PERFORMANCE.md 23) |
+| `VCS_MUSIC_LOG=1` | the native music driver's commands (stream open / stop / preload ...) with the state it found |
+| `PS2X_HW_LOG_PIPELINES=1` | each GS draw pipeline as it is made, with the time it took |
 | `VCS_MUSIC_STOP_WAIT=1` | a playing music stream's stop waits for the next refill IRQ, as on the IOP (the level swap stood up to 448 ms for it; game-internals.md 9a) |
 | `PS2X_WAIT_LOG_MAX=<n>` | with `PS2X_WAIT_LOG`: log up to n waits (300) |
 | `PS2X_FRAME_STATS=0` | the brightness probe off even with the control channel (its GPU read-back each host frame hides GPU-side hitches; tools/cruise.py) |

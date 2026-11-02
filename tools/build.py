@@ -91,12 +91,12 @@ def main():
     if a.install_deps:
         sys.exit(install_deps(env))
     tc.fix_future_files()  # else Ninja re-runs CMake until it gives up (a release zip from another time zone)
+    if a.launcher:  # its own packages, checked in build_launcher - not the game's (CI builds it on a bare system)
+        sys.exit(0 if build_launcher(env, a.verbose) else 1)
     if not tc.IS_WINDOWS and not os.path.isfile(os.path.join(tc.BUILD_DIR, "build.ninja")) and not tc.check_linux_deps(env):
         tc.fail("missing build dependencies (above)")
     if a.iop_tests:
         sys.exit(iop_tests(env))
-    if a.launcher:
-        sys.exit(0 if build_launcher(env, a.verbose) else 1)
     import recompile
     iso_arg = a.recompile if a.recompile is not None else a.recompile_if_needed
     if a.recompile_if_needed is not None:

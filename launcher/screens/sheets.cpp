@@ -126,9 +126,9 @@ namespace screens
             divider(r, y);
 
             section(r, y, "UPDATES");
-            if (!launcher::os::kWindows)
+            if (!app.canUpdate())
             {
-                // releases (and tools/update.py) are Windows zips for now: a clone updates with git
+                // a Linux clone (an AppImage updates itself): git
                 y += row({r.x, y, r.w, 0}, "This version", app.sourceVersion);
                 text(r, y, "Update this folder with git pull, then build again (Update the build on Home).", theme::kFaint);
             }
@@ -149,14 +149,14 @@ namespace screens
             }
             else
                 y += row({r.x, y, r.w, 0}, "This version", app.sourceVersion);
-            if (launcher::os::kWindows)
+            if (app.canUpdate())
             {
                 const Rect line{r.x, y, r.w, px(30)};
                 ui::label(kFontBody, px(theme::kBody), {line.x, line.y, line.w - px(60), line.h}, theme::kText, "Check for a new release at start");
                 changed |= ui::toggle("#check-updates", {line.right() - px(44), line.y, px(44), line.h}, app.settings.checkUpdates);
                 y += px(34);
             }
-            if (launcher::os::kWindows)
+            if (app.canUpdate())
             {
                 text(r, y, "One request to GitHub; nothing about you or your PC is sent.", theme::kFaint);
                 if (action(r, y, app.busy() && app.task->kind == "update_check" ? "Checking..." : "Check now", ButtonStyle::Secondary, theme::icon::kSync, !app.busy()))

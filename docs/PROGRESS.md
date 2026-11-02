@@ -786,6 +786,12 @@ Python scripts still usable on their own. docs/LAUNCHER.md has the whole of it; 
       idle: 7 frames in 20 s (the entrance), then none - 5 ms of CPU. Not checked: GNOME / KDE Wayland by hand, a drop from a file manager, the
       portal dialog with a real click, `--install-deps` for real, the Windows build (CI compiles it).
 
+- [x] **Linux releases: an AppImage, with Windows** (2026-11-03, the user's choices; DECISIONS.md, LAUNCHER.md "The
+      Linux release"): `release.py --platform linux` (glibc 2.35 floor, CI on Ubuntu 22.04, pinned appimagetool /
+      runtime / wayland-protocols), the install folder filled from the image (`update.py install`, changed files only),
+      AppImage updates, `deps.py --platform linux`, apt.llvm.org for old Debian / Ubuntu (`linux_packages.py`), one
+      `publish` job for both platforms. Checked end to end on the laptop: AppImage -> files -> game built in 18 min ->
+      played; an update's rebuild 1.7 s. Not checked: CI's 22.04 build, an older distribution, apt.llvm.org for real.
 ## Useful switches
 | Env var | Effect |
 |---|---|

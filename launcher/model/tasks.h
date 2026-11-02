@@ -63,6 +63,12 @@ namespace launcher
 
         // the repository (where tools/build.py is) and its build folder
         std::filesystem::path root, build;
+        // Linux AppImage (tools/release.py): the release's files inside the read-only image; root is then the install
+        // folder they are copied to ($XDG_DATA_HOME/VCSRecomp/install, VCS_INSTALL_DIR) - empty otherwise
+        std::filesystem::path payload;
+        bool installing() const { return task && task->kind == "install" && !task->finished; }
+        // a release that updates itself: Windows (a release folder or not: update.py says), a Linux AppImage
+        bool canUpdate() const;
         std::vector<std::string> python; // the interpreter (+ args): a release's python\, else py -3 / python (Linux: python3)
         std::string pythonText;
         std::string sourceVersion;        // VERSION, or the clone's commit
@@ -136,6 +142,7 @@ namespace launcher
         void handleLine(Task &t, const std::string &line);
         void finishTask(Task &t);
         void loadSettings();
+        void loadFolder(); // root's scripts, version, settings, disc, the doctor - once root holds the files
         bool writeIsoToIni(const std::filesystem::path &path);
     };
 }

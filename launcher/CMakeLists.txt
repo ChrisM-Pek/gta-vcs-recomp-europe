@@ -82,8 +82,13 @@ else()
     find_package(Python3 REQUIRED COMPONENTS Interpreter)
     pkg_check_modules(VCS_LAUNCHER_LIBS REQUIRED IMPORTED_TARGET
         x11 xcursor xrandr wayland-client wayland-cursor xkbcommon freetype2 fontconfig dbus-1)
-    pkg_check_modules(VCS_WAYLAND_PROTOCOLS REQUIRED wayland-protocols)
-    pkg_get_variable(VCS_WAYLAND_PROTOCOLS_DIR wayland-protocols pkgdatadir)
+    # the protocols' XML: the system's, or a newer wayland-protocols unpacked somewhere (a release built on an older
+    # distribution: CI's Ubuntu 22.04 has 1.25, without fractional-scale and cursor-shape)
+    set(VCS_WAYLAND_PROTOCOLS_DIR "" CACHE PATH "wayland-protocols' XML folder (empty: the system's)")
+    if(NOT VCS_WAYLAND_PROTOCOLS_DIR)
+        pkg_check_modules(VCS_WAYLAND_PROTOCOLS REQUIRED wayland-protocols)
+        pkg_get_variable(VCS_WAYLAND_PROTOCOLS_DIR wayland-protocols pkgdatadir)
+    endif()
     find_program(VCS_WAYLAND_SCANNER wayland-scanner REQUIRED)
     find_path(VCS_VULKAN_INCLUDE vulkan/vulkan_core.h HINTS "$ENV{VULKAN_SDK}/include")
     if(NOT VCS_VULKAN_INCLUDE)
@@ -133,7 +138,13 @@ else()
             "fractional-scale-v1:staging/fractional-scale/fractional-scale-v1.xml"
             "xdg-activation-v1:staging/xdg-activation/xdg-activation-v1.xml"
             "cursor-shape-v1:staging/cursor-shape/cursor-shape-v1.xml"
-            "tablet-v2:stable/tablet/tablet-v2.xml|unstable/tablet/tablet-unstable-v2.xml") # cursor-shape refers to it
+            "tablet-v2:stable/tablet/tablet-v2.xml|unstable/tablet/tablet-unstable-v2.xml" # cursor-shape refers to it
+            "?xdg-toplevel-icon-v1:staging/xdg-toplevel-icon/xdg-toplevel-icon-v1.xml") # ? optional (1.37+)
+        set(_optional FALSE)
+        if(protocol MATCHES "^\\?")
+            set(_optional TRUE)
+            string(SUBSTRING "${protocol}" 1 -1 protocol)
+        endif()
         string(REPLACE ":" ";" _parts "${protocol}")
         list(GET _parts 0 _name)
         list(GET _parts 1 _paths)
@@ -144,8 +155,15 @@ else()
                 set(_xml "${VCS_WAYLAND_PROTOCOLS_DIR}/${_candidate}")
             endif()
         endforeach()
+        if(NOT _xml AND _optional)
+            message(STATUS "wayland-protocols without ${_name}: left out")
+            continue()
+        endif()
         if(NOT _xml)
-            message(FATAL_ERROR "wayland-protocols ${VCS_WAYLAND_PROTOCOLS_VERSION} has no ${_name} (1.32 or newer needed)")
+            message(FATAL_ERROR "${VCS_WAYLAND_PROTOCOLS_DIR} has no ${_name} (wayland-protocols 1.32 or newer needed)")
+        endif()
+        if(_name STREQUAL "xdg-toplevel-icon-v1")
+            set(VCS_HAVE_TOPLEVEL_ICON ON)
         endif()
         add_custom_command(
             OUTPUT "${VCS_PROTOCOL_DIR}/${_name}-client-protocol.h" "${VCS_PROTOCOL_DIR}/${_name}-protocol.c"
@@ -173,10 +191,14 @@ else()
         ${VCS_PROTOCOL_SOURCES}
     )
     target_include_directories(VCSLauncher PRIVATE "${VCS_PROTOCOL_DIR}" "${VCS_VULKAN_INCLUDE}")
+    if(VCS_HAVE_TOPLEVEL_ICON)
+        target_compile_definitions(VCSLauncher PRIVATE VCS_HAVE_TOPLEVEL_ICON=1)
+    endif()
     target_link_libraries(VCSLauncher PRIVATE PkgConfig::VCS_LAUNCHER_LIBS ${CMAKE_DL_LIBS})
     target_compile_options(VCSLauncher PRIVATE -Wall -Wextra -Wno-missing-field-initializers -fvisibility=hidden)
-    # small and self-contained: stripped, the C++ runtime from the system (every distribution has it)
-    target_link_options(VCSLauncher PRIVATE $<$<CONFIG:Release>:-s> -Wl,--as-needed)
+    # small and self-contained: stripped; the C++ runtime linked in, so the binary needs only glibc's version of the
+    # system it was built on (tools/release.py checks it: 2.35, Ubuntu 22.04) - not that system's libstdc++
+    target_link_options(VCSLauncher PRIVATE $<$<CONFIG:Release>:-s> -Wl,--as-needed -static-libstdc++ -static-libgcc)
     set_property(TARGET VCSLauncher PROPERTY INTERPROCEDURAL_OPTIMIZATION_RELEASE ON)
 endif()
 

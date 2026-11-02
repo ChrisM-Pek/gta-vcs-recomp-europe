@@ -166,8 +166,19 @@ namespace launcher
 
     bool App::init(std::string &error)
     {
+#ifndef _WIN32
+        // a Linux AppImage: the release's files are in the image next to the launcher (usr/bin -> usr/share), and the
+        // game is built in a folder of its own they are copied to
+        if (const fs::path files = exePath().parent_path().parent_path() / "share" / "vcs-recomp" / "release";
+            fs::is_regular_file(files / "RELEASE.json"))
+        {
+            payload = files;
+            const char *dir = std::getenv("VCS_INSTALL_DIR");
+            root = dir && *dir ? pathFrom(dir) : knownFolder(Folder::LocalAppData) / "VCSRecomp" / "install";
+        }
+#endif
         // the repository: the exe's folder (a release, or a clone after build.py --launcher), or one above it
-        for (fs::path dir = exePath().parent_path(); !dir.empty(); dir = dir.parent_path())
+        for (fs::path dir = exePath().parent_path(); root.empty() && !dir.empty(); dir = dir.parent_path())
         {
             if (fs::is_regular_file(dir / "tools" / "build.py"))
             {
@@ -239,6 +250,28 @@ namespace launcher
         }
         pythonText = python[0];
 
+        // an AppImage whose files aren't in the install folder yet, or are another version's: they go in place first
+        // (tools/update.py install, the image's own copy; a task the window shows), then the folder opens
+        if (!payload.empty() && readFile(payload / "RELEASE.json") != readFile(root / "RELEASE.json"))
+        {
+            std::error_code ec;
+            fs::create_directories(root, ec);
+            if (ec)
+            {
+                error = "Could not create the game's folder " + pathText(root) + " (" + ec.message() + ")";
+                return false;
+            }
+            sourceVersion = trim(readFile(payload / "VERSION")); // the title bar's, before the folder opens
+            runTool("install", "Putting the game's files in place",
+                    {toolPath(payload, "update.py"), "install", "--from", pathText(payload), "--to", pathText(root)});
+            return true;
+        }
+        loadFolder();
+        return true;
+    }
+
+    void App::loadFolder()
+    {
         // the scripts every button runs: all there, or the folder doesn't match this launcher - a release made from the
         // last commit while the launcher was built from newer, uncommitted code, or files lost on the way
         {
@@ -308,7 +341,15 @@ namespace launcher
             }
         }
         refresh();
+    }
+
+    bool App::canUpdate() const
+    {
+#ifdef _WIN32
         return true;
+#else
+        return !payload.empty();
+#endif
     }
 
     void App::refresh()
@@ -456,8 +497,14 @@ namespace launcher
         keepAwake(false);
         if (!t.cancelled && t.exitCode != 0 && t.errorCode.empty())
         {
-            t.errorCode = "python_failed";
+            t.errorCode = t.kind == "install" ? "install_failed" : "python_failed";
             t.errorMessage = t.title + " stopped (exit code " + std::to_string(t.exitCode) + ")";
+        }
+        if (t.kind == "install" && t.ok())
+        {
+            task.reset(); // the files are in place: the folder opens as if they had always been there
+            loadFolder();
+            return;
         }
         if (t.kind == "build_dir_check" && t.result.has("path"))
         {
@@ -687,6 +734,20 @@ namespace launcher
                        "the log has the details.";
         default: break;
         }
+#ifndef _WIN32
+        // a death by signal N is 128 + N (model/process_posix.cpp)
+        if (gameExit > 128 && gameExit < 128 + 32)
+        {
+            const int sig = gameExit - 128;
+            const char *what = sig == 11 ? "segmentation fault" : sig == 4 ? "illegal instruction - built for a newer processor?"
+                             : sig == 6  ? "aborted" : sig == 7 ? "bus error" : sig == 8 ? "arithmetic error"
+                             : sig == 9  ? "killed - out of memory?" : nullptr;
+            if (sig == 15 || sig == 2 || sig == 1)
+                return "The game was stopped from outside (signal " + std::to_string(sig) + ").";
+            const std::string name = what ? std::string(what) : "signal " + std::to_string(sig);
+            return "The game crashed (" + name + "). The log has the details: please copy a report.";
+        }
+#endif
         if (code == 0xC0000005u)
             return "The game crashed (access violation). The log has the details: please copy a report.";
         if (code >= 0xC0000000u)
@@ -706,7 +767,11 @@ namespace launcher
             error = "no Desktop folder";
             return false;
         }
-        return createShortcut(desktop / os::kShortcutName, exePath(), root,
+        // an AppImage starts from its own file, not from where it is mounted this time
+        fs::path target = exePath();
+        if (const char *appimage = std::getenv("APPIMAGE"); appimage && *appimage && !payload.empty())
+            target = pathFrom(appimage);
+        return createShortcut(desktop / os::kShortcutName, target, root,
                               "GTA: Vice City Stories (PC port) - launcher", error);
     }
 

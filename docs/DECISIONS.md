@@ -971,3 +971,33 @@ dates from the GL renderer, where NDC lost precision; with D3D / Vulkan's 0..1 d
 and dropping the output brings early depth rejection back (~1.5 ms of a ~10.7 ms GPU frame on the HD 520). Reference
 scenes on Vulkan show no change beyond run-to-run noise. D3D11 is the reference renderer and its GPU has the headroom,
 so it keeps the shader depth until a scenes compare on Windows says the same; then both can share the default.
+
+## 2026-11-03 - Linux releases: an AppImage, glibc 2.35 and up, shipped with Windows
+
+For the Linux launcher's first release the user chose **an AppImage** (not a tarball), **support for older
+distributions**, and **Linux released at the same time as Windows**.
+
+- **One AppImage, the release inside.** `tools/release.py --platform linux` makes `VCS-Recomp-<v>-x86_64.AppImage`:
+  the launcher, its desktop entry and icon, and the release's files (the source, the scripts, `deps/` - no Python or
+  FFmpeg: the system's) in `usr/share/vcs-recomp/release`. An AppImage is a read-only image, and the game is built
+  inside its release folder (`generated/`, `build/`), so the launcher copies those files to a folder of its own at
+  start - `$XDG_DATA_HOME/VCSRecomp/install` (`VCS_INSTALL_DIR`), next to the saves - when it is missing or holds
+  another version (`tools/update.py install`). Only files whose bytes differ are written: after an update, Ninja
+  rebuilds only what changed. The type 2 runtime is static (no libfuse2 on the player's system).
+- **Updates replace the AppImage file** (`$APPIMAGE`, set by the runtime): `update.py apply` downloads the new one,
+  checks its SHA-256 and the AppImage magic, and renames it over the old; the next start puts the files in place. No
+  AppImageUpdate / zsync: the same update.py and the same GitHub release as Windows.
+- **glibc 2.35 is the floor** (Ubuntu 22.04, Debian 12, Mint 21 and newer): CI builds the Linux launcher on
+  ubuntu-22.04 with the C++ runtime linked in (`-static-libstdc++`), and release.py refuses a binary that needs a newer
+  glibc (`--allow-new-glibc` for a test). 22.04's wayland-protocols is too old for fractional-scale and cursor-shape:
+  CI unpacks a pinned 1.45 (`VCS_WAYLAND_PROTOCOLS_DIR`); 22.04's wayland-scanner reads it. The launcher builds with
+  any clang or GCC (`toolchain.launcher_compiler_defines`), not only the game's clang 19.
+- **The game on those older distributions**: they ship no clang 19, so the package step adds LLVM's own repository
+  (apt.llvm.org, as it documents: its key - fingerprint checked when gpg is there - in /etc/apt/keyrings, a sources
+  entry for `llvm-toolchain-<codename>-20`) before installing clang-20 / lld-20 / llvm-20. That root work is
+  `tools/linux_packages.py`, standalone and short (it runs as root through pkexec or sudo); build.py and doctor.py
+  only decide what it should do.
+- **Shipped together**: on a `v*` tag each platform's job makes its file and uploads it; `publish` needs both and puts
+  them on one GitHub release. A failing platform publishes nothing.
+- Tools pinned by version and SHA-256 (no "continuous" builds): appimagetool 1.9.1, the type 2 runtime 20251108,
+  wayland-protocols 1.45.

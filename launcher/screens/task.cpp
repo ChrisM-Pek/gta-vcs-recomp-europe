@@ -29,6 +29,8 @@ namespace screens
                 return t.result["message"].str().empty() ? "The build tools are installed." : t.result["message"].str();
             if (t.kind == "update")
                 return "Updated to " + t.result["version"].str() + ". Restart the launcher, then update the build.";
+            if (t.kind == "install")
+                return "The game's files are in place.";
             if (t.kind == "rip")
                 return "Copied to " + t.result["iso"].str() + ".";
             if (t.kind == "report")
@@ -274,7 +276,7 @@ namespace screens
             const char *logLabel = drawerOpen ? "Hide details" : "Show details";
             if (!failed && ui::button(logLabel, core::cutLeft(bar, ui::buttonWidth(logLabel, theme::icon::kList)), ButtonStyle::Ghost, theme::icon::kList))
                 shell.showLog = !shell.showLog;
-            if (!t.finished)
+            if (!t.finished && t.kind != "install") // a few seconds, redone at the next start: nothing to cancel
             {
                 const char *cancel = t.cancelled ? "Stopping..." : "Cancel";
                 if (ui::button(cancel, core::cutRight(bar, ui::buttonWidth(cancel, theme::icon::kStop)), ButtonStyle::Secondary, theme::icon::kStop, !t.cancelled))

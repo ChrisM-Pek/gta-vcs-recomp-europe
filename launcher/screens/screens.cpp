@@ -292,7 +292,7 @@ namespace screens
     bool takesOver(const launcher::Task &t)
     {
         return t.kind == "build" || t.kind == "tools" || t.kind == "update" || t.kind == "rip" || t.kind == "report" ||
-               t.kind == "restore" || (t.finished && !t.ok() && !t.cancelled);
+               t.kind == "restore" || t.kind == "install" || (t.finished && !t.ok() && !t.cancelled);
     }
 
     std::string duration(double seconds)
@@ -607,7 +607,7 @@ namespace screens
             shell.minimizedForGame = false;
         }
         g_wasPlaying = app.gameRunning;
-        if (launcher::os::kWindows && !g_checkedUpdates && app.settings.checkUpdates && app.doctorDone && !app.doctorCached &&
+        if (app.canUpdate() && !g_checkedUpdates && app.settings.checkUpdates && app.doctorDone && !app.doctorCached &&
             !app.busy())
         {
             g_checkedUpdates = true;

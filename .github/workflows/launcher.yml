@@ -1,7 +1,8 @@
 # The launcher (docs/LAUNCHER.md): built and self-tested on every change to it or the tools it runs, on Windows and on
-# Linux (Vulkan through lavapipe, with the validation layer: any message fails the job); on a tag v*, the Windows
-# release zip is made (tools/release.py: source, launcher, embeddable Python, the libraries - no game code,
-# which only ever exists on a player's PC) and published as a GitHub release.
+# Linux (Vulkan through lavapipe, with the validation layer: any message fails the job). On a tag v*, each platform
+# makes its release file - the Windows zip (tools/release.py: source, launcher, embeddable Python, the libraries) and
+# the Linux AppImage (release.py --platform linux) - no game code, which only ever exists on a player's PC - and
+# `publish` puts both on one GitHub release, so the two always ship together.
 name: launcher
 
 on:
@@ -17,21 +18,35 @@ permissions:
   contents: write
 
 jobs:
-  # Off until the Linux launcher ships (the user's call, 2026-11-01): releases are Windows only for now. Remove the `if`
-  # to build and check it again.
+  # Ubuntu 22.04 on purpose: the AppImage's launcher needs the glibc of the system it was built on, and 22.04's (2.35)
+  # makes it run on Ubuntu 22.04, Debian 12 and everything newer (tools/release.py refuses a newer one)
   linux:
-    if: false
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-22.04
+    env:
+      WAYLAND_PROTOCOLS: "1.45"
+      WAYLAND_PROTOCOLS_SHA256: 4d2b2a9e3e099d017dc8107bf1c334d27bb87d9e4aff19a0c8d856d17cd41ef0
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-      # docs/LINUX.md's packages for the launcher; mesa-vulkan-drivers brings lavapipe (no GPU on the runner)
+      # docs/LINUX.md's packages for the launcher (any clang: 22.04's 14); mesa-vulkan-drivers brings lavapipe (no GPU
+      # on the runner); git for tools/deps.py
       - name: Packages
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends clang-19 lld-19 cmake ninja-build pkg-config glslang-tools \
+          sudo apt-get install -y --no-install-recommends clang cmake ninja-build pkg-config glslang-tools git \
             libvulkan-dev libfreetype-dev libfontconfig-dev libx11-dev libxcursor-dev libxrandr-dev libwayland-dev \
-            wayland-protocols libxkbcommon-dev libdbus-1-dev mesa-vulkan-drivers vulkan-validationlayers fonts-dejavu-core
+            libxkbcommon-dev libdbus-1-dev mesa-vulkan-drivers vulkan-validationlayers fonts-dejavu-core
+
+      # 22.04's wayland-protocols (1.25) lacks fractional-scale and cursor-shape: the release's, pinned
+      - name: wayland-protocols ${{ env.WAYLAND_PROTOCOLS }}
+        run: |
+          cd "$RUNNER_TEMP"
+          curl -sSfL -o wp.tar.xz "https://gitlab.freedesktop.org/wayland/wayland-protocols/-/releases/$WAYLAND_PROTOCOLS/downloads/wayland-protocols-$WAYLAND_PROTOCOLS.tar.xz"
+          echo "$WAYLAND_PROTOCOLS_SHA256  wp.tar.xz" | sha256sum -c -
+          tar xf wp.tar.xz
+          echo "VCS_WAYLAND_PROTOCOLS_DIR=$RUNNER_TEMP/wayland-protocols-$WAYLAND_PROTOCOLS" >> "$GITHUB_ENV"
 
       - name: Build the launcher
         run: python3 tools/build.py --launcher
@@ -57,6 +72,21 @@ jobs:
         with:
           name: launcher-linux-screenshots
           path: ${{ runner.temp }}/shots
+
+      # the AppImage, self-tested as a player starts it (extract-and-run: no FUSE on the runner)
+      - name: Release AppImage
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          APPIMAGE_EXTRACT_AND_RUN: "1"
+        run: python3 tools/release.py --platform linux --ref ${{ github.ref_name }} --launcher VCSLauncher
+
+      - uses: actions/upload-artifact@v4
+        if: startsWith(github.ref, 'refs/tags/v')
+        with:
+          name: release-linux
+          path: |
+            build/dist/*.AppImage
+            build/dist/*.AppImage.sha256
 
   windows:
     runs-on: windows-2022
@@ -97,12 +127,30 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/v')
         run: python tools/release.py --ref ${{ github.ref_name }} --launcher VCSLauncher.exe
 
-      - name: Publish the release
+      - uses: actions/upload-artifact@v4
         if: startsWith(github.ref, 'refs/tags/v')
-        shell: pwsh
+        with:
+          name: release-windows
+          path: |
+            build/dist/*.zip
+            build/dist/*.zip.sha256
+
+  # both platforms' files on one release, only when both were made: Windows and Linux ship together
+  publish:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [linux, windows]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: release-*
+          path: dist
+          merge-multiple: true
+
+      - name: Publish the release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $zip = Get-ChildItem build/dist/*.zip | Select-Object -First 1
-          gh release create "${{ github.ref_name }}" $zip.FullName "$($zip.FullName).sha256" `
+          ls -l dist
+          gh release create "${{ github.ref_name }}" dist/* --repo "${{ github.repository }}" \
             --title "${{ github.ref_name }}" --generate-notes

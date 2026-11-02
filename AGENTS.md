@@ -74,6 +74,8 @@ python tools/build_dir.py [check|set P|reset] # the build folder elsewhere (.vcs
                                              # the test tools keep writing to build\ in the source folder
 python tools/release.py [--ref vX | --worktree]   # the Windows release zip (build/dist); refuses game files. The number is
                                              # VERSION (root; 0.1.2): bump it before tagging - the tag must match
+python3 tools/release.py --platform linux [--worktree --allow-new-glibc]   # the Linux AppImage (CI builds it on
+                                             # Ubuntu 22.04 for glibc 2.35; a v* tag publishes zip + AppImage together)
 python tools/deps.py list|fetch|check        # the libraries CMake downloads; deps/ makes the build offline
 python tools/backup.py create|list|restore   # memory card backups (VCS_DATA_DIR honoured: test on copies)
 python tools/setup_vs.py status|install [--dry-run]   # Visual Studio Build Tools (+ clang) from Microsoft, elevated

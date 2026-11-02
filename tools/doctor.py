@@ -179,7 +179,8 @@ def check_compiler():
             return {"ok": True, "code": "ok", "message": "clang and every package the build needs"}
         packages = [p for _, p in missing]
         return {"ok": False, "code": "missing_packages", "missing": [label for label, _ in missing],
-                "packages": packages, "command": " ".join(tc.linux_install_command(packages)),
+                "packages": packages, "command": " ".join(tc.linux_packages_command(missing)),
+                "llvm_repo": tc.apt_llvm_repo(missing) or "",
                 "message": "%d package%s missing: %s" % (len(missing), "" if len(missing) == 1 else "s",
                                                           ", ".join(label for label, _ in missing))}
     installs = vs_installs()

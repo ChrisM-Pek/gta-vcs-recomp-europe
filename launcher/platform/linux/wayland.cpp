@@ -10,6 +10,8 @@
 // - Keyboard through xkbcommon, with compose (dead keys) and key repeat on a timerfd the frame loop polls.
 // - Files dropped from the file manager (wl_data_device, text/uri-list); raising after the game through
 //   xdg-activation (the compositor may only flag the window instead: focus stealing prevention).
+// - The window's icon from xdg-toplevel-icon where the compositor has it (KDE); elsewhere (GNOME) the icon comes from
+//   the desktop entry matching the app id - the launcher's shortcut writes one.
 #include "backend.h"
 
 #include "cursor-shape-v1-client-protocol.h"
@@ -18,6 +20,10 @@
 #include "xdg-activation-v1-client-protocol.h"
 #include "xdg-decoration-unstable-v1-client-protocol.h"
 #include "xdg-shell-client-protocol.h"
+#ifdef VCS_HAVE_TOPLEVEL_ICON
+#include "launcher_icon.h" // make_icon.py --header: 32, 64, 128 px
+#include "xdg-toplevel-icon-v1-client-protocol.h"
+#endif
 
 #include <wayland-client.h>
 #include <wayland-cursor.h>
@@ -101,6 +107,7 @@ namespace platform::linux_
                 xdg_toplevel_set_title(m_toplevel, title);
                 xdg_toplevel_set_app_id(m_toplevel, kAppId);
                 xdg_toplevel_set_min_size(m_toplevel, minLogicalWidth, minLogicalHeight);
+                setIcon();
                 if (m_decorationManager)
                 {
                     m_decoration = zxdg_decoration_manager_v1_get_toplevel_decoration(m_decorationManager, m_toplevel);
@@ -143,6 +150,12 @@ namespace platform::linux_
                     wl_cursor_theme_destroy(m_cursorTheme);
                 if (m_decoration)
                     zxdg_toplevel_decoration_v1_destroy(m_decoration);
+#ifdef VCS_HAVE_TOPLEVEL_ICON
+                for (wl_buffer *b : m_iconBuffers)
+                    wl_buffer_destroy(b);
+                if (m_iconManager)
+                    xdg_toplevel_icon_manager_v1_destroy(m_iconManager);
+#endif
                 if (m_toplevel)
                     xdg_toplevel_destroy(m_toplevel);
                 if (m_xdgSurface)
@@ -265,6 +278,51 @@ namespace platform::linux_
             }
 
         private:
+            // ---- the window's icon ---------------------------------------------------------------------------------
+
+            void setIcon()
+            {
+#ifdef VCS_HAVE_TOPLEVEL_ICON
+                if (!m_iconManager || !m_shm)
+                    return;
+                xdg_toplevel_icon_v1 *icon = xdg_toplevel_icon_manager_v1_create_icon(m_iconManager);
+                // g_launcher_icon: width, height, then ARGB pixels (straight alpha) per size; wl_shm wants premultiplied
+                for (size_t at = 0; at + 2 < std::size(g_launcher_icon);)
+                {
+                    const int w = int(g_launcher_icon[at]), h = int(g_launcher_icon[at + 1]);
+                    const size_t bytes = size_t(w) * size_t(h) * 4;
+                    const int fd = memfd_create("vcs-icon", MFD_CLOEXEC);
+                    if (fd < 0 || ftruncate(fd, off_t(bytes)) != 0)
+                    {
+                        if (fd >= 0)
+                            close(fd);
+                        break;
+                    }
+                    void *map = mmap(nullptr, bytes, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+                    if (map != MAP_FAILED)
+                    {
+                        auto *px = static_cast<uint32_t *>(map);
+                        for (size_t i = 0; i < size_t(w) * size_t(h); ++i)
+                        {
+                            const uint32_t c = uint32_t(g_launcher_icon[at + 2 + i]), a = c >> 24;
+                            auto mul = [a](uint32_t v) { return (v * a + 127) / 255; };
+                            px[i] = a << 24 | mul(c >> 16 & 255) << 16 | mul(c >> 8 & 255) << 8 | mul(c & 255);
+                        }
+                        munmap(map, bytes);
+                        wl_shm_pool *pool = wl_shm_create_pool(m_shm, fd, int32_t(bytes));
+                        wl_buffer *buffer = wl_shm_pool_create_buffer(pool, 0, w, h, w * 4, WL_SHM_FORMAT_ARGB8888);
+                        wl_shm_pool_destroy(pool);
+                        xdg_toplevel_icon_v1_add_buffer(icon, buffer, 1);
+                        m_iconBuffers.push_back(buffer); // kept until the end: the compositor may read them later
+                    }
+                    close(fd);
+                    at += 2 + size_t(w) * size_t(h);
+                }
+                xdg_toplevel_icon_manager_v1_set_icon(m_iconManager, m_toplevel, icon);
+                xdg_toplevel_icon_v1_destroy(icon);
+#endif
+            }
+
             // ---- size and scale ------------------------------------------------------------------------------------
 
             void applySize()
@@ -471,9 +529,23 @@ namespace platform::linux_
                     w->m_shapeManager = static_cast<wp_cursor_shape_manager_v1 *>(bind(&wp_cursor_shape_manager_v1_interface, 1));
                 else if (std::strcmp(interface, xdg_activation_v1_interface.name) == 0)
                     w->m_activation = static_cast<xdg_activation_v1 *>(bind(&xdg_activation_v1_interface, 1));
+#ifdef VCS_HAVE_TOPLEVEL_ICON
+                else if (std::strcmp(interface, xdg_toplevel_icon_manager_v1_interface.name) == 0)
+                {
+                    w->m_iconManager = static_cast<xdg_toplevel_icon_manager_v1 *>(
+                        bind(&xdg_toplevel_icon_manager_v1_interface, 1));
+                    xdg_toplevel_icon_manager_v1_add_listener(w->m_iconManager, &kIconManager, w);
+                }
+#endif
             }
             static void globalRemove(void *, wl_registry *, uint32_t) {}
             static constexpr wl_registry_listener kRegistry = {global, globalRemove};
+
+#ifdef VCS_HAVE_TOPLEVEL_ICON
+            static void iconSize(void *, xdg_toplevel_icon_manager_v1 *, int32_t) {}
+            static void iconDone(void *, xdg_toplevel_icon_manager_v1 *) {}
+            static constexpr xdg_toplevel_icon_manager_v1_listener kIconManager = {iconSize, iconDone};
+#endif
 
             static void ping(void *, xdg_wm_base *base, uint32_t serial) { xdg_wm_base_pong(base, serial); }
             static constexpr xdg_wm_base_listener kWmBase = {ping};
@@ -857,6 +929,10 @@ namespace platform::linux_
             wp_fractional_scale_manager_v1 *m_fractionalManager = nullptr;
             wp_cursor_shape_manager_v1 *m_shapeManager = nullptr;
             xdg_activation_v1 *m_activation = nullptr;
+#ifdef VCS_HAVE_TOPLEVEL_ICON
+            xdg_toplevel_icon_manager_v1 *m_iconManager = nullptr;
+            std::vector<wl_buffer *> m_iconBuffers;
+#endif
             std::vector<Output> m_outputs;
 
             wl_surface *m_surface = nullptr;

@@ -162,7 +162,9 @@ def build_launcher(env, verbose):
     if tc.drop_foreign_cache(LAUNCHER_BUILD, os.path.join(tc.ROOT, "launcher")) or tc.stale_tools(LAUNCHER_BUILD) or \
             not os.path.isfile(os.path.join(LAUNCHER_BUILD, "build.ninja")):
         cmd = ["cmake", "-S", os.path.join(tc.ROOT, "launcher"), "-B", LAUNCHER_BUILD, "-G", "Ninja",
-               "-DCMAKE_BUILD_TYPE=Release"] + tc.compiler_defines(env) + tc.deps_defines()
+               "-DCMAKE_BUILD_TYPE=Release"] + tc.launcher_compiler_defines(env) + tc.deps_defines()
+        if os.environ.get("VCS_WAYLAND_PROTOCOLS_DIR"):  # a release built on an older distribution (CI)
+            cmd.append("-DVCS_WAYLAND_PROTOCOLS_DIR=" + os.environ["VCS_WAYLAND_PROTOCOLS_DIR"])
         log = os.path.join(tc.BUILD, "configure_launcher.log")
         if tc.run_with_progress(cmd, log, "[build] configure launcher", env=env) != 0:
             print(tc.tail(log, 30))
@@ -189,10 +191,12 @@ def install_deps(env):
     packages = [p for _, p in missing]
     for label, pkgs in missing:
         print("[deps] missing: %s (%s)" % (label, pkgs))
-    terminal = " ".join(tc.linux_install_command(packages))
+    terminal = " ".join(tc.linux_packages_command(missing))
     if not shutil.which("pkexec"):
         tc.fail("pkexec isn't installed: run this in a terminal, then check again:\n    " + terminal, "no_polkit")
-    cmd = tc.linux_install_command(packages, sudo="pkexec")
+    cmd = tc.linux_packages_command(missing, elevate="pkexec")
+    if "--llvm-repo" in cmd:
+        print("[deps] this release's clang is too old for the game: LLVM's repository (apt.llvm.org) is added first")
     print("[deps] " + " ".join(cmd))
     code = subprocess.call(cmd)
     if code == 126:  # the prompt was dismissed

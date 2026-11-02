@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Make the Windows release zip: the source, the launcher, Python and the libraries - everything but the game.
+"""Make a release: the Windows zip, or the Linux AppImage - the source, the launcher and the libraries (Windows: and
+Python), everything but the game.
 
     python tools/release.py [--ref TAG | --worktree] [--version X] [--launcher EXE] [--out DIR]
 
@@ -15,6 +16,15 @@ Writes build/dist/VCS-Recomp-<version>-windows.zip and its .sha256. Inside, one 
 Never game code or data (DECISIONS.md, source-only): before zipping, every file is checked - no disc images, no
 PS2 executables (MIPS ELF), nothing from generated/, build/ or the Ghidra project - and the release stops if one is.
 Every file in the zip is dated a day before the commit (zip_time): never in the future, whatever the extractor's zone.
+
+    python3 tools/release.py --platform linux [--ref TAG | --worktree] [--launcher BIN] [--allow-new-glibc]
+
+Writes build/dist/VCS-Recomp-<version>-x86_64.AppImage and its .sha256: one file that runs on any x86-64 desktop with
+glibc 2.35 or newer (Ubuntu 22.04, Debian 12 and later; the launcher must be built on such a system - CI's
+ubuntu-22.04 - or the release refuses it, --allow-new-glibc for a test). Inside (AppDir): usr/bin/VCSLauncher, the
+desktop entry and icon, and usr/share/vcs-recomp/release/ - the same files as the zip but Python and FFmpeg (the
+system's) - which the launcher copies at start to the folder the game is built in (tools/update.py install). Made by
+appimagetool with the type 2 runtime (static: no libfuse2 needed), both pinned below by version and SHA-256.
 """
 import argparse
 import hashlib
@@ -35,6 +45,12 @@ import deps  # noqa: E402
 import toolchain as tc  # noqa: E402
 
 DIST = os.path.join(tc.BUILD, "dist")
+APP_ID = "gta-vcs-launcher"  # the desktop entry's name and the Wayland app id (launcher/platform/linux/wayland.cpp)
+APPIMAGETOOL = ("https://github.com/AppImage/appimagetool/releases/download/1.9.1/appimagetool-x86_64.AppImage",
+                "ed4ce84f0d9caff66f50bcca6ff6f35aae54ce8135408b3fa33abfc3cb384eb0")
+APPIMAGE_RUNTIME = ("https://github.com/AppImage/type2-runtime/releases/download/20251108/runtime-x86_64",
+                    "2fca8b443c92510f1483a883f60061ad09b46b978b2631c807cd873a47ec260d")
+GLIBC_FLOOR = (2, 35)  # Ubuntu 22.04; Debian 12 has 2.36
 CACHE = os.path.join(DIST, "cache")
 FORBIDDEN_DIRS = ("generated/", "build/", "ghidra/project/", "ghidra/export/", "mc0/", "mc1/")
 FORBIDDEN_NAME = re.compile(r"(?i)(\.iso|\.gzf|\.chd|\.cso|\.cue)$|(^|/)(SLUS|SLES|SCUS|SLPM|SLPS)_\d{3}\.\d{2}")
@@ -71,7 +87,7 @@ def copy_source(stage, ref, worktree):
 
 
 def build_launcher():
-    exe = os.path.join(tc.ROOT, "VCSLauncher.exe")
+    exe = os.path.join(tc.ROOT, "VCSLauncher.exe" if tc.IS_WINDOWS else "VCSLauncher")
     if subprocess.run([sys.executable, tc.tool("build.py"), "--launcher"]).returncode != 0:
         tc.fail("the launcher didn't build")
     return exe
@@ -89,12 +105,12 @@ def bundle_python(stage, version):
         z.extractall(os.path.join(stage, "python"))
 
 
-def bundle_deps(stage):
-    cached = os.path.join(CACHE, "deps")
-    if deps.check(cached):
+def bundle_deps(stage, platform="windows"):
+    cached = os.path.join(CACHE, "deps" if platform == "windows" else "deps-" + platform)
+    if deps.check(cached, platform):
         if os.path.isdir(cached):
             shutil.rmtree(cached, onerror=lambda f, p, _: (os.chmod(p, 0o666), f(p)))
-        deps.fetch(cached)
+        deps.fetch(cached, platform)
     shutil.copytree(cached, os.path.join(stage, "deps"))
 
 
@@ -188,6 +204,126 @@ def _iso_at(path):
         return fh.read(6) == b"\x01CD001"
 
 
+def pinned_download(url_sha, name):
+    """A tool the release is made with, downloaded once into the cache and checked against its pinned SHA-256."""
+    url, sha = url_sha
+    path = os.path.join(CACHE, name)
+    if not os.path.isfile(path) or hashlib.sha256(open(path, "rb").read()).hexdigest() != sha:
+        print("[release] downloading " + url)
+        os.makedirs(CACHE, exist_ok=True)
+        deps.download(url, path)
+        got = hashlib.sha256(open(path, "rb").read()).hexdigest()
+        if got != sha:
+            os.remove(path)
+            tc.fail("%s: SHA-256 %s, expected %s" % (url, got, sha), "download_failed")
+    os.chmod(path, 0o755)
+    return path
+
+
+def glibc_needed(binary):
+    """The newest GLIBC_x.y symbol version an ELF binary asks for (its .dynstr names them)."""
+    with open(binary, "rb") as f:
+        found = re.findall(rb"GLIBC_(\d+)\.(\d+)", f.read())
+    return max(((int(a), int(b)) for a, b in found), default=(0, 0))
+
+
+def app_dir(stage, launcher, version):
+    """The AppImage's tree: AppRun (the launcher), the desktop entry and icon at the top (appimagetool's contract), the
+    launcher in usr/bin, the release's files in usr/share/vcs-recomp/release (returned; filled by the caller)."""
+    os.makedirs(os.path.join(stage, "usr", "bin"))
+    shutil.copy2(launcher, os.path.join(stage, "usr", "bin", "VCSLauncher"))
+    os.chmod(os.path.join(stage, "usr", "bin", "VCSLauncher"), 0o755)
+    os.symlink("usr/bin/VCSLauncher", os.path.join(stage, "AppRun"))
+    with open(os.path.join(stage, APP_ID + ".desktop"), "w", encoding="utf-8") as f:
+        f.write("[Desktop Entry]\nType=Application\nName=GTA: Vice City Stories\n"
+                "Comment=The PS2 classic, recompiled for this PC: build it from your disc and play\n"
+                "Exec=VCSLauncher\nIcon=%s\nCategories=Game;\nTerminal=false\nStartupWMClass=VCSLauncher\n"
+                "X-AppImage-Version=%s\n" % (APP_ID, version))
+    shutil.copy2(os.path.join(tc.ROOT, "launcher", "launcher.png"), os.path.join(stage, APP_ID + ".png"))
+    os.symlink(APP_ID + ".png", os.path.join(stage, ".DirIcon"))
+    payload = os.path.join(stage, "usr", "share", "vcs-recomp", "release")
+    os.makedirs(payload)
+    return payload
+
+
+def self_test_appimage(appimage):
+    """The AppImage as a player starts it: it copies its files into a fresh install folder, then checks itself (the
+    scripts there, the system's Python running them, doctor.py's answer, Vulkan or lavapipe offscreen)."""
+    folder = os.path.join(DIST, "selftest-install")
+    shutil.rmtree(folder, ignore_errors=True)
+    out = os.path.join(DIST, "selftest.txt")
+    env = dict(os.environ, VCS_INSTALL_DIR=folder)
+    code = subprocess.run([appimage, "--self-test", "--out", out], env=env).returncode
+    report = "(no output)"
+    if os.path.isfile(out):
+        with open(out, encoding="utf-8", errors="replace") as f:
+            report = f.read()
+        os.remove(out)
+    for line in report.splitlines():
+        print("[release]   " + line)
+    shutil.rmtree(folder, ignore_errors=True)
+    if code != 0:
+        os.remove(appimage)
+        tc.fail("the AppImage failed its self-test (above): nothing was written", "release_selftest")
+
+
+def release_linux(a, ref, version):
+    name = "VCS-Recomp-%s-x86_64" % version
+    stage = os.path.join(DIST, name + ".AppDir")
+    if os.path.isdir(stage):
+        shutil.rmtree(stage)
+    launcher = a.launcher or build_launcher()
+    need = glibc_needed(launcher)
+    print("[release] the launcher needs glibc %d.%d (the floor: %d.%d)" % (need + GLIBC_FLOOR))
+    if need > GLIBC_FLOOR and not a.allow_new_glibc:
+        tc.fail("the launcher needs glibc %d.%d, newer than the release's floor %d.%d: build it on Ubuntu 22.04 (CI "
+                "does), or --allow-new-glibc for a test" % (need + GLIBC_FLOOR), "release_glibc")
+    os.makedirs(os.path.dirname(stage), exist_ok=True)
+    payload = app_dir(stage, launcher, version)
+    print("[release] %s: source %s" % (name, "working tree" if a.worktree else ref))
+    copy_source(payload, ref, a.worktree)
+    with open(os.path.join(payload, "VERSION"), "w", encoding="utf-8") as f:
+        f.write(version + "\n")
+    print("[release] libraries (deps/, Linux: with the Vulkan backend's, FFmpeg from the system)")
+    bundle_deps(payload, "linux")
+    licenses(payload)
+    with open(os.path.join(payload, "THIRD_PARTY_LICENSES.txt"), "a", encoding="utf-8") as f:
+        f.write("\n\n" + "=" * 78 + "\nThe AppImage runtime (the start of the .AppImage file)\n" + "=" * 78 + "\n"
+                "AppImage type 2 runtime, release 20251108, https://github.com/AppImage/type2-runtime (MIT), statically "
+                "linked with libfuse 3 (LGPL-2.1), squashfuse (BSD-2-Clause), zstd (BSD-3-Clause) and zlib (zlib "
+                "licence); their sources are at that release. Made with appimagetool 1.9.1 "
+                "(https://github.com/AppImage/appimagetool, MIT).\n")
+    files = sorted(os.path.relpath(os.path.join(d, f), payload).replace(os.sep, "/")
+                   for d, _, fs in os.walk(payload) for f in fs)
+    commit = "" if a.worktree else git("rev-parse", ref, text=True).strip()
+    with open(os.path.join(payload, "RELEASE.json"), "w", encoding="utf-8") as f:
+        json.dump({"version": version, "repository": repository(), "commit": commit, "platform": "linux",
+                   "files": files + ["RELEASE.json"]}, f, indent=0)
+    guard(payload)  # its paths are checked as a release's: build/, generated/, disc images...
+
+    tool = pinned_download(APPIMAGETOOL, "appimagetool-1.9.1-x86_64.AppImage")
+    runtime = pinned_download(APPIMAGE_RUNTIME, "runtime-20251108-x86_64")
+    os.makedirs(a.out, exist_ok=True)
+    out = os.path.join(a.out, name + ".AppImage")
+    if os.path.exists(out):
+        os.remove(out)
+    # extract-and-run: appimagetool is an AppImage itself, and CI has no FUSE
+    env = dict(os.environ, ARCH="x86_64", APPIMAGE_EXTRACT_AND_RUN="1",
+               SOURCE_DATE_EPOCH=os.environ.get("SOURCE_DATE_EPOCH") or str(int(time.time())))
+    print("[release] appimagetool (%d files)" % (len(files) + 1))
+    if subprocess.run([tool, "--no-appstream", "--runtime-file", runtime, stage, out], env=env,
+                      cwd=DIST).returncode != 0 or not os.path.isfile(out):
+        tc.fail("appimagetool failed (above)", "release_failed")
+    os.chmod(out, 0o755)
+    self_test_appimage(out)
+    shutil.rmtree(stage)
+    digest = hashlib.sha256(open(out, "rb").read()).hexdigest()
+    with open(out + ".sha256", "w", encoding="utf-8") as f:
+        f.write("%s  %s\n" % (digest, os.path.basename(out)))
+    print("[release] ok: %s (%.0f MB, sha256 %s)" % (out, os.path.getsize(out) / (1 << 20), digest[:16]))
+    tc.event(result="ok", path=out, version=version)
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     src = ap.add_mutually_exclusive_group()
@@ -198,7 +334,11 @@ def main():
     ap.add_argument("--python", default="%d.%d.%d" % sys.version_info[:3])
     ap.add_argument("--allow-dirty", action="store_true", help="package --ref even with uncommitted changes")
     ap.add_argument("--out", default=DIST)
+    ap.add_argument("--platform", choices=("windows", "linux"), default="windows" if tc.IS_WINDOWS else "linux")
+    ap.add_argument("--allow-new-glibc", action="store_true", help="Linux: a launcher built on a newer system (tests)")
     a = ap.parse_args()
+    if (a.platform == "windows") != tc.IS_WINDOWS:
+        tc.fail("a %s release is made on %s (its launcher is built here)" % (a.platform, a.platform), "release_platform")
 
     ref = a.ref or "HEAD"
     if not a.worktree and not a.allow_dirty:
@@ -227,6 +367,9 @@ def main():
         tc.fail("the tag says %s, VERSION says %s: bump VERSION (and commit) before tagging" % (tag_version, repo_version),
                 "release_version")
     version = a.version or tag_version or repo_version or "0.0.0-dev"
+    if a.platform == "linux":
+        release_linux(a, ref, version)
+        return
     name = "VCS-Recomp-%s-windows" % version
     stage = os.path.join(DIST, name)
     if os.path.isdir(stage):

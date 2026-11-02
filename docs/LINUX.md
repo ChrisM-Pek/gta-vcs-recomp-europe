@@ -46,6 +46,11 @@ build (FetchContent), so no Vulkan SDK is needed.
 
 ## The launcher
 
+Players get it as an AppImage with every release (`VCS-Recomp-<v>-x86_64.AppImage`, glibc 2.35+: Ubuntu 22.04,
+Debian 12 and newer; docs/LAUNCHER.md "The Linux release"); it puts the release's files in
+`~/.local/share/VCSRecomp/install` and builds the game there. On Debian / Ubuntu releases whose clang is older than 19
+the package step adds LLVM's repository (apt.llvm.org) first (`tools/linux_packages.py`).
+
 `python3 tools/build.py --launcher` builds `VCSLauncher` (repository root): the same launcher as on Windows - setup,
 build, play - native on X11 and Wayland, drawing with Vulkan and FreeType (docs/LAUNCHER.md "Linux"). Its build tools
 step installs missing packages through `pkexec` (`python3 tools/build.py --install-deps`, the desktop's password

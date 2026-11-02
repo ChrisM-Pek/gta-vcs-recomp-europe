@@ -96,6 +96,23 @@ namespace
             std::fprintf(stderr, "error: %s\n", error.c_str());
             return 1;
         }
+        // a Linux AppImage puts its files in place first (tools/update.py install): the forms below run them
+        if (app.installing())
+        {
+            std::printf("putting the game's files in place: %s\n", pathText(app.root).c_str());
+            while (app.installing())
+            {
+                app.update(platform::now());
+                platform::sleepFor(0.02);
+            }
+            if (app.task) // still there: it failed (a finished install goes, the folder opens)
+            {
+                for (const auto &line : app.task->log)
+                    std::printf("%s\n", line.c_str());
+                std::fprintf(stderr, "error: %s\n", app.task->errorMessage.c_str());
+                return 1;
+            }
+        }
         const std::string iso = argValue(args, "--iso");
         if (!iso.empty())
             app.chooseDisc(pathFrom(iso));

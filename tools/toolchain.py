@@ -1261,6 +1261,62 @@ def linux_missing(env, deps=None, quiet=False):
     return missing
 
 
+LLVM_PACKAGE_VERSION = 20  # the LLVM the install offers (clang-20 lld-20 llvm-20)
+
+
+def _os_release():
+    try:
+        with open("/etc/os-release", encoding="utf-8") as f:
+            return dict(re.findall(r'^(\w+)="?([^"\n]*)"?', f.read(), re.M))
+    except OSError:
+        return {}
+
+
+def apt_llvm_repo(missing):
+    """"CODENAME:VERSION" when the missing packages want an LLVM that this Debian / Ubuntu doesn't ship (Ubuntu 22.04,
+    Debian 12: their clang is older than the game needs) - tools/linux_packages.py adds apt.llvm.org then; else None."""
+    if _linux_family() != 0 or not any(p.startswith("clang-%d" % LLVM_PACKAGE_VERSION) for _, p in missing):
+        return None
+    try:
+        out = subprocess.run(["apt-cache", "policy", "clang-%d" % LLVM_PACKAGE_VERSION], capture_output=True,
+                             text=True, timeout=60).stdout
+    except (OSError, subprocess.SubprocessError):
+        return None
+    m = re.search(r"Candidate:\s*(\S+)", out)
+    if m and m.group(1) != "(none)":
+        return None  # the distribution (or an apt.llvm.org added earlier) has it
+    info = _os_release()
+    codename = info.get("UBUNTU_CODENAME") or info.get("VERSION_CODENAME")  # Mint and other derivatives: Ubuntu's
+    return "%s:%d" % (codename, LLVM_PACKAGE_VERSION) if codename else None
+
+
+def linux_packages_command(missing, elevate="sudo"):
+    """tools/linux_packages.py install for the missing packages (with LLVM's repository when this release needs it),
+    through sudo (a terminal) or pkexec (the desktop's password prompt). A list."""
+    python = _which("python3", os.environ) or "/usr/bin/python3"
+    cmd = [elevate, python, "-I", os.path.join(ROOT, "tools", "linux_packages.py"), "install"]
+    repo = apt_llvm_repo(missing)
+    if repo:
+        cmd += ["--llvm-repo", repo]
+    return cmd + " ".join(p for _, p in missing).split()
+
+
+def launcher_compiler_defines(env):
+    """The launcher's compiler: clang when there is one (any version: the launcher needs C++20, not the game's clang
+    19), else the system's default (GCC); Windows: clang-cl as the game. A release's launcher is built on an old
+    distribution on purpose (glibc), where only an older clang or GCC exists."""
+    if IS_WINDOWS:
+        return compiler_defines(env)
+    defines = ["-DCMAKE_MAKE_PROGRAM=" + build_tools(env)["ninja"].replace(os.sep, "/")]
+    clang, clangxx = _which("clang", env), _which("clang++", env)
+    if clang and clangxx:
+        defines += ["-DCMAKE_C_COMPILER=" + clang, "-DCMAKE_CXX_COMPILER=" + clangxx]
+        gcc = _gcc_with_libstdcxx(clangxx)
+        if gcc:
+            defines += ["-DCMAKE_C_FLAGS=--gcc-install-dir=" + gcc, "-DCMAKE_CXX_FLAGS=--gcc-install-dir=" + gcc]
+    return defines
+
+
 def linux_install_command(packages, sudo="sudo"):
     """The command that installs these packages on this distro (a list; `sudo` may be "pkexec" or "")."""
     family = _linux_family()
@@ -1283,7 +1339,11 @@ def check_linux_deps(env, deps=None):
         return True
     for label, _ in missing:
         print("[deps] missing: " + label)
-    print("[deps] install them with:\n    " + " ".join(linux_install_command([p for _, p in missing])))
+    if apt_llvm_repo(missing):
+        print("[deps] this release's clang is too old for the game: LLVM's repository (apt.llvm.org) comes first")
+        print("[deps] install them with:\n    " + " ".join(linux_packages_command(missing)))
+    else:
+        print("[deps] install them with:\n    " + " ".join(linux_install_command([p for _, p in missing])))
     return False
 
 

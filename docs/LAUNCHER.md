@@ -8,7 +8,8 @@ run by hand - so the launcher and the README's manual install are one pipeline.
 Status (2026-11-01): rebuilt as a native app of its own - its own window, Direct3D 11 renderer, DirectWrite text and
 animated UI, after uppies - with a rethought flow (Setup, Home, Task); before, SDL3 + Dear ImGui (2026-10-30, checked
 end to end from a release zip in a fresh folder, below). Windows and Linux (2026-11-01: X11 and Wayland, Vulkan,
-FreeType - "Linux" below; Linux releases later, a clone builds it with `python3 tools/build.py --launcher`). Decisions:
+FreeType - "Linux" below; released as an AppImage with each Windows release since 2026-11-03, "The Linux release").
+Decisions:
 DECISIONS.md 2026-10-30 "A launcher for releases", 2026-11-01 "The launcher draws itself", "The launcher on Linux".
 
 ## Why
@@ -60,6 +61,33 @@ Ninja loop that still happens fails as `file_dates` ("Files are dated in the fut
 are harmless in a fresh folder; `update.py` writes files with today's date, so an update still rebuilds what changed.
 Extracting a newer zip by hand over a built folder would not (the sources older than the build): use the launcher's
 update or a new folder.
+
+## The Linux release (2026-11-03)
+
+`python3 tools/release.py --platform linux` (CI's `linux` job on a `v*` tag, on Ubuntu 22.04) writes
+`build/dist/VCS-Recomp-<version>-x86_64.AppImage` (36 MB) and its `.sha256`; CI's `publish` job puts it on the same
+GitHub release as the Windows zip, and only when both were made (DECISIONS.md 2026-11-03).
+
+| In the AppImage | |
+|---|---|
+| `AppRun` -> `usr/bin/VCSLauncher` | the launcher (2.4 MB: the C++ runtime linked in; needs glibc 2.35+) |
+| `gta-vcs-launcher.desktop`, `.png`, `.DirIcon` | the desktop entry and icon (the name is the Wayland app id) |
+| `usr/share/vcs-recomp/release/` | the release's files as in the zip, without Python (the system's `python3`) and FFmpeg (the system's): the source, `VERSION`, `RELEASE.json`, `deps/` (Linux's list: with Vulkan-Headers, volk and VMA; `deps.py --platform linux`), `THIRD_PARTY_LICENSES.txt` (with the AppImage runtime's) - 174 MB, 5,316 files unpacked |
+
+- **The install folder.** The image is read-only and the game is built inside its release folder, so at start the
+  launcher compares the image's `RELEASE.json` with the one in `$XDG_DATA_HOME/VCSRecomp/install` (`VCS_INSTALL_DIR`)
+  and, when they differ, runs the image's `tools/update.py install --from <image> --to <folder>` as a task ("Putting
+  the game's files in place") before anything else; the command-line forms wait for it. Files whose bytes are the same
+  are left alone (their dates too), so an update rebuilds only what changed. From then on everything runs in that
+  folder, as in a release folder on Windows: doctor, build, `build/`, `generated/`.
+- **Updates** (`update.py check` finds the `-x86_64.AppImage` asset; `apply` downloads it, checks the SHA-256 and the
+  AppImage magic, and renames it over `$APPIMAGE`): "Restart the launcher, then update the build", as on Windows.
+- **The shortcut** points at the AppImage file, not where it happens to be mounted.
+- **Made with** appimagetool 1.9.1 and the static type 2 runtime 20251108 (no libfuse2 needed), downloaded once into
+  `build/dist/cache` and checked against pinned SHA-256s. Without FUSE, `--appimage-extract-and-run` (CI does that).
+- **Checks before it is written**: the same game-file guard as the zip (on the release files), the launcher's glibc
+  need (the floor 2.35: `--allow-new-glibc` for a local test on a newer system), and the AppImage's own
+  `--self-test` started as a player would, which puts its files into a fresh folder first.
 
 ## The player's flow
 
@@ -245,7 +273,9 @@ repository root, ~1 MB stripped, 27 s from scratch on the dev laptop.
   when no terminal shows them.
 - **Setup's build tools step**: doctor.py lists the missing packages and the command; *Install packages* runs
   `build.py --install-deps` (pkexec: the desktop's password prompt); *Install in a terminal* opens one with the same
-  command where there is no polkit agent. Copying a DVD and update checks are hidden (Windows-only tools for now).
+  command where there is no polkit agent; on Debian / Ubuntu releases without clang 19+ (22.04, Debian 12) the
+  package step adds apt.llvm.org first (`tools/linux_packages.py`, the only thing that runs as root). Copying a DVD is
+  hidden (`rip_disc.py` is Windows only); update checks show in an AppImage, not in a clone.
 
 ## How it fits together
 
@@ -363,6 +393,24 @@ runs the real window and frame loop without showing it and prints the frames dra
   that's missing or too old (`no_cmake`). The four Linux archives were downloaded, matched their pins and unpacked;
   **the Linux search and the downloaded programs running there are untested** (no Linux machine).
 
+## Checked (2026-11-03, the Linux AppImage)
+
+On the dev laptop (Mint 22.3, i7-6600U, HD 520), an AppImage made by `release.py --platform linux --worktree
+--allow-new-glibc`:
+- Its own self-test (through FUSE, as a player starts it): the files into a fresh folder, all checks ok. 36 MB, 37 s
+  to make (the Linux `deps/` fetched the first time), 5,316 files / 174 MB inside, no `build/`, `generated/` or disc.
+- The release refuses a launcher that needs glibc 2.38 without `--allow-new-glibc`.
+- **End to end**, a fresh install folder: the files in place (a task in the window, ~3 s), then `--build` with the
+  disc: recompile and a ThinLTO build of the game in **18 min** from the start, nothing downloaded (`deps/`); the
+  generated C++ identical to the clone's (only `recompile_stamp.json` differs). `--play` with its own `VCS_DATA_DIR`:
+  the intro movie (321 pictures, 0 dropped), the attract mode; the launcher returned when the game ended.
+- **Update**: `update.py apply --appimage <0.1.3>` replaced the running 0.1.2 AppImage file; its next start put 8
+  changed files in place (the edited docs, `VERSION`, `RELEASE.json`, and zlib's `zconf.h`, which zlib's configure
+  moves aside) and `--build` took **1.7 s** in all: no recompile, two Ninja steps.
+- The real window: first start shows "Putting the game's files in place" with its progress, then setup at the disc.
+- Not run here: the AppImage built by CI on Ubuntu 22.04 (glibc 2.35), on an older distribution; apt.llvm.org added
+  for real (no 22.04 / Debian 12 machine or container on the dev laptop); a download from a real GitHub release.
+
 ## Checked (2026-11-01, Linux)
 
 On the dev laptop (Mint 22.3, XFCE on X11, i7-6600U, HD 520, Mesa 25), the launcher built by `build.py --launcher`:
@@ -388,6 +436,7 @@ On the dev laptop (Mint 22.3, XFCE on X11, i7-6600U, HD 520, Mesa 25), the launc
 | Idle cost (`--hidden --quit-after 20`) | 62 frames in 20 s - the entrance animation and the doctor's run - then none; 94 ms of CPU in all (before Home moved) |
 | Home, moving (2026-11-01) | 783 frames in 20 s - the entrance, then ~33 a second; 0.16 ms of CPU a frame (about 0.5% of one core); every other screen still draws nothing when idle |
 | A frame | 0.67 ms CPU on average (the first ones, rasterising glyphs: up to 14 ms); one draw call, a few hundred instances |
+| Linux AppImage | 36 MB; made in 37 s; first start puts 174 MB in place in ~3 s; the game built from it in 18 min (laptop, ThinLTO); an update's start + rebuild 1.7 s |
 | Linux: build from scratch (laptop, clang 20, ThinLTO) | **27 s**; `VCSLauncher` 1.0 MB stripped (the X11 icon is 0.17 MB of it) |
 | Linux: idle (reduce motion, `--hidden --quit-after 20`) | 7 frames in 20 s (the entrance and the doctor's answer), then none; **5 ms of CPU in all** |
 | Linux: Home, moving (`--hidden --quit-after 10`, paced at 60 Hz) | 346 frames in 10 s (~33 a second after the entrance); 0.96 ms a frame on the laptop at its idle clock (0.33 of it the renderer: upload + submit); 40 ms of CPU a second |
@@ -399,7 +448,7 @@ On the dev laptop (Mint 22.3, XFCE on X11, i7-6600U, HD 520, Mesa 25), the launc
 
 ## Not done / next
 
-- Linux: a release tarball (`release.py`) and `update.py` for it; `rip_disc.py` on Linux; a clipboard (the terminal
+- Linux: `rip_disc.py` on Linux; a clipboard (the terminal
   fallback stands in for *Copy the command*); xdg-foreign for the portal dialog's parent on Wayland; GNOME / KDE checked
   by hand.
 

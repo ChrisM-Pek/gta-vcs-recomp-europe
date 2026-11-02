@@ -275,6 +275,10 @@ namespace ps2writewatch
             std::fprintf(stderr, "[write-watch] PAGEMAP_SCAN failed (%s): watching stops\n", std::strerror(errno));
             for (uint32_t &g : g_generation)
                 ++g;
+            // [gta-recomp] and the header's inline view off: unchangedSince() false from here on, as before it was
+            // inline (it tested g_base)
+            g_generations = nullptr;
+            g_generationPages = 0;
             closeLinux();
             g_base = nullptr; // enabled() false; the memory stays (release() frees it as plain memory below)
             return 0u;

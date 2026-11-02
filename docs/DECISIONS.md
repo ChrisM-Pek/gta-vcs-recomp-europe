@@ -953,3 +953,13 @@ The user asked for stutters first (issues #16, #29), the game to behave as the o
 - **The stutter rig flies over the roofs** rather than drives the roads: the AI drivers the rig can make stood more
   than they drove, and the route has to be the same every run to compare builds. Streaming, texture bursts and level
   swaps come from the camera crossing new ground at speed, which the flight does.
+
+## 2026-11-02 - Linux: Vulkan makes textures off the main thread when asked, not by default
+
+The user asked whether the Windows stutter work helps the Linux port (PERFORMANCE.md 25). Everything but the texture
+helper threads is portable code and was already in. Vulkan now supports free-threaded creation (staged first
+contents, recorded at the next submit), but it stays off by default there: Vulkan's main thread only records a copy
+per new texture (~8 ms a 350-texture burst; D3D11's creation was 52 ms), and on the 2-core laptop the two helpers
+slowed the GS stage's decode more than they saved. `PS2X_HW_EARLY_TEXTURES=1` turns it on; a 4+ core Linux machine
+should decide the default. The cruise takes a copy of the player's card (`build/rig/saves/user`) where the rig's
+Fort Baxter card is missing; never the live card, and no new game (its first mission keeps the player out of the car).

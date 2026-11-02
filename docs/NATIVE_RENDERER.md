@@ -467,11 +467,13 @@ it is 1920x1080, 3 x 2.41 pixels per PS2 pixel.
   the CPU (2x2 box, rounded: `buildMipChain`) and the texture made in one plain creation with every level
   (`rhi::Device::createTextureLevels`) - before 2026-11-02 each new texture was a render target with a `GenerateMips`
   pass on the main thread, which made texture bursts hitch (PERFORMANCE.md 21; `PS2X_HW_CPU_MIPS=0` = before).
-- **New textures are made off the main thread** (D3D11, 2026-11-02, PERFORMANCE.md 21): the GS stage decodes a texture
+- **New textures are made off the main thread** (D3D11; Vulkan when asked, 2026-11-02, PERFORMANCE.md 21, 25): the GS stage decodes a texture
   (a paletted one through a 256-entry table: `GSCpuBackend::paletteTable`) and hands the pixels to two helper threads
   that make it on the free-threaded device (`rhi::Device::freeThreadedCreation`, `HwBackend::makeTextureEarly`); the
-  executor takes the finished texture at its `TexCreate` (`EarlyTexture::done`). Vulkan records first contents into
-  the frame's set-up commands, so it keeps making them on the main thread. `PS2X_HW_EARLY_TEXTURES=0` = the main thread.
+  executor takes the finished texture at its `TexCreate` (`EarlyTexture::done`). Vulkan makes the image there and stages
+  its first contents; the recording thread records the copies into the set-up commands at its next submit
+  (`stage` / `drainStaged`). Off by default with Vulkan (no gain measured on a 2-core laptop, PERFORMANCE.md 25):
+  `PS2X_HW_EARLY_TEXTURES=1` turns it on, `=0` off everywhere.
 - **The GS bilinear by Gather** (2026-10-30, PERFORMANCE.md section 15): with filtering off, the same draws (power-of-two
   textures without a mip chain) keep the GS's bilinear but fetch its 2x2 texels with `Gather` through a nearest sampler
   of their wrapping (`linearIipFgeAte.x == 3`, `m_gatherSampler`), drawn with a pixel shader built for that path alone

@@ -268,7 +268,7 @@ namespace
         float hudPivot = 0.0f, hudSqueeze = 1.0f;
     };
 
-    // [gta-recomp] A texture made on a helper thread (a free-threaded device: D3D11; HwBackend::makeTextureEarly): its
+    // [gta-recomp] A texture made on a helper thread (a free-threaded device: D3D11, Vulkan; HwBackend::makeTextureEarly): its
     // pixels go there, the texture comes back; the main thread takes it when it executes the TexCreate.
     struct EarlyTexture
     {
@@ -4129,11 +4129,15 @@ namespace
             }
             if (!m_rhi->ready())
                 return false;
-            static const bool early = [] {
+            // [gta-recomp] PS2X_HW_EARLY_TEXTURES: 0 off, 1 on; unset: on with D3D11, off with Vulkan - its main thread
+            // only records a copy per new texture (~8 ms a 350-texture burst, D3D11's creation was 52), and on a
+            // 2-core CPU the helpers slowed the GS stage's decode more than they saved there (PERFORMANCE.md 25)
+            static const int early = [] {
                 const char *e = std::getenv("PS2X_HW_EARLY_TEXTURES");
-                return !(e && *e == '0');
+                return e && *e ? (*e == '0' ? 0 : 1) : -1;
             }();
-            if (early && !m_earlyDevice.load(std::memory_order_relaxed) && device.freeThreadedCreation()) // [gta-recomp]
+            const bool earlyOn = early == 1 || (early < 0 && device.backend() == rhi::Backend::D3D11);
+            if (earlyOn && !m_earlyDevice.load(std::memory_order_relaxed) && device.freeThreadedCreation())
                 m_earlyDevice.store(&device, std::memory_order_release);
             if (m_nativeFrame) // [gta-recomp] the picture's targets follow the window (gsHwSetFrameSize)
             {
@@ -4607,13 +4611,13 @@ namespace
             return true;
         }
 
-        // [gta-recomp] With a free-threaded device (D3D11) a new texture is made by helper threads, right after its decode:
+        // [gta-recomp] With a free-threaded device (D3D11, Vulkan) a new texture is made by helper threads, right after its decode:
         // the driver's creation and first upload ran on the main thread between its draws, and a burst of new textures
         // (driving into a new area: 100-600 in a frame) held the picture back there (PERFORMANCE.md 21, issue #29); made
         // on the GS stage itself, the burst held back the frame being built. The helpers (two) make it - with its mip
         // chain for anisotropic filtering - while the GS stage goes on; the main thread takes it when it executes the
         // TexCreate (waiting only if it is not done yet). True when handed off (tc.pixels moved there).
-        // PS2X_HW_EARLY_TEXTURES=0: made on the main thread, as before.
+        // PS2X_HW_EARLY_TEXTURES=0: made on the main thread, as before (the default with Vulkan; =1 turns it on there).
         bool makeTextureEarly(TexCreate &tc, bool mipChain)
         {
             rhi::Device *dev = m_earlyDevice.load(std::memory_order_acquire);

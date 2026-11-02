@@ -37,13 +37,16 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <functional>
 #include <memory>
+#include <mutex>
 #include <string>
+#include <thread>
 #include <unordered_map>
 #include <vector>
 
@@ -191,19 +194,40 @@ namespace rhi
             // the device's bindings forget an object being destroyed (D3D11 kept a reference to what is bound; the
             // renderer replaces buffers and textures that are still bound)
             std::function<void(const void *)> unbind;
+            // The thread that records (set at each beginFrame). Textures may also be made on other threads
+            // (freeThreadedCreation: the GS stage's texture makers); one released there was never bound, and its frees
+            // wait in `orphans` until the owner's next submit puts them into that frame's queue.
+            std::atomic<std::thread::id> owner{};
+            std::mutex orphanMutex;
+            std::vector<std::function<void()>> orphans;
+
+            bool onOwner() const { return owner.load(std::memory_order_relaxed) == std::this_thread::get_id(); }
 
             void forget(const void *object)
             {
-                if (alive && unbind)
+                if (alive && unbind && onOwner())
                     unbind(object);
             }
 
             void defer(std::function<void()> free)
             {
-                if (alive)
+                if (!onOwner())
+                {
+                    std::lock_guard<std::mutex> lock(orphanMutex);
+                    orphans.push_back(std::move(free));
+                }
+                else if (alive)
                     garbage[frame].push_back(std::move(free));
                 else
                     free();
+            }
+
+            std::vector<std::function<void()>> takeOrphans()
+            {
+                std::lock_guard<std::mutex> lock(orphanMutex);
+                std::vector<std::function<void()>> out;
+                out.swap(orphans);
+                return out;
             }
 
             void collect(uint32_t slot)
@@ -220,6 +244,8 @@ namespace rhi
                     vkDeviceWaitIdle(device);
                 for (uint32_t i = 0; i < kFrames; ++i)
                     collect(i);
+                for (auto &f : takeOrphans())
+                    f();
                 if (allocator)
                     vmaDestroyAllocator(allocator);
                 if (device)
@@ -390,6 +416,7 @@ namespace rhi
                     return false;
                 }
                 m_offscreen = desc.offscreen || !desc.vulkan.createSurface;
+                m_core->owner.store(std::this_thread::get_id(), std::memory_order_relaxed); // beginFrame keeps it current
                 if (!createInstance(desc, error) || !pickDevice(desc, error) || !createDevice(error))
                     return false;
                 m_core->alive = true;
@@ -421,6 +448,14 @@ namespace rhi
                 vkDeviceWaitIdle(m_core->device);
                 for (uint32_t i = 0; i < kFrames; ++i)
                     m_core->collect(i);
+                for (auto &f : m_core->takeOrphans())
+                    f();
+                {
+                    std::lock_guard<std::mutex> lock(m_stagedMutex); // made, never recorded: only their staging memory
+                    for (Staged &st : m_staged)
+                        vmaDestroyBuffer(m_core->allocator, st.buffer, st.allocation);
+                    m_staged.clear();
+                }
                 m_dummyTexture.reset();
                 m_offscreenBack.reset();
                 m_defaultSampler.reset();
@@ -463,7 +498,8 @@ namespace rhi
             const std::string &adapterName() const override { return m_adapterName; }
 
             // ---- resources ----------------------------------------------------------------------------------------
-            std::unique_ptr<Texture> createTexture(const TextureDesc &desc, const void *data, uint32_t rowPitch) override
+            // The image and its views, no contents yet (layout undefined). Thread-safe: only device calls and VMA.
+            std::unique_ptr<VkTexture> makeImage(const TextureDesc &desc)
             {
                 TextureDesc sized = desc;
                 sized.width = std::max(1u, desc.width);
@@ -515,7 +551,7 @@ namespace rhi
                 static const bool logCreates = std::getenv("PS2X_RHI_LOG_CREATES") != nullptr;
                 if (logCreates && w * h >= 256u * 256u)
                 {
-                    static uint64_t created = 0;
+                    static std::atomic<uint64_t> created{0}; // helper threads make textures too
                     if (++created <= 2000u)
                         std::fprintf(stderr, "[rhi] create %ux%u x%u '%s'\n", w, h, desc.samples, desc.name ? desc.name : "");
                 }
@@ -537,6 +573,29 @@ namespace rhi
                              : (desc.usage & UsageRenderTarget) ? VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
                              : (desc.usage & UsageDepth)        ? VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL
                                                                 : VK_IMAGE_LAYOUT_GENERAL;
+                return t;
+            }
+
+            bool freeThreadedCreation() const override { return true; } // off the owner thread: stage() (PERFORMANCE.md 25)
+
+            std::unique_ptr<Texture> createTexture(const TextureDesc &desc, const void *data, uint32_t rowPitch) override
+            {
+                auto t = makeImage(desc);
+                if (!t)
+                    return nullptr;
+                const uint32_t w = t->desc().width, h = t->desc().height;
+                const bool depth = desc.format == Format::D32F;
+                if (!m_core->onOwner()) // a helper thread (freeThreadedCreation): one level with data, sampled, no target
+                {
+                    const void *levels[1] = {data};
+                    const uint32_t pitches[1] = {rowPitch ? rowPitch : w * 4u};
+                    if (!data || t->mips > 1u || (desc.usage & (UsageRenderTarget | UsageDepth)) || !stage(*t, levels, pitches, 1u))
+                    {
+                        std::fprintf(stderr, "[rhi] createTexture %ux%u off the render thread: not a sampled texture with data\n", w, h);
+                        return nullptr;
+                    }
+                    return t;
+                }
 
                 // first contents, in the frame's set-up commands (before anything recorded so far can use it): the data,
                 // or zeros for targets
@@ -675,6 +734,19 @@ namespace rhi
                 TextureDesc d = desc;
                 d.usage = UsageSampled;
                 d.mipLevels = std::max(1u, levelCount);
+                if (!m_core->onOwner()) // a helper thread (freeThreadedCreation): every level staged
+                {
+                    auto t = makeImage(d);
+                    if (!t)
+                        return nullptr;
+                    uint32_t pitches[16];
+                    const uint32_t n = std::min({t->mips, levelCount, 16u});
+                    for (uint32_t i = 0; i < n; ++i)
+                        pitches[i] = std::max(1u, t->desc().width >> i) * 4u;
+                    if (!stage(*t, levels, pitches, n))
+                        return nullptr;
+                    return t;
+                }
                 auto base = createTexture(d, nullptr, 0);
                 if (!base)
                     return nullptr;
@@ -1606,6 +1678,7 @@ namespace rhi
 
             void beginFrame()
             {
+                m_core->owner.store(std::this_thread::get_id(), std::memory_order_relaxed);
                 m_core->frame = (m_core->frame + 1) % kFrames;
                 FrameSlot &f = frame();
                 if (f.submitted)
@@ -1642,6 +1715,7 @@ namespace rhi
                 }
                 for (; m_markerDepth > 0; --m_markerDepth) // debug labels end with their command buffer; GPU timer spans go on
                     vkCmdEndDebugUtilsLabelEXT(m_cmd);
+                drainStaged();
                 VkCommandBuffer cbs[2];
                 uint32_t n = 0;
                 if (m_init)
@@ -2121,6 +2195,88 @@ namespace rhi
                 return made;
             }
 
+            // ---- textures made on other threads (freeThreadedCreation) ---------------------------------------------
+            // A new texture's first contents off the owner thread: copied there into a staging buffer of their own; the
+            // copies go into the set-up commands at the owner's next submit (drainStaged). The texture counts as resting
+            // from now on: the owner gets it only after this returns, so anything it records with it comes after the
+            // drain's copies in the same submit (the set-up commands run first) or in a later one.
+            bool stage(VkTexture &t, const void *const *levels, const uint32_t *pitches, uint32_t count)
+            {
+                Staged st;
+                st.image = t.image;
+                st.aspect = t.aspect;
+                st.mips = t.mips;
+                st.resting = t.resting;
+                VkDeviceSize size = 0;
+                for (uint32_t i = 0; i < count; ++i)
+                {
+                    const uint32_t w = std::max(1u, t.desc().width >> i), h = std::max(1u, t.desc().height >> i);
+                    VkBufferImageCopy &c = st.regions[st.count++];
+                    c = {};
+                    c.bufferOffset = size;
+                    c.imageSubresource = {t.aspect, i, 0, 1};
+                    c.imageExtent = {w, h, 1};
+                    size += (static_cast<VkDeviceSize>(w) * h * 4u + 15u) & ~VkDeviceSize(15);
+                }
+                VkBufferCreateInfo bi{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
+                bi.size = std::max<VkDeviceSize>(size, 16);
+                bi.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+                VmaAllocationCreateInfo ai{};
+                ai.usage = VMA_MEMORY_USAGE_AUTO;
+                ai.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT;
+                ai.requiredFlags = VK_MEMORY_PROPERTY_HOST_COHERENT_BIT; // visible to the GPU at the submit
+                VmaAllocationInfo info{};
+                if (vmaCreateBuffer(m_core->allocator, &bi, &ai, &st.buffer, &st.allocation, &info) != VK_SUCCESS)
+                {
+                    std::fprintf(stderr, "[rhi] staging memory (%llu bytes) failed\n", static_cast<unsigned long long>(bi.size));
+                    return false;
+                }
+                for (uint32_t i = 0; i < st.count; ++i)
+                {
+                    const VkBufferImageCopy &c = st.regions[i];
+                    const uint32_t row = c.imageExtent.width * 4u;
+                    uint8_t *dst = static_cast<uint8_t *>(info.pMappedData) + c.bufferOffset;
+                    const auto *src = static_cast<const uint8_t *>(levels[i]);
+                    if (pitches[i] == row)
+                        std::memcpy(dst, src, static_cast<size_t>(row) * c.imageExtent.height);
+                    else
+                        for (uint32_t y = 0; y < c.imageExtent.height; ++y)
+                            std::memcpy(dst + static_cast<size_t>(y) * row, src + static_cast<size_t>(y) * pitches[i], row);
+                }
+                t.layout = t.resting;
+                std::lock_guard<std::mutex> lock(m_stagedMutex);
+                m_staged.push_back(st);
+                return true;
+            }
+
+            // The owner, at each submit: the staged textures' copies into the set-up commands; their staging buffers and
+            // the frees of textures released off this thread go with this frame (after its fence)
+            void drainStaged()
+            {
+                auto orphans = m_core->takeOrphans(); // first: an orphan's own copy is staged before it can be released
+                std::vector<Staged> staged;
+                {
+                    std::lock_guard<std::mutex> lock(m_stagedMutex);
+                    staged.swap(m_staged);
+                }
+                if (!staged.empty())
+                {
+                    VkCommandBuffer cmd = initCmd();
+                    for (const Staged &st : staged)
+                    {
+                        imageBarrier(cmd, st.image, st.aspect, 0, st.mips, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+                        vkCmdCopyBufferToImage(cmd, st.buffer, st.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, st.count, st.regions);
+                        imageBarrier(cmd, st.image, st.aspect, 0, st.mips, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, st.resting);
+                        Core *c = m_core.get();
+                        const VkBuffer b = st.buffer;
+                        const VmaAllocation a = st.allocation;
+                        m_core->garbage[m_core->frame].push_back([c, b, a] { vmaDestroyBuffer(c->allocator, b, a); });
+                    }
+                }
+                for (auto &f : orphans)
+                    m_core->garbage[m_core->frame].push_back(std::move(f));
+            }
+
             // ---- copies -------------------------------------------------------------------------------------------
             void uploadRegion(VkCommandBuffer cmd, VkTexture &t, uint32_t x, uint32_t y, uint32_t w, uint32_t h, const void *data, uint32_t pitch,
                               uint32_t level = 0)
@@ -2516,6 +2672,18 @@ namespace rhi
 
             std::array<FrameSlot, kFrames> m_frames;
             VkFence m_waitFence = VK_NULL_HANDLE;
+            struct Staged // a texture made off the owner thread, its first contents waiting (stage / drainStaged)
+            {
+                VkImage image = VK_NULL_HANDLE;
+                VkImageAspectFlags aspect = 0;
+                uint32_t mips = 1, count = 0;
+                VkImageLayout resting = VK_IMAGE_LAYOUT_UNDEFINED;
+                VkBuffer buffer = VK_NULL_HANDLE;
+                VmaAllocation allocation = VK_NULL_HANDLE;
+                VkBufferImageCopy regions[16];
+            };
+            std::mutex m_stagedMutex;
+            std::vector<Staged> m_staged;
             uint64_t m_frameSerial = 0;
             VkCommandBuffer m_cmd = VK_NULL_HANDLE, m_init = VK_NULL_HANDLE;
             bool m_recording = false, m_rendering = false;

@@ -5,9 +5,10 @@
     python tools/cruise.py report perf.csv [--from S] [--to S] [--json OUT]
     python tools/cruise.py record ROUTE [--minutes 8] [--spot 0] [--speed 40] [--style 3]
 
-run: from a copy of build/rig/saves/fortbaxter (noon, sunny, invincible), a car at the route's start, then the rig's
-`cruise` (src/debug/rig.cpp) puts the car each game frame at the route's point `speed * step` further on, facing along
-it, with that move speed - the same path at the same pace every run, so streaming, the camera and the renderer get the
+run: from a copy of build/rig/saves/fortbaxter (else saves/user, a copy of the player's card; noon, sunny,
+invincible), a car at the route's start, then the rig's `cruise` (src/debug/rig.cpp) puts the car each game frame at
+the route's point `speed * step` further on, facing along it, with that move speed - the same path at the same pace
+every run, so streaming, the camera and the renderer get the
 same load and two builds (or two settings) can be compared. The game writes its per-frame CSV (PS2X_PERF_LOG) to
 OUT/perf.csv; the report follows (OUT/stutter.json). Defaults: frame-rate independent timing at a 60 cap (what most
 players run), the brightness probe off (PS2X_FRAME_STATS=0: its GPU read-back every frame would hide GPU-side
@@ -133,7 +134,15 @@ def run(out, route, speed, laps, fps, extra_env, name, settle=4.0, shots=0.0):
     env = {"VCS_ASPECT": "43", "VCS_TIMING": "1", "VCS_FPS": str(fps), "PS2X_FRAME_STATS": "0",
            "PS2X_PERF_LOG": csv_path}
     env.update(extra_env)
-    save = os.path.join(ROOT, "build", "rig", "saves", "fortbaxter")
+    # the Fort Baxter card copy, else a copy of the player's card (build/rig/saves/user, copied from the live card - never
+    # the live card itself). A new game does not do: its first mission keeps the player out of the cruise's car
+    saves = os.path.join(ROOT, "build", "rig", "saves")
+    save = next((os.path.join(saves, s) for s in ("fortbaxter", "user") if os.path.isdir(os.path.join(saves, s, "mc0"))),
+                None)
+    if not save:
+        sys.exit("[cruise] no card copy in %s (fortbaxter/ or user/, each holding mc0/): copy a card with a save "
+                 "past the first mission there" % os.path.relpath(saves, ROOT))
+    print("[cruise] from the card copy %s" % os.path.relpath(save, ROOT))
     g = rig.Game.start(save=save, name=name, port=47670, data_dir=os.path.join(out, "data"), env=env)
     run_secs = 0.0
     try:

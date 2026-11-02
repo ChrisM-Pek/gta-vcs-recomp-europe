@@ -115,4 +115,5 @@ prompt) or opens a terminal with the command. `VCS_LAUNCHER_VIDEO=x11|wayland`, 
 | Vulkan optimisation pass: layout-based barriers, incremental push descriptors; spirv-opt measured (no gain) | done: 60 fps locked at a 60 cap on the HD 520 (PERFORMANCE.md 16) |
 | The rig on Linux: regress, tour, saves, trainer, controls, shakedown, finale, soundcheck, soak, framerate audit | to do |
 | The launcher: X11 + Wayland, Vulkan, FreeType, portal dialogs, `--install-deps`; CI job on Ubuntu 24.04 (lavapipe) | done (2026-11-01): checked in nested Xephyr / weston (docs/LAUNCHER.md "Checked (Linux)"); GNOME / KDE by hand to do; a Linux release to do |
+| The Windows stutter work (PERFORMANCE.md 21-24) on Linux | done (2026-11-02, PERFORMANCE.md 25): portable, in; Vulkan's free-threaded texture creation added, off by default (no gain on the laptop; `PS2X_HW_EARLY_TEXTURES=1`); `cruise.py` from a copy of the player's card |
 | Performance on this laptop (i5 Skylake, HD 520: the "modest hardware" target) in PERFORMANCE.md | 30 locked (original timing), 60 locked at a 60 cap, ~83 shown fps uncapped (frame-rate independent; PERFORMANCE.md 16-18) |

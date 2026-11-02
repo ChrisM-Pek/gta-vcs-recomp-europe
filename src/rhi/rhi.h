@@ -279,8 +279,8 @@ namespace rhi
         // costs one plain creation each (PERFORMANCE.md 21).
         virtual std::unique_ptr<Texture> createTextureLevels(const TextureDesc &desc, const void *const *levels, uint32_t levelCount) = 0;
         // True when createTexture (one level, with data, not a target) and createTextureLevels may be called from any
-        // thread while the owner draws (D3D11: device creation calls are free-threaded). Vulkan records first contents
-        // into the frame's set-up commands: false.
+        // thread while the owner draws (D3D11: device creation calls are free-threaded; Vulkan: the image is made there
+        // and its first contents staged, then recorded into the set-up commands at the owner's next submit).
         virtual bool freeThreadedCreation() const { return false; }
 
         virtual std::unique_ptr<Buffer> createBuffer(const BufferDesc &desc, const void *data = nullptr) = 0;

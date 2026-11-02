@@ -927,7 +927,7 @@ Python scripts still usable on their own. docs/LAUNCHER.md has the whole of it; 
 | `PS2X_HW_DECODE_FAST=0` | textures decoded from their upload through the GS swizzle per texel even when the upload has the texture's own layout |
 | `PS2X_HW_PALETTE_TABLE=0` | paletted textures decoded with the CLUT lookup per texel instead of a 256-entry table (PERFORMANCE.md 21) |
 | `PS2X_HW_CPU_MIPS=0` | anisotropic filtering's mip chains by a render-target texture and `GenerateMips` on the main thread, as before 2026-11-02 |
-| `PS2X_HW_EARLY_TEXTURES=0` | new textures made on the main thread at their `TexCreate` instead of by the helper threads (D3D11) |
+| `PS2X_HW_EARLY_TEXTURES=0` / `=1` | new textures made on the main thread at their `TexCreate` instead of by the helper threads (the default with D3D11) / by the helper threads with Vulkan too (off there by default; PERFORMANCE.md 25) |
 | `VCS_NATIVE_INFLATE_FAST=0`, `VCS_NATIVE_INFLATE_FAST_VERIFY=1` | the native inflate's byte-wise bit reader (before 2026-11-02); both readers on every call, output and state compared (PERFORMANCE.md 24) |
 | `VCS_NATIVE_PARAMS=0`, `VCS_NATIVE_PARAMS_VERIFY=1` | the script VM's CollectParameters (FUN_00254B90) recompiled as before; the original runs and its words 1.. are compared with the native decode (PERFORMANCE.md 23) |
 | `VCS_MUSIC_LOG=1` | the native music driver's commands (stream open / stop / preload ...) with the state it found |

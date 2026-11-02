@@ -611,6 +611,28 @@ compares the bytes and the whole state left: a cruise (boot, the swaps, streamin
 in the per-symbol decode itself (a literal per iteration, the literal / match branch), where zlib's own bookkeeping has
 to run per symbol to stay exact. A bigger step would be multi-symbol tables (libdeflate's), checked the same way.
 
+### 25. Linux: the stutter work on Vulkan (2026-11-02)
+
+Sections 21-24 were made and measured on Windows (D3D11). On Linux:
+- **Portable, so already in the Linux build**: the palette table, the CPU mip chains (`createTextureLevels`, implemented
+  for Vulkan in 21), the level swap's music stop, the VU0 natives, CollectParameters and the inflate reader - plain C++,
+  no platform code. The RSL skip test (23) only runs with write watch, opt-in on Linux (section 20).
+- **Texture helper threads (21) were D3D11 only.** Vulkan now has free-threaded creation too: off the recording thread
+  the image and its views are made and the pixels copied into a staging buffer of their own (`stage`); the recording
+  thread puts the copies into the set-up commands at its next submit (`drainStaged`), before anything recorded can use
+  the texture. A texture released off that thread is never bound: its frees wait (`Core::orphans`) for the next submit
+  and go with that frame. Three cruises with it on: no Vulkan errors in the logs.
+- **Measured** (the cruise from a copy of the player's card - the rig's `fortbaxter` card is on the Windows machine only;
+  quick build, defaults, i7-6600U / HD 520, three runs each, alternated, the laptop warming up over them: hitch time
+  818-1,576 ms a minute either way). What holds in every run: in frames with 50+ new textures the main thread's
+  longest host frame is ~3 ms shorter with the helpers (27-29 vs 30-32 ms) - its creation cost was ~8 ms a 350-texture
+  burst, against D3D11's 52 - while the GS stage's decode is ~2.5 ms longer (7.4-7.9 vs 3.9-6.0 ms: two helpers on a
+  2-core CPU take it from the game's threads), and such frames over 20 ms: 23-29 with vs 20-23 without. No gain here,
+  so with Vulkan the helpers are off unless asked for (`PS2X_HW_EARLY_TEXTURES=1`); D3D11 keeps them on. To measure on
+  a 4+ core machine before changing that default.
+- **What the cruise shows on this laptop**: the largest hitches are game-thread frames of 58-76 ms with nothing to
+  upload - the level swaps on a slower CPU (Windows: 36-46 ms) - and frames held behind the GPU (`wait_ms` 30-60).
+
 ## Next
 
 - **The heavy views (~120 fps)**: the game thread's chain submission there (1.4-1.6 ms: the VIF1 chain copy, the walker

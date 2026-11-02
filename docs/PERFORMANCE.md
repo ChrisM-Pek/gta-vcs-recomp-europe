@@ -591,6 +591,26 @@ Uncapped cruise after 22 and 23: 182-185 fps (from 168), game thread p50 5.2 ms.
 
 Uncapped (defaults): 188 fps, frame p50 5.1 ms.
 
+### 24. The level swap's inflate: a 64-bit bit reader, short copies (2026-11-02)
+
+After sections 21-23 the cruise's only hitches on the ThinLTO build are the four Beach / Mainland swaps: one game frame
+of 36-41 ms each, about half of it zlib's `inflate_fast` (native since section 14): ~5 MB per swap in ~150 calls,
+~20 ms - 247 MB/s. Tried, each exact:
+- **A 64-bit bit buffer** refilled 8 bytes at a time at the top of each symbol (a symbol takes at most 48 bits), with
+  zlib's own `in` / `bits` still counted byte for byte as zlib pulls them - only counted. zlib's state after a call
+  (next_in, bits, the unconsumed bits in hold) follows from the bits consumed, and its loop test reads its own input
+  pointer, which is the counted one: so every call leaves zlib's state, not only the same output (`decodeT<Fast>` in
+  `src/game/vcs_inflate.cpp`). 247 -> 267 MB/s.
+- **Short copies** (most matches are 3-32 bytes) as two fixed-size moves of the first and last bytes instead of a
+  `memcpy` call; a repeat at distance 1 as a fill; at distance 8 or more in 8-byte steps (each reads bytes already
+  written). Exactly the bytes zlib's byte loops write. 267 -> 270 MB/s.
+
+Check: `VCS_NATIVE_INFLATE_FAST_VERIFY=1` decodes every call with both readers into their own copies of the output and
+compares the bytes and the whole state left: a cruise (boot, the swaps, streaming) 1,200+ calls, 0 differ.
+`VCS_NATIVE_INFLATE_FAST=0` = the byte-wise reader. The gain is small - about 2 ms of a swap's 40 ms frame: the time is
+in the per-symbol decode itself (a literal per iteration, the literal / match branch), where zlib's own bookkeeping has
+to run per symbol to stay exact. A bigger step would be multi-symbol tables (libdeflate's), checked the same way.
+
 ## Next
 
 - **The heavy views (~120 fps)**: the game thread's chain submission there (1.4-1.6 ms: the VIF1 chain copy, the walker

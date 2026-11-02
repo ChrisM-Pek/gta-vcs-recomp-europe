@@ -61,7 +61,14 @@ namespace
     // the next byte and every access pre-increments (PUP); all of them are RAM offsets. Output bytes go through outAt
     // (the guest RAM itself, or a shadow copy when verifying); the window is read where it is. Returns false where zlib
     // reports bad data (the caller hands the call to the original).
-    bool decode(const uint8_t *ram, uint8_t *outBase, uint32_t outOrigin, uint32_t strm, uint32_t start, Result &r)
+    //
+    // Fast (PERFORMANCE.md 24): the code bits come from a 64-bit buffer `buf` refilled 8 bytes at a time at the top of
+    // each symbol (a symbol takes at most 48 bits: one refill, no branch per byte), while `in` / `bits` still count what
+    // zlib's own hold has loaded, byte for byte as zlib pulls them - only counted, not read. So the loop test (`in <
+    // last`, zlib's input pointer) and the state left (next_in, bits, hold: the unconsumed bits, zlib's own count of
+    // them) are zlib's, and the output is the same: the same codes are read from the same bits.
+    template <bool Fast>
+    bool decodeT(const uint8_t *ram, uint8_t *outBase, uint32_t outOrigin, uint32_t strm, uint32_t start, Result &r)
     {
         const uint32_t state = rd32(ram, strm + kState) & 0x1FFFFFFFu;
         uint32_t in = (rd32(ram, strm + kNextIn) & 0x1FFFFFFFu) - 1u;
@@ -80,7 +87,41 @@ namespace
         if ((wsize && ramOffset(window, wsize) == kRamSize) || ramOffset(lcode, (lmask + 1u) * 4u) == kRamSize ||
             ramOffset(dcode, (dmask + 1u) * 4u) == kRamSize)
             return false;
-        auto pupIn = [&]() -> uint64_t { return ram[++in]; };
+        // Fast: the bit buffer - the unconsumed bits from the low end (at least as many as zlib's hold has), `next` the
+        // next byte to load
+        uint64_t buf = 0;
+        uint32_t have = 0, next = 0;
+        if constexpr (Fast)
+        {
+            if (bits >= 57u)
+                return false; // (never: zlib holds at most ~32 bits between calls)
+            buf = hold & ((uint64_t(1) << bits) - 1u);
+            have = bits;
+            next = in + 1u;
+        }
+        auto pull = [&]() { // PULLBYTE: zlib loads the next byte into its hold (Fast: counted only)
+            if constexpr (Fast)
+                ++in;
+            else
+                hold += uint64_t(ram[++in]) << bits;
+            bits += 8u;
+        };
+        auto peek = [&]() -> uint32_t {
+            if constexpr (Fast)
+                return static_cast<uint32_t>(buf);
+            else
+                return static_cast<uint32_t>(hold);
+        };
+        auto drop = [&](uint32_t n) {
+            if constexpr (Fast)
+            {
+                buf >>= n;
+                have -= n;
+            }
+            else
+                hold >>= n;
+            bits -= n;
+        };
         auto outAt = [&](uint32_t a) -> uint8_t & { return outBase[a - outOrigin]; };
         auto code = [&](uint32_t table, uint32_t index) {
             Code c;
@@ -90,38 +131,117 @@ namespace
         // n bytes as zlib's byte loops copy them (PUP on both sides). From the window: never the output's bytes - one
         // copy. From the output: one copy when the distance is at least n; closer, the bytes being written are read
         // again (the repeat a short distance encodes) - byte by byte, as zlib.
+        // Fast: the short copies most matches are (3..32 bytes) as two fixed-size moves of the first and last bytes
+        // instead of a memcpy call - exactly n bytes written (the source does not overlap the n bytes written)
+        auto copySmall = [](uint8_t *dst, const uint8_t *src, uint32_t n) {
+            if constexpr (Fast)
+            {
+                if (n <= 32u)
+                {
+                    if (n >= 16u)
+                    {
+                        uint8_t a[16], b[16];
+                        std::memcpy(a, src, 16);
+                        std::memcpy(b, src + n - 16u, 16);
+                        std::memcpy(dst, a, 16);
+                        std::memcpy(dst + n - 16u, b, 16);
+                    }
+                    else if (n >= 8u)
+                    {
+                        uint64_t a, b;
+                        std::memcpy(&a, src, 8);
+                        std::memcpy(&b, src + n - 8u, 8);
+                        std::memcpy(dst, &a, 8);
+                        std::memcpy(dst + n - 8u, &b, 8);
+                    }
+                    else if (n >= 4u)
+                    {
+                        uint32_t a, b;
+                        std::memcpy(&a, src, 4);
+                        std::memcpy(&b, src + n - 4u, 4);
+                        std::memcpy(dst, &a, 4);
+                        std::memcpy(dst + n - 4u, &b, 4);
+                    }
+                    else
+                        for (uint32_t i = 0; i < n; ++i)
+                            dst[i] = src[i];
+                    return;
+                }
+            }
+            std::memcpy(dst, src, n);
+        };
         auto copyFromWindow = [&](uint32_t &from, uint32_t n) {
-            std::memcpy(&outAt(out + 1u), ram + from + 1u, n);
+            copySmall(&outAt(out + 1u), ram + from + 1u, n);
             out += n;
             from += n;
         };
         auto copyFromOutput = [&](uint32_t &from, uint32_t n) {
-            if (out - from >= n)
+            const uint32_t dist = out - from;
+            if (dist >= n)
             {
-                std::memcpy(&outAt(out + 1u), &outAt(from + 1u), n);
+                copySmall(&outAt(out + 1u), &outAt(from + 1u), n);
                 out += n;
                 from += n;
+                return;
             }
-            else
-                while (n--)
-                    outAt(++out) = outAt(++from);
+            if constexpr (Fast)
+            {
+                // a repeat closer than its length: zlib's byte loop reads bytes it has just written. Distance 1 is one byte
+                // repeated; from 8 on, each 8-byte step reads only bytes written before it - the same bytes either way
+                uint8_t *dst = &outAt(out + 1u);
+                if (dist == 1u)
+                {
+                    std::memset(dst, dst[-1], n);
+                    out += n;
+                    from += n;
+                    return;
+                }
+                if (dist >= 8u)
+                {
+                    const uint8_t *src = dst - dist;
+                    uint32_t i = 0;
+                    for (; i + 8u <= n; i += 8u)
+                    {
+                        uint64_t v;
+                        std::memcpy(&v, src + i, 8);
+                        std::memcpy(dst + i, &v, 8);
+                    }
+                    for (; i < n; ++i)
+                        dst[i] = src[i];
+                    out += n;
+                    from += n;
+                    return;
+                }
+            }
+            while (n--)
+                outAt(++out) = outAt(++from);
         };
         do
         {
             if (in + 8u >= kRamSize) // (an iteration reads at most 7 bytes: never past main RAM - bad data or a buffer the
                 return false;         // game said was longer: the original's call)
+            if constexpr (Fast)
+            {
+                if (next > kRamSize - 8u)
+                    return false;
+                if (have <= 56u)
+                {
+                    uint64_t w;
+                    std::memcpy(&w, ram + next, 8);
+                    buf |= w << have; // (bytes past `have` already there are the same stream bytes)
+                    next += (63u - have) >> 3;
+                    have |= 56u;
+                }
+            }
             if (bits < 15u)
             {
-                hold += pupIn() << bits;
-                bits += 8u;
-                hold += pupIn() << bits;
-                bits += 8u;
+                pull();
+                pull();
             }
-            Code here = code(lcode, static_cast<uint32_t>(hold) & lmask);
+            Code here = code(lcode, peek() & lmask);
         dolen:
             uint32_t op = here.bits;
-            hold >>= op;
-            bits -= op;
+            drop(op);
             op = here.op;
             if (op == 0u) // literal
                 outAt(++out) = static_cast<uint8_t>(here.val);
@@ -132,26 +252,19 @@ namespace
                 if (op)
                 {
                     if (bits < op)
-                    {
-                        hold += pupIn() << bits;
-                        bits += 8u;
-                    }
-                    len += static_cast<uint32_t>(hold) & ((1u << op) - 1u);
-                    hold >>= op;
-                    bits -= op;
+                        pull();
+                    len += peek() & ((1u << op) - 1u);
+                    drop(op);
                 }
                 if (bits < 15u)
                 {
-                    hold += pupIn() << bits;
-                    bits += 8u;
-                    hold += pupIn() << bits;
-                    bits += 8u;
+                    pull();
+                    pull();
                 }
-                here = code(dcode, static_cast<uint32_t>(hold) & dmask);
+                here = code(dcode, peek() & dmask);
             dodist:
                 op = here.bits;
-                hold >>= op;
-                bits -= op;
+                drop(op);
                 op = here.op;
                 if (op & 16u) // distance base
                 {
@@ -159,17 +272,12 @@ namespace
                     op &= 15u; // number of extra bits
                     if (bits < op)
                     {
-                        hold += pupIn() << bits;
-                        bits += 8u;
+                        pull();
                         if (bits < op)
-                        {
-                            hold += pupIn() << bits;
-                            bits += 8u;
-                        }
+                            pull();
                     }
-                    dist += static_cast<uint32_t>(hold) & ((1u << op) - 1u);
-                    hold >>= op;
-                    bits -= op;
+                    dist += peek() & ((1u << op) - 1u);
+                    drop(op);
                     op = out - beg; // max distance in output
                     if (dist > op) // see if copy from window
                     {
@@ -236,7 +344,7 @@ namespace
                 }
                 else if ((op & 64u) == 0u) // 2nd level distance code
                 {
-                    here = code(dcode, here.val + (static_cast<uint32_t>(hold) & ((1u << op) - 1u)));
+                    here = code(dcode, here.val + (peek() & ((1u << op) - 1u)));
                     goto dodist;
                 }
                 else
@@ -244,7 +352,7 @@ namespace
             }
             else if ((op & 64u) == 0u) // 2nd level length code
             {
-                here = code(lcode, here.val + (static_cast<uint32_t>(hold) & ((1u << op) - 1u)));
+                here = code(lcode, here.val + (peek() & ((1u << op) - 1u)));
                 goto dolen;
             }
             else if (op & 32u) // end-of-block
@@ -259,7 +367,10 @@ namespace
         const uint32_t len = bits >> 3;
         in -= len;
         bits -= len << 3;
-        hold &= (1u << bits) - 1u;
+        if constexpr (Fast)
+            hold = buf & ((uint64_t(1) << bits) - 1u); // (the buffer starts with zlib's unconsumed bits)
+        else
+            hold &= (1u << bits) - 1u;
         r.in = in + 1u; // next_in = in + OFF
         r.out = out + 1u;
         r.availIn = in < last ? 5u + (last - in) : 5u - (in - last);
@@ -267,6 +378,16 @@ namespace
         r.hold = hold;
         r.bits = bits;
         return true;
+    }
+
+    // VCS_NATIVE_INFLATE_FAST=0: the byte-wise reads (decodeT<false>), as before 2026-11-02
+    bool decode(const uint8_t *ram, uint8_t *outBase, uint32_t outOrigin, uint32_t strm, uint32_t start, Result &r)
+    {
+        static const bool fast = [] {
+            const char *e = std::getenv("VCS_NATIVE_INFLATE_FAST");
+            return !(e && *e == '0');
+        }();
+        return fast ? decodeT<true>(ram, outBase, outOrigin, strm, start, r) : decodeT<false>(ram, outBase, outOrigin, strm, start, r);
     }
 
     // counters (VCS_NATIVE_INFLATE_LOG)
@@ -375,6 +496,28 @@ namespace
             }
             g_original(rdram, ctx, runtime);
             return;
+        }
+        static const bool fastVerify = std::getenv("VCS_NATIVE_INFLATE_FAST_VERIFY") != nullptr;
+        if (fastVerify) // the fast reader against the byte-wise one: each into its own copy of the output, every call
+        {
+            thread_local std::vector<uint8_t> a, b;
+            a.assign(rdram + outBeg, rdram + outBeg + start);
+            b = a;
+            Result ra{}, rb{};
+            const bool okA = decodeT<false>(rdram, a.data(), outBeg, strm, start, ra);
+            const bool okB = decodeT<true>(rdram, b.data(), outBeg, strm, start, rb);
+            static uint64_t same = 0, differ = 0;
+            const bool equal = okA == okB && (!okA || (ra.in == rb.in && ra.out == rb.out && ra.availIn == rb.availIn &&
+                                                       ra.availOut == rb.availOut && ra.hold == rb.hold && ra.bits == rb.bits &&
+                                                       ra.endOfBlock == rb.endOfBlock && a == b));
+            ++(equal ? same : differ);
+            if (!equal && differ <= 10)
+                std::fprintf(stderr, "[inflate] fast verify: call differs (ok %d/%d, in %x/%x, out %x/%x, bits %u/%u, hold %llx/%llx)\n",
+                             okA, okB, ra.in, rb.in, ra.out, rb.out, ra.bits, rb.bits, (unsigned long long)ra.hold,
+                             (unsigned long long)rb.hold);
+            if ((same + differ) % 200u == 0u)
+                std::fprintf(stderr, "[inflate] fast verify: %llu calls the same, %llu differ\n", (unsigned long long)same,
+                             (unsigned long long)differ);
         }
         const auto t0 = std::chrono::steady_clock::now();
         if (!decode(rdram, rdram, 0u, strm, start, r)) // bad data: zlib's error path is the original's (it redoes the call

@@ -658,8 +658,9 @@ readback waits, swapchain acquire, texture creation (section 25), the specialise
   depth interpolated linearly in screen space. A shader depth turns early depth rejection off, so every hidden pixel of
   the city's overdraw was shaded and textured. Pixel shaders without it (`drawPSNoDepth`, SHADER_DEPTH=0): the game's
   frame 10.7 -> 9.3 ms of GPU. Reference scenes: static ones as before (0.02, and the map's player arrow), moving ones
-  within run-to-run noise, the ground decals intact. Default with Vulkan; D3D11 keeps the shader depth until a Windows
-  scenes compare (`PS2X_HW_SHADER_DEPTH=1` / `0` forces either way).
+  within run-to-run noise, the ground decals intact. Default with Vulkan; D3D11 kept the shader depth until a Windows
+  scenes compare (`PS2X_HW_SHADER_DEPTH=1` / `0` forces either way) - dropped there too on 2026-11-04 for issue 4 (fire
+  hidden on AMD GPUs; DECISIONS.md).
 - **Constants written only when they change** (`gs_hw` `updateConstants`): 45% of the draw constants' and 63% of the
   native constants' writes were the same bytes as the draw before; each was a ring slice and a descriptor push.
   Descriptor writes ~2,900 -> ~1,700 a frame. `PS2X_HW_CB_DEDUPE=0`.

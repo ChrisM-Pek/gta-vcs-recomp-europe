@@ -476,7 +476,8 @@ it is 1920x1080, 3 x 2.41 pixels per PS2 pixel.
   `PS2X_HW_EARLY_TEXTURES=1` turns it on, `=0` off everywhere.
 - **No shader depth on Vulkan** (2026-11-02, PERFORMANCE.md 26): the GS pixel shader is built with and without its
   depth output (SHADER_DEPTH); Vulkan uses the rasterised depth - the same value with a 0..1 depth range - so early depth
-  rejection works; D3D11 keeps the shader depth until checked on Windows (`PS2X_HW_SHADER_DEPTH`). The draw constants are
+  rejection works; D3D11 kept the shader depth until 2026-11-04, when issue 4 (fire hidden on AMD GPUs) dropped it there
+  too (`PS2X_HW_SHADER_DEPTH=1` brings it back; DECISIONS.md 2026-11-04). The draw constants are
   written only when they change (`updateConstants`), and the Vulkan backend records viewport, scissor, blend constants
   and buffers only when they differ from what the command buffer has. Depth test / write / compare are dynamic state:
   pipelines that differ only there share one VkPipeline (`PS2X_RHI_STATIC_DEPTH=1` = baked in), and a dynamic vertex

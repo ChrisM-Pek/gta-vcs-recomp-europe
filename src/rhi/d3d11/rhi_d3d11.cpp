@@ -199,14 +199,18 @@ namespace rhi
                 if (desc.debug)
                     flags |= D3D11_CREATE_DEVICE_DEBUG;
                 const D3D_FEATURE_LEVEL levels[] = {D3D_FEATURE_LEVEL_11_1, D3D_FEATURE_LEVEL_11_0};
+                // PS2X_RHI_WARP=1: Windows' software rasteriser instead of the GPU - a third implementation to compare a
+                // picture against when it differs between GPU vendors (slow: a few frames a second)
+                const char *warp = std::getenv("PS2X_RHI_WARP");
+                const D3D_DRIVER_TYPE driver = warp && *warp && *warp != '0' ? D3D_DRIVER_TYPE_WARP : D3D_DRIVER_TYPE_HARDWARE;
                 HRESULT hr = E_FAIL;
                 for (int attempt = 0; attempt < 3 && FAILED(hr); ++attempt)
                 {
                     // retry without the debug layer (not installed) and without 11_1 (old runtimes reject it)
                     const D3D_FEATURE_LEVEL *first = attempt == 2 ? levels + 1 : levels;
                     const UINT count = attempt == 2 ? 1u : 2u;
-                    hr = D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr, flags, first, count, D3D11_SDK_VERSION,
-                                           &m_device, nullptr, &m_context);
+                    hr = D3D11CreateDevice(nullptr, driver, nullptr, flags, first, count, D3D11_SDK_VERSION, &m_device, nullptr,
+                                           &m_context);
                     if (FAILED(hr) && (flags & D3D11_CREATE_DEVICE_DEBUG))
                     {
                         std::fprintf(stderr, "[rhi] D3D11 debug layer not available\n");
@@ -219,6 +223,10 @@ namespace rhi
                     return false;
                 }
                 m_context.As(&m_annotation);
+                if ((flags & D3D11_CREATE_DEVICE_DEBUG) && SUCCEEDED(m_device.As(&m_infoQueue))) // its messages: drainDebugMessages
+                    std::fprintf(stderr, "[rhi] D3D11 debug layer on\n");
+                if (driver == D3D_DRIVER_TYPE_WARP)
+                    std::fprintf(stderr, "[rhi] D3D11 on WARP (software)\n");
 
                 ComPtr<IDXGIDevice> dxgiDevice;
                 ComPtr<IDXGIAdapter> adapter;
@@ -732,6 +740,33 @@ namespace rhi
                 m_pipeline = nullptr; // flip model unbinds the back buffer; state is set again next frame
                 if (gpuTiming())
                     m_timer.endFrame(*this);
+                drainDebugMessages();
+            }
+
+            // PS2X_RHI_DEBUG=1: the D3D11 debug layer's messages go to OutputDebugString only; print each kind once (by
+            // message ID, with how often it came) to the log as `[rhi] d3d11`
+            void drainDebugMessages()
+            {
+                if (!m_infoQueue)
+                    return;
+                const UINT64 n = m_infoQueue->GetNumStoredMessages();
+                for (UINT64 i = 0; i < n; ++i)
+                {
+                    SIZE_T size = 0;
+                    if (FAILED(m_infoQueue->GetMessage(i, nullptr, &size)) || !size)
+                        continue;
+                    std::vector<char> buf(size);
+                    auto *m = reinterpret_cast<D3D11_MESSAGE *>(buf.data());
+                    if (FAILED(m_infoQueue->GetMessage(i, m, &size)))
+                        continue;
+                    const uint64_t seen = ++m_debugMessagesSeen[static_cast<int>(m->ID)];
+                    if (seen == 1u || seen == 100u || seen == 10000u)
+                        std::fprintf(stderr, "[rhi] d3d11 %s #%d (%llu times): %.*s\n",
+                                     m->Severity <= D3D11_MESSAGE_SEVERITY_ERROR ? "error" : m->Severity == D3D11_MESSAGE_SEVERITY_WARNING ? "warning" : "info",
+                                     static_cast<int>(m->ID), static_cast<unsigned long long>(seen), static_cast<int>(m->DescriptionByteLength),
+                                     m->pDescription);
+                }
+                m_infoQueue->ClearStoredMessages();
             }
 
             // ---- Dear ImGui ---------------------------------------------------------------------------------------
@@ -894,6 +929,8 @@ namespace rhi
             ComPtr<ID3D11Device> m_device;
             ComPtr<ID3D11DeviceContext> m_context;
             ComPtr<ID3DUserDefinedAnnotation> m_annotation;
+            ComPtr<ID3D11InfoQueue> m_infoQueue; // PS2X_RHI_DEBUG
+            std::unordered_map<int, uint64_t> m_debugMessagesSeen;
             ComPtr<IDXGISwapChain1> m_swapchain;
             ComPtr<ID3D11RenderTargetView> m_backRtv;
             UINT m_swapFlags = 0;

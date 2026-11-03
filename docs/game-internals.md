@@ -1194,6 +1194,19 @@ planes leave in the sky (seen outside the Little Havana Empire site, 08:28, 16:9
   kicks showed PATH2 and no ADC; `VCS_TRACE_IMMEDIATE=1` (callers of the Im2D / Im3D entries, `vcs_overrides.cpp`)
   named `0x245904` in the trail renderer.
 
+### 6l. Fire and explosions (2026-11-04, GitHub issue 4)
+
+- Found with the rig (Fort Baxter card, `prime`, teleport to 575,175, ADD_EXPLOSION 0x013C type 1 next to the player)
+  and F12 / `PS2X_HW_DUMP_ALLVERTS=1` a second after the blast. The flames are GS **sprites** (6 vertices each in the
+  HW renderer, Q 1, the Z of the second vertex) from the 0x02c0 re-draws, made on the CPU (`vcs_hle_world.cpp`): texture
+  `48cd3e4b597ff6e` 64x64, ALPHA `0221` (Cs * FIX + Cd, FIX 128: additive), ZTE on, **ZTST GEQUAL, ZMSK 1** (tested,
+  never written), Z ~0.0016-0.0036 of the Z24 range a few metres from the camera. The blast's first frame adds a
+  fireball (`49584e5615607949` 32x32, also additive, triangles reaching ~2.4 screens past the left edge) and the smoke
+  is `6d7b8c6d9cc1201e` (`0101`, alpha blend, dual-source in the renderer). The ground they sort against is the native
+  world (vs_world) and the models (vs_lit), whose depth the GPU computes; the sky's pixels keep the frame's depth fill
+  (Z 0), so fire that loses to every written depth still shows over the sky - the AMD symptom of issue 4
+  (DECISIONS.md 2026-11-04).
+
 ## 7. Textures: `.XTX`
 
 Confirmed from `LOADSC*.XTX` (263,372 bytes each, 512x512 8-bit):

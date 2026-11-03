@@ -1060,3 +1060,21 @@ option first (the user's choice: keep the Visual Studio build until the new one 
   the first build after the switch (one full build).
 - Switching compilers sets a build tree up from scratch (`toolchain.drop_other_compiler`: CMake can't change a tree's
   compiler), keeping its `--opt`.
+
+## 2026-11-04 - D3D11 drops the GS shader's depth output too (issue 4: fire invisible on AMD)
+
+GitHub issue 4: fire, explosions and flame-thrower flames invisible on an RX 6600, and on a laptop's Radeon iGPU while
+the same laptop's NVIDIA GPU drew them; the reporter's second video shows them drawn but hidden by everything except the
+sky. Not reproducible here: the GTX 1080 Ti and WARP (`PS2X_RHI_WARP=1`) both draw them, and the D3D11 debug layer
+(`PS2X_RHI_DEBUG=1`, its messages now in the log) is silent. What the F12 draw log shows: the fire is GS sprites from
+the 0x02c0 re-draws (CPU-made vertices, Z ~0.0016-0.0036, ZTST GEQUAL, no Z write, `Cs*FIX + Cd`), depth tested
+against the world and models, which the native vertex shaders write; the sky's pixels keep the frame's depth fill (0).
+"Visible only over the sky" is the fire's depth losing to any written depth. Every draw wrote its depth from the pixel
+shader (SV_Depth) - the GL renderer's precision fix (2026-11-02 above): the driver's depth-export path, late Z, and on
+AMD a hierarchical Z kept beside it; the one step where the drivers that work and the ones that don't can differ, and
+it was only ever needed for GL. So D3D11 uses the rasterised depth like Vulkan: the same value (the vertex depth,
+screen-linear; `pos.w` 1 for recorded draws, `pos.z = depth * w` for native ones), and better defined than the shader's
+`noperspective` attribute where the hardware clips a native triangle (the new vertices' attribute values are the
+driver's choice). It also turns early depth rejection on. Reference scenes with and without the shader depth on the
+GTX 1080 Ti: statics 0.00-0.02, moving ones only their timing; the fire scene the same. A best guess without an AMD GPU to check on:
+`PS2X_HW_SHADER_DEPTH=1` brings the shader depth back, and the reporters are asked to try the build.

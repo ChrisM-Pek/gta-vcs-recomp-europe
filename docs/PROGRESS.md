@@ -525,6 +525,14 @@ dropped on uploads (lazy render-target patching).
       it after the points before it, in every configuration; a fresh teleport there from Fort Baxter lands (z 14.5).
       Collision streaming order / timing at that spot needs a look.
 ## Phase 5 - stability
+- [ ] Fire, explosions and flame-thrower flames invisible on AMD GPUs (GitHub issue 4: RX 6600; a laptop's Radeon iGPU,
+      while its NVIDIA GPU drew them) - **likely fixed 2026-11-04, waiting on the reporters**: hidden by everything but
+      the sky, i.e. the fire's depth lost to every written one. D3D11 no longer writes the GS depth from the pixel shader
+      (SV_Depth, a GL-era fix Vulkan had already dropped); the rasterised depth is the same value. Not reproducible here
+      (GTX 1080 Ti and WARP draw the fire; the D3D11 debug layer silent). Checked: the fire scene (rig, ADD_EXPLOSION)
+      draws flames, fireball, smoke and the ground's shadows as before; reference scenes with / without the shader depth:
+      statics 0.00-0.02, moving ones only timing. `PS2X_HW_SHADER_DEPTH=1` brings it back (DECISIONS.md 2026-11-04,
+      game-internals.md 6l).
 - [x] Saves lost when saving (players' reports after 0.1.0: "crashed and destroyed my savegame", "deletes the save
       file when I save at Phil's safehouse") - **fixed 2026-11-01** in the card layer (game-internals.md 10f). The slot
       file is named after the last mission; "Kill Phil: Part 2" made NTFS put the save in a stream of an empty
@@ -994,7 +1002,8 @@ Python scripts still usable on their own. docs/LAUNCHER.md has the whole of it; 
 | `VCS_DATA_DIR=dir` | save / cache folder instead of %LOCALAPPDATA%/VCSRecomp (Linux: $XDG_DATA_HOME/VCSRecomp) |
 | `PS2X_D3D_DEBUG=1` | D3D11 debug layer (needs Windows' Graphics Tools feature) |
 | `VCS_RHI=d3d11\|vulkan\|null` | the renderer for one run (Graphics > Graphics API when the build has two; docs/LINUX.md) |
-| `PS2X_RHI_DEBUG=1` | the API's validation layer: D3D11 debug layer / Vulkan's Khronos validation |
+| `PS2X_RHI_DEBUG=1` | the API's validation layer: D3D11 debug layer / Vulkan's Khronos validation; their messages in the log (`[rhi] d3d11` once per kind, `[rhi] vulkan`) |
+| `PS2X_RHI_WARP=1` | D3D11 on WARP, Windows' software rasteriser: a third implementation for a picture that differs between GPU vendors (a few frames a second) |
 | `PS2X_RHI_STATS=1` | Vulkan: draws, descriptor writes, passes, suspended passes, barriers, uploads, CPU waits per frame, and input to GPU done (avg / p50 / p95) every 5 s; gs_hw: the input delay by stage |
 | `PS2X_RHI_GPU_TIME=1` | Vulkan: GPU time of the passes and the whole frame (`PS2X_GPU_TIMING=1`: per draw, breaking passes) |
 | `PS2X_HOST_SPIKES=<ms>` | main-loop frames whose work went over it, by phase (events, begin, frames, ui, window, present) with the main thread's CPU time; Vulkan: the frame's waits, draws with their CPU time in `prepareDraw` / `vkCmdDraw`, pipeline binds, descriptor pushes, passes, uploads, and the fence wait after it (PERFORMANCE.md 26) |
@@ -1003,7 +1012,7 @@ Python scripts still usable on their own. docs/LAUNCHER.md has the whole of it; 
 | `PS2X_RHI_FULL_COPY=1` | Vulkan: a dynamic vertex / index buffer's whole capacity copied into the frame's ring, as before 2026-11-02 (now the bytes last written) |
 | `PS2X_RHI_REDUNDANT=1` | Vulkan: viewport, scissor, blend constants and vertex / index buffers recorded at every draw that set them, as before 2026-11-02 (now only when they change) |
 | `PS2X_HW_CB_DEDUPE=0`, `PS2X_HW_CB_LOG=1` | the GS draw / native constants written at every draw, as before 2026-11-02 (now only when they change); writes and skips every 5 s |
-| `PS2X_HW_SHADER_DEPTH=1` / `=0` | the GS pixel shader writes the depth (the default with D3D11) / uses the rasterised depth, early depth rejection on (the default with Vulkan; PERFORMANCE.md 26) |
+| `PS2X_HW_SHADER_DEPTH=1` / `=0` | the GS pixel shader writes the depth (the default with D3D11 until 2026-11-04) / uses the rasterised depth, early depth rejection on (the default; PERFORMANCE.md 26, DECISIONS.md 2026-11-04) |
 | `PS2X_RHI_FULL_BARRIERS=1` | Vulkan: whole-pipeline barriers, as before the layout-based ones |
 | `PS2X_HOST_PACED=0`, `PS2X_FRAME_LEAD=0`, `PS2X_FRAME_LEAD_MARGIN_US=<us>` | frame-rate independent timing: the game's own deadline instead of the host's frames; no frame lead; the lead's margin (1500) - PERFORMANCE.md 19 |
 | `PS2X_WRITE_WATCH=1` (Linux) / `=0` (Windows) | the guest RAM write watch on Linux (opt-in there) / off on Windows - PERFORMANCE.md 20 |

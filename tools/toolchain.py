@@ -1326,6 +1326,20 @@ LAUNCHER_LINUX_DEPS = [
 PACKAGE_MANAGERS = ("apt", "dnf", "pacman")  # by _linux_family()
 
 
+def _fedora_ffmpeg_devel(quiet=False):
+    """Fedora's FFmpeg headers for the FFmpeg that is installed: RPMFusion's ffmpeg-libs conflicts with Fedora's
+    libavcodec-free that ffmpeg-free-devel pulls in, and dnf then drops the whole install (issue 63). RPMFusion's own
+    ffmpeg-devel then; Fedora has no package called ffmpeg-libs (its libraries are libavcodec-free...), and
+    RPMFusion's libavcodec-freeworld sits beside ffmpeg-free, so the default stays right for both."""
+    try:
+        rpmfusion = subprocess.run(["rpm", "-q", "--quiet", "ffmpeg-libs"], timeout=60).returncode == 0
+    except (OSError, subprocess.SubprocessError):
+        rpmfusion = False
+    if rpmfusion and not quiet:
+        print("[deps] RPMFusion's FFmpeg is installed: its headers are ffmpeg-devel (not Fedora's ffmpeg-free-devel)")
+    return "ffmpeg-devel" if rpmfusion else "ffmpeg-free-devel"
+
+
 def linux_missing(env, deps=None, quiet=False):
     """The missing Linux build dependencies: a list of (label, packages for this distro). deps: LINUX_DEPS (the game,
     the default) or LAUNCHER_LINUX_DEPS. CMake / Ninja / LLVM are checked with the game's list only."""
@@ -1338,7 +1352,10 @@ def linux_missing(env, deps=None, quiet=False):
         else:
             ok = bool(_which(check, env))
         if not ok:
-            missing.append((label, packages[family]))
+            names = packages[family]
+            if names == "ffmpeg-free-devel":
+                names = _fedora_ffmpeg_devel(quiet)
+            missing.append((label, names))
     if deps is not None:
         return missing
     tools = build_tools(env, download=False)

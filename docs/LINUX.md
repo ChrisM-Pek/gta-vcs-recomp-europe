@@ -26,7 +26,11 @@ Needed (the `--check-deps` list, Debian / Ubuntu names):
 | Optional: Vulkan validation (`PS2X_RHI_DEBUG=1`) | `vulkan-validationlayers` |
 | The launcher (`build.py --launcher`), on top of the above | `libvulkan-dev libfreetype-dev libfontconfig-dev` (X11, Wayland, xkbcommon, D-Bus: already listed) |
 
-Fedora / Arch get the right package names from `--check-deps`. A Vulkan 1.3 driver is needed to play (Mesa's RADV /
+Fedora / Arch get the right package names from `--check-deps`. On Fedora the movie headers follow the FFmpeg that is
+installed: `ffmpeg-free-devel` (Fedora's), or `ffmpeg-devel` when RPMFusion's `ffmpeg-libs` is there - Fedora's
+`libavcodec-free` conflicts with it, and dnf then refused the whole install (issue 63; `toolchain._fedora_ffmpeg_devel`).
+The check looks for the headers (`pkg-config`), so an FFmpeg installed without its `-devel` package still counts as
+missing. A Vulkan 1.3 driver is needed to play (Mesa's RADV /
 ANV, NVIDIA's driver): `vulkaninfo --summary` shows it. The Vulkan headers, volk (the loader) and VMA come with the
 build (FetchContent), so no Vulkan SDK is needed.
 

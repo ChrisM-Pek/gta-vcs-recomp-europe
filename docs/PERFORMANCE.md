@@ -744,6 +744,44 @@ changes.
 observer's per-block work, and natives that keep the guest clock's accounting (a native step must charge the cycles the
 original would have run, or the game's timing moves - worth checking for the natives already in).
 
+### 29. Windows: llvm-mingw against clang-cl (2026-11-03)
+
+The same commit built both ways (DECISIONS.md 2026-11-03): clang-cl 23 + MSVC's STL (14.29) and llvm-mingw 20261020
+(clang 23.1.4, libc++, UCRT). The compiler version is the same, so this measures the ABI, the C++ library and the
+linker driver. `tools/bench.py`, 60 fps, the i7-7700K desktop with its usual background load; game thread ms.
+
+| Spot | clang-cl quick | llvm-mingw quick | clang-cl ThinLTO, median of 5 | llvm-mingw ThinLTO, median of 5 |
+|---|---|---|---|---|
+| fortbaxter | 4.9 | 4.7 | 5.10 | 5.35 (+5%) |
+| city_575_175 | 3.6 | 3.6 | 3.70 | 3.95 (+7%) |
+| city_-675_1425 | 5.2 | 5.2 | 5.62 | 5.60 (0%) |
+| city_1325_-325 | 4.3 | 4.1 | 4.83 | 5.45 (+13%) |
+| city_-1425_-575 | 4.6 | 4.8 | 4.88 | 6.22 (+28%) |
+| drive | 6.9 | 7.0 | 7.70 | 8.77 (+14%; worker / GS stage +14% too) |
+
+The quick builds (one round each) are level. The ThinLTO rounds alternated (clang-cl, llvm-mingw, ...) so the
+machine's drift falls on both, and llvm-mingw is slower in nearly every round; single rounds spread by 20-60%.
+
+The sampling profiler over a whole bench run (57k samples each, `VCS_PROFILE=5`) puts the difference in the C++
+library and its calls into Windows, not in the generated code (guest share 22.0% / 21.6%):
+
+| Host function, share of the game thread's samples | clang-cl | llvm-mingw |
+|---|---|---|
+| `std::chrono::steady_clock::now` | 0.00% (inline: QueryPerformanceCounter) | 1.07% (libc++'s, out of line) |
+| `RtlSleepConditionVariableSRW` (waiting) | 0.41% | 1.59% |
+| `NtGetWriteWatch` | 0.02% | 0.49% |
+| `memcmp` | 0.00% (inlined) | 0.38% |
+| `GetLastError`, `RtlNtStatusToDosError`, `system_clock::now`, `GetSystemTimePreciseAsFileTime` | 0.09% | 0.70% (libc++'s timed condition-variable waits) |
+
+About 4% of all samples, which is ~12% of the game thread's busy time (it works ~5 of 16.7 ms): the size of the gap.
+Not the cause: C++ exceptions (the scheduler's `EeDispatcherTransfer`: the quick builds are level), TLS (llvm-mingw
+uses native TLS), libc++ hardening (off: `_LIBCPP_HARDENING_MODE_DEFAULT` is NONE).
+
+**Next here**: a clock of our own for the hot `steady_clock::now` callers (QueryPerformanceCounter with the frequency
+read once, inline), the timed waits through Win32's `SleepConditionVariableSRW` directly instead of libc++'s
+`condition_variable::wait_for`, and why `GetWriteWatch` costs more (called more often, or a larger range); then measure
+again. Until llvm-mingw's ThinLTO build is as fast, clang-cl stays the default.
+
 ## Next
 
 - **The heavy views (~120 fps)**: the game thread's chain submission there (1.4-1.6 ms: the VIF1 chain copy, the walker

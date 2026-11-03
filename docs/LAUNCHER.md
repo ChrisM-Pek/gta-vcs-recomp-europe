@@ -35,7 +35,8 @@ step loses players, and the README's *Problems* table is mostly those steps goin
 
 With `deps/` there, `toolchain.configure` points CMake at it (`FETCHCONTENT_SOURCE_DIR_<NAME>`,
 `-DFFMPEG_PREBUILT_URL=<zip>`, `FETCHCONTENT_FULLY_DISCONNECTED=ON`): the build needs neither git nor internet. Only
-Visual Studio's compiler is left to install, and the launcher does that.
+Visual Studio's compiler is left to install, and the launcher does that (with `VCS_TOOLCHAIN=mingw` nothing: the first
+build downloads llvm-mingw, ~190 MB; DECISIONS.md 2026-11-03).
 
 **No game code, ever**: `release.py` checks every file of the release before zipping - names (`*.iso`, `SLUS_*`...),
 folders (`generated/`, `build/`, the Ghidra project, memory cards), content (a MIPS ELF header, an ISO 9660 volume
@@ -164,9 +165,10 @@ What each step and sheet holds:
   own); a relative `iso=` is read against the build folder, then the source folder.
 - **Build tools**: the processor (doctor's `check_cpu`: which build this PC gets - AVX2, AVX or SSE4,
   `toolchain.cpu_level`; a CPU without SSE4.2 can't build: `cpu_unsupported`, a red card), and tools/doctor.py
-  `check_compiler` (vswhere, one `-requires` query per component - `-path` ignores
-  `-requires`; the clang-cl the build would take: scoop's LLVM, then Visual Studio's, then PATH). Missing parts:
-  *Install build tools* runs tools/setup_vs.py.
+  `check_compiler` (vswhere, one `-requires` query per component - `-path` ignores `-requires`; the clang-cl the build
+  would take: scoop's LLVM, then Visual Studio's, then PATH; `toolchain: "msvc"`). Missing parts: *Install build tools*
+  runs tools/setup_vs.py. With `VCS_TOOLCHAIN=mingw`: llvm-mingw there (`build/build-tools`, `VCS_LLVM_MINGW`) or
+  downloaded by the first build - always ok, `toolchain: "mingw"`, and the step's text says so.
 - **Game**: built and current, or the reasons not (doctor's `check_build`: no exe, generated/ stale, no / other
   `build_info.json`, source files newer than vcs.exe). Build type: Standard (ThinLTO) / Quick / Fastest (PGO), a
   segmented control; unset, the current build's type is kept.

@@ -31,7 +31,7 @@ ANV, NVIDIA's driver): `vulkaninfo --summary` shows it. The Vulkan headers, volk
 build (FetchContent), so no Vulkan SDK is needed.
 
 - **The compiler is clang only** (`tools/toolchain.py` takes the newest LLVM 19+ from `/usr/lib/llvm-<N>/bin` or
-  PATH). It is the same compiler as clang-cl on Windows, so the generated code and its numerics are the same; and
+  PATH). It is the same compiler as on Windows (llvm-mingw's clang, or clang-cl), so the generated code and its numerics are the same; and
   `PS2_GUEST_CC` needs its `preserve_none`. GCC is not supported.
 - **The flags match clang-cl's** (`ps2xRuntime/cmake/ReleaseMode.cmake`): `-march=x86-64-v3` (= `/arch:AVX2`; for an
   older CPU `-march=sandybridge` = `/arch:AVX`, or x86-64-v2 - `PS2X_CPU`, picked from `/proc/cpuinfo`),
@@ -93,7 +93,7 @@ prompt) or opens a terminal with the command. `VCS_LAUNCHER_VIDEO=x11|wayland`, 
 | Area | Windows | Linux | Why |
 |---|---|---|---|
 | Renderer | D3D11 (reference) | Vulkan | D3D11 is Windows only. The Vulkan backend builds on Windows too (`-DVCS_RHI_VULKAN=ON`, then Graphics > Graphics API), to compare it with D3D11 on the same PC |
-| Shaders | fxc -> DXBC | glslang -> SPIR-V (`tools/hlsl_spirv.py`) | One HLSL source. glslang ignores `[[vk::index(1)]]`, so the script moves the second output to Location 0 Index 1 itself. `VCS_SPIRV` adds a point size, which Vulkan needs for points |
+| Shaders | D3DCompile (Windows' d3dcompiler_47.dll) -> DXBC (`tools/hlsl_dxbc.py`; fxc's bytes) | glslang -> SPIR-V (`tools/hlsl_spirv.py`) | One HLSL source. glslang ignores `[[vk::index(1)]]`, so the script moves the second output to Location 0 Index 1 itself. `VCS_SPIRV` adds a point size, which Vulkan needs for points |
 | Dear ImGui | `imgui_impl_dx11` | `render/ui_renderer.cpp` (through the RHI) | One pipeline for every target format (the swapchain's BGRA, the RGBA captures) |
 | Write watch (`ps2_write_watch.cpp`) | `GetWriteWatch` (dirty bits: free writes) | userfaultfd async write-protect + `PAGEMAP_SCAN`, **opt-in** (`PS2X_WRITE_WATCH=1`) | Correct (0 wrong skips), but each first write to a page after a fold is a page fault on the game thread: no net gain measured (PERFORMANCE.md 20) |
 | Card creation time | `GetFileAttributesExW` | `statx` birth time (mtime without one) | Only the order of new entries; `.ps2x-order` is the source of truth |
@@ -107,7 +107,7 @@ prompt) or opens a terminal with the command. `VCS_LAUNCHER_VIDEO=x11|wayland`, 
 | Host / runtime fixes: exe folder, XDG data folder, `_BitScanForward`, `fseek` sign on LP64, IOP `strtol` 32-bit, control socket SIGPIPE / reuse, debug trap, card birth time, rig kill / copy | done (2026-10-30), syntax-checked with GCC 13 |
 | Null RHI backend (`VCS_RHI=null`) | done, not run in the game yet |
 | Vulkan RHI backend + SPIR-V shaders + RHI ImGui renderer | runs (2026-10-30, HD 520 / Mesa ANV, X11): title flyover and intro cutscene look right; 27-29 fps at the 30 fps cap in a quick build. Fixed on the way: bindings kept pointers to destroyed buffers (D3D11 keeps a reference) - destroyed objects now unbind themselves |
-| Bit-exact checks on Linux: `PS2X_HLE_VERIFY=1`, `PS2X_VU0_VERIFY=1`, `--iop-tests` | VU0: 0 differences in millions of runs of every program; SPU2 tests pass; HLE (150 s from an empty card: flyover, intro): setup programs, re-draws, C++ clipper, env pass exact; world fast path 8 packets within 1 and 11 off of 2.46 M (103 vertices, ST / XYZF) - the same run on Windows is needed to tell whether that is Linux's |
+| Bit-exact checks on Linux: `PS2X_HLE_VERIFY=1`, `PS2X_VU0_VERIFY=1`, `--iop-tests` | VU0: 0 differences in millions of runs of every program; SPU2 tests pass; HLE (150 s from an empty card: flyover, intro): setup programs, re-draws, C++ clipper, env pass exact; world fast path 8 packets within 1 and 11 off of 2.46 M (103 vertices, ST / XYZF) - not Linux's: Windows' reference has the same (2026-11-03, 150 s: clang-cl 8 within 1 / 13 off of 3.35 M, llvm-mingw 11 / 14 of 3.08 M) |
 | Vulkan validation (`PS2X_RHI_DEBUG=1`, 70 s flyover + intro) | clean: 0 errors, 0 warnings; 1-2 suspended passes a frame (in-pass copies), 0 waits |
 | Picture: Windows D3D11 vs Windows Vulkan, Windows reference vs Linux Vulkan (`scenes.py compare`) | to do |
 | Crash handler (signals, module+offset, llvm-symbolizer line) | done, tested in a stand-alone program |

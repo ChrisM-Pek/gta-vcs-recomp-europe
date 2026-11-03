@@ -18,15 +18,23 @@ set(PS2X_BUILD_ANALYZER ${VCS_BUILD_TOOLS} CACHE BOOL "" FORCE)
 set(PS2X_BUILD_TEST OFF CACHE BOOL "" FORCE)
 set(PS2X_BUILD_STUDIO OFF CACHE BOOL "" FORCE)
 
-# Linux (docs/LINUX.md): clang 19+ only - the same compiler as clang-cl on Windows, and PS2_GUEST_CC needs its
-# preserve_none. Linked with lld (ThinLTO). Compile and ThinLTO jobs follow the memory: a unity batch of generated
-# code takes up to ~2 GB to compile.
-if(NOT WIN32)
+# Linux (docs/LINUX.md) and Windows' llvm-mingw (DECISIONS.md 2026-11-03): clang 19+ only - the same compiler as
+# clang-cl, and PS2_GUEST_CC needs its preserve_none. Linked with lld (ThinLTO).
+if(NOT MSVC)
     if(NOT CMAKE_CXX_COMPILER_ID STREQUAL "Clang" OR CMAKE_CXX_COMPILER_VERSION VERSION_LESS 19)
-        message(FATAL_ERROR "Linux builds need clang 19 or newer (found ${CMAKE_CXX_COMPILER_ID} ${CMAKE_CXX_COMPILER_VERSION}). "
-                            "python tools/build.py picks it up when installed (docs/LINUX.md)")
+        message(FATAL_ERROR "The game needs clang 19 or newer (found ${CMAKE_CXX_COMPILER_ID} ${CMAKE_CXX_COMPILER_VERSION}). "
+                            "python tools/build.py picks it up (docs/LINUX.md; Windows: llvm-mingw, downloaded)")
     endif()
     add_link_options(-fuse-ld=lld)
+endif()
+# llvm-mingw: mingw-w64's headers default to Windows 7, the Windows SDK's to Windows 10 - the same APIs as clang-cl's
+# build. Every program is linked -static: libc++, libunwind and winpthread inside, only the system's UCRT left.
+if(MINGW)
+    add_compile_definitions(_WIN32_WINNT=0x0A00 WINVER=0x0A00)
+    add_link_options(-static)
+endif()
+# Linux: compile and ThinLTO jobs follow the memory - a unity batch of generated code takes up to ~2 GB to compile.
+if(NOT WIN32)
     cmake_host_system_information(RESULT _vcs_mem_mb QUERY TOTAL_PHYSICAL_MEMORY)
     cmake_host_system_information(RESULT _vcs_cores QUERY NUMBER_OF_LOGICAL_CORES)
     math(EXPR _vcs_jobs "${_vcs_mem_mb} / 2048")
@@ -95,7 +103,9 @@ if(VCS_HAVE_GENERATED)
         target_sources(ps2EntryRunner PRIVATE "${CMAKE_SOURCE_DIR}/src/vcs.rc")
         set_source_files_properties("${CMAKE_SOURCE_DIR}/src/vcs.rc" TARGET_DIRECTORY ps2EntryRunner
             PROPERTIES OBJECT_DEPENDS "${CMAKE_SOURCE_DIR}/src/vcs.manifest")
-        target_link_options(ps2EntryRunner PRIVATE /MANIFEST:NO)
+        if(MSVC)
+            target_link_options(ps2EntryRunner PRIVATE /MANIFEST:NO)  # lld in mingw mode makes none of its own
+        endif()
     endif()
     # Our own sources aren't generated code; keep them out of the unity batches.
     set_source_files_properties(${VCS_SOURCES} "${CMAKE_SOURCE_DIR}/src/main.cpp"
@@ -120,6 +130,20 @@ if(VCS_RUNTIME_DEBUG_INFO AND MSVC)
         target_link_options(ps2EntryRunner PRIVATE /DEBUG)
         target_link_libraries(ps2EntryRunner PRIVATE dbghelp)
     endif()
+elseif(VCS_RUNTIME_DEBUG_INFO AND MINGW)
+    # llvm-mingw: CodeView in a PDB, as clang-cl's /Z7 /DEBUG - dbghelp (src/debug: crash handler, profiler) and
+    # tools/minidbg.py read it the same way
+    foreach(t ps2_runtime ps2_iop)
+        if(TARGET ${t})
+            target_compile_options(${t} PRIVATE -g -gcodeview)
+        endif()
+    endforeach()
+    if(VCS_HAVE_GENERATED)
+        set_source_files_properties(${VCS_SOURCES} "${CMAKE_SOURCE_DIR}/src/main.cpp"
+            TARGET_DIRECTORY ps2EntryRunner PROPERTIES COMPILE_OPTIONS "-g;-gcodeview")
+        target_link_options(ps2EntryRunner PRIVATE -g -Wl,--pdb=)
+        target_link_libraries(ps2EntryRunner PRIVATE dbghelp)
+    endif()
 elseif(VCS_RUNTIME_DEBUG_INFO)
     # Linux: line tables for the crash handler / profiler (src/debug, symbolized with llvm-symbolizer); frame pointers
     # for their backtraces
@@ -133,4 +157,10 @@ elseif(VCS_RUNTIME_DEBUG_INFO)
             TARGET_DIRECTORY ps2EntryRunner PROPERTIES COMPILE_OPTIONS "-gline-tables-only;-fno-omit-frame-pointer")
         target_link_options(ps2EntryRunner PRIVATE -rdynamic)
     endif()
+endif()
+# llvm-mingw: the profiler's __try / __except (src/debug/profiler.cpp) need the Microsoft extensions clang-cl has on
+# (here, after the debug info's COMPILE_OPTIONS above, which would replace them)
+if(MINGW AND VCS_HAVE_GENERATED)
+    set_property(SOURCE "${CMAKE_SOURCE_DIR}/src/debug/profiler.cpp" TARGET_DIRECTORY ps2EntryRunner APPEND PROPERTY
+                 COMPILE_OPTIONS -fms-extensions)
 endif()

@@ -80,6 +80,7 @@ python3 tools/release.py --platform linux [--worktree --allow-new-glibc]   # the
 python tools/deps.py list|fetch|check        # the libraries CMake downloads; deps/ makes the build offline
 python tools/backup.py create|list|restore   # memory card backups (VCS_DATA_DIR honoured: test on copies)
 python tools/setup_vs.py status|install [--dry-run]   # Visual Studio Build Tools (+ clang) from Microsoft, elevated
+python tools/hlsl_dxbc.py ... [--check-fxc FXC]       # HLSL -> DXBC through Windows' d3dcompiler_47.dll (no Windows SDK)
 python tools/update.py check|apply [--zip F]  # a release folder to the newest GitHub release (not a clone)
 python tools/rip_disc.py list|rip E: OUT.iso  # a PS2 disc in a DVD drive to an .iso; report.py zips logs for bug reports
 python tools/framerate_audit.py [--steps 15,30,60,100]   # behaviour per simulated second at forced time steps
@@ -129,6 +130,13 @@ card copies to start from (never the user's live card).
   which one it is. `pgo` / `lto` relink slower and are for measuring and releases. A PGO profile from older code still
   builds; retrain (`--opt pgo --train`, ~30 min) after large changes. Never edit sources while a build or the PGO
   pipeline is compiling them.
+- Windows compiler (DECISIONS.md 2026-11-03): Visual Studio's clang-cl, the default (`toolchain.WINDOWS_TOOLCHAIN_DEFAULT`).
+  `VCS_TOOLCHAIN=mingw` builds with llvm-mingw instead (clang + lld + libc++, the GNU driver like Linux; pinned in
+  `toolchain.LLVM_MINGW_DOWNLOADS`, downloaded into `build/build-tools`): no Visual Studio, no Windows SDK. It isn't the
+  default until its ThinLTO build is as fast (PERFORMANCE.md 29). Shaders come from `tools/hlsl_dxbc.py` either way
+  (no fxc). Switching compilers sets the tree up from scratch (`toolchain.drop_other_compiler`); test a mingw build in
+  its own folder (`VCS_BUILD_DIR=build/mingw`). Code that differs: `__MINGW32__` / CMake's `MINGW`; `_MSC_VER` means
+  clang-cl only.
 - A successful build writes `iso=<disc>` into the `vcs.ini` next to `vcs.exe` when that file has none, so the exe
   started on its own finds the disc.
 - The launcher (`launcher/`, docs/LAUNCHER.md) only runs `tools/`: build logic stays in Python, so a change to the

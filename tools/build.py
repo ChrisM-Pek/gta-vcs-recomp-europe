@@ -160,6 +160,7 @@ def build_launcher(env, verbose):
     if not tc.IS_WINDOWS and not tc.check_linux_deps(env, tc.LAUNCHER_LINUX_DEPS):
         tc.fail("missing packages for the launcher (above)", "missing_packages")
     if tc.drop_foreign_cache(LAUNCHER_BUILD, os.path.join(tc.ROOT, "launcher")) or tc.stale_tools(LAUNCHER_BUILD) or \
+            tc.drop_other_compiler(LAUNCHER_BUILD, env) is not None or \
             not os.path.isfile(os.path.join(LAUNCHER_BUILD, "build.ninja")):
         cmd = ["cmake", "-S", os.path.join(tc.ROOT, "launcher"), "-B", LAUNCHER_BUILD, "-G", "Ninja",
                "-DCMAKE_BUILD_TYPE=Release"] + tc.launcher_compiler_defines(env) + tc.deps_defines()
@@ -341,7 +342,8 @@ def tool(name):
 def iop_tests(env):
     """ps2xIOP on its own with PS2X_IOP_BUILD_TESTS=ON in build/iop_tests; runs the SPU2 checks."""
     out = os.path.join(tc.BUILD, "iop_tests")
-    if not os.path.isfile(os.path.join(out, "build.ninja")) or tc.stale_tools(out):
+    if not os.path.isfile(os.path.join(out, "build.ninja")) or tc.stale_tools(out) or \
+            tc.drop_other_compiler(out, env) is not None:
         subprocess.check_call(tc.resolve(["cmake", "-S", os.path.join(tc.ROOT, "third_party", "PS2Recomp", "ps2xIOP"),
                                           "-B", out, "-G", "Ninja", "-DCMAKE_BUILD_TYPE=Release",
                                           "-DPS2X_IOP_BUILD_TESTS=ON", "-DPS2X_CPU=" + tc.check_cpu()] +

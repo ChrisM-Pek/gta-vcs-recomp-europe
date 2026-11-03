@@ -75,6 +75,11 @@ That's all: you don't need to open Visual Studio or a special command prompt. CM
 they are (Visual Studio's own, the CMake installer, winget, scoop, Chocolatey, pip, CLion...); when none is new enough
 (CMake 3.21, Ninja 1.10), the build downloads them once (~55 MB, into `build\build-tools`).
 
+Without Visual Studio: `set VCS_TOOLCHAIN=mingw` before building takes [llvm-mingw](https://github.com/mstorsjo/llvm-mingw)
+(clang, lld, libc++ and the Windows headers in one package), which the build downloads itself (~190 MB, once). It
+builds and plays the same game, but its optimised build is still 5-15% slower on the game thread, so it isn't the
+default yet (docs/PERFORMANCE.md 29).
+
 **Linux**
 - Python 3 and Git (most distributions have both), then let the build list the rest: in the source folder (step 2),
   ```bash

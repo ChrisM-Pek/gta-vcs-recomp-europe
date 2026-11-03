@@ -1019,3 +1019,39 @@ only a short time after it stops to go slowly back behind the car.
   (opposite to where the car moves, its nose when slow or a boat), so the hand-back is seamless.
 - **Car camera return** (Keyboard > Mouse): 1.5 s by default, 0.5 / 1 / 2 / 3 / 5 s or Never. It is part of the mouse
   camera (a control choice, on by default with it); `VCS_CARCAM=0` is the switch back to the stick path.
+
+## 2026-11-03 - Windows without Visual Studio: llvm-mingw as an option, D3DCompile instead of fxc (the user's request)
+
+The user asked for Visual Studio to stop being a build dependency, the way Linux builds with a plain clang. Done as an
+option first (the user's choice: keep the Visual Studio build until the new one is checked against it):
+- **llvm-mingw** (github.com/mstorsjo/llvm-mingw): one zip with clang, lld, libc++, compiler-rt, llvm-windres and
+  mingw-w64's Windows headers and import libraries - D3D11, DXGI, DirectWrite, dbghelp, `wrl/client.h` included.
+  `toolchain.py` pins it (20261020, clang 23.1.4, UCRT; SHA-256 from GitHub's asset digest) and downloads it into
+  `build/build-tools` like CMake and Ninja: nothing to install, no elevation. `VCS_TOOLCHAIN=mingw` selects it,
+  `VCS_LLVM_MINGW=<folder>` takes another copy. Chosen over clang-cl with Microsoft's CRT / SDK fetched from Microsoft
+  (the `xwin` way): open source, redistributable, and the same GNU-driver build as Linux, at the cost of a different
+  C++ library and ABI - which the checks below cover.
+- **It takes CMake's MinGW paths**, the ones Linux already uses (`Clang AND NOT MSVC` in ReleaseMode.cmake: the same
+  flags and numerics as clang-cl), plus: `_WIN32_WINNT=0x0A00` (mingw-w64 defaults to Windows 7), `-static` for every
+  program (libc++ / libunwind / winpthread inside: only UCRT left, and no Visual C++ redistributable either - the MSVC
+  build's vcs.exe needs MSVCP140 / VCRUNTIME140), CodeView in a PDB (`-gcodeview`, `-Wl,--pdb=`) so dbghelp reads it
+  as before (the profiler's names and lines checked; the crash handler makes the same calls, not crashed on purpose), and `-fms-extensions` for the profiler's `__try`.
+- **Shaders from D3DCompile, for both compilers**: `tools/hlsl_dxbc.py` calls Windows' own `d3dcompiler_47.dll`
+  (System32, every Windows 10 / 11) with fxc's flags; the DXBC is byte for byte fxc's (checked for the launcher's
+  shaders and the GS / present ones; `-DVCS_DXBC_CHECK_FXC=<fxc.exe>` checks every shader in a build). So the Windows
+  SDK's fxc is no longer needed by either build.
+- **What it needed in the source**: the VU1 interpreter's exact FMAC check in `double`, not `long double` (MSVC's is
+  `double`; mingw's 80-bit one could decide otherwise; PS2RECOMP_PATCHES.md), the profiler's leaf stack read out of
+  line (clang's `__try` catches faults in calls only), the launcher's version text from a header (llvm-windres loses
+  a quoted define's quotes), and dbghelp names demangled (`src/debug/win_symbols.h`: generated code has only its
+  Itanium public symbol, so the profiler counted 0% guest code). Everything else compiled as it was.
+- **Checked** (both builds of one commit): launcher screenshots pixel-identical, self-test ok; scenes the same
+  (statics mean difference 0.00-0.02); `PS2X_HLE_VERIFY` / `PS2X_VU0_VERIFY` 150 s the same classes (VU0 0 of millions
+  differed; the world fast path's few off packets are on clang-cl's build too); SPU2 tests pass; profiler names and
+  lines; ThinLTO builds; the Visual Studio build and launcher still build with every change.
+- **Not the default, because of speed**: the optimised (ThinLTO) game thread is 5-28% slower by spot, +14% driving
+  (PERFORMANCE.md 29) - libc++'s clock and timed waits, `memcmp`, `GetWriteWatch`. Performance is a hard requirement
+  (2026-10-21), so `toolchain.WINDOWS_TOOLCHAIN_DEFAULT` stays "msvc" until that is closed; then the default flips and
+  setup_vs.py and the launcher's Visual Studio step can go.
+- Switching compilers sets a build tree up from scratch (`toolchain.drop_other_compiler`: CMake can't change a tree's
+  compiler), keeping its `--opt`.

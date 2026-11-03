@@ -75,6 +75,10 @@ game-internals.md 12c):
   and the right stick turn the circle, no button to hold, the left button fires; the right button does nothing there
   (as R1 on the PS2), and on the gamepad **R1 fires** (as Circle), as in Jive Drive's car. Up to 110 degrees either
   side of Vic's heading, 40 above level and 20 below, as the game allows.
+- **A gun on a vehicle** (Farewell To Arms: Vic in the helicopter's door with an M249, the first-person view with the
+  circle in the middle): the same again - the mouse and the right stick turn the view, the left button fires, on the
+  gamepad R1 fires. Up to 70 degrees either side of the door, as the game allows. With free aim off the mouse still
+  turns it (as in the scopes) and the gamepad's left stick does, as on the PS2.
 
 **In the scopes** (sniper rifles, rocket launcher, M16 view, camera, binoculars) the mouse turns the view itself, 1:1,
 with Mouse camera on (zoomed in it turns slower). **Mouse wheel** (Keyboard page, on by default): on foot down is the

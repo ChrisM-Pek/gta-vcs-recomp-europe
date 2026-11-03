@@ -660,6 +660,17 @@ dropped on uploads (lazy render-target patching).
   circle hit and one beside him not, the script's end ends it. (Starting the range from the trainer's mission list
   drops Vic through the floor: the range is an interior the door's script loads - the game's, with or without free
   aim.)
+- **Aiming in Farewell To Arms** (2026-11-03, a player's report and the user's: the aim snapped to the left now and then;
+  0.0.2, before free aim, was fine): the mission attaches Vic to its helicopter's door (ATTACH_CHAR_TO_CAR, 70 deg
+  either side), whose camera (mode 45) keeps its heading signed, relative to the door; the scopes' mouse wrapped it into
+  0..2 pi, so the first turn right of the middle became +6.27 and the game's clamp put it at +70 deg, the left limit
+  (measured: 0.000 -> +1.222 for 10 counts). Kept signed now, and free aim takes the mounted gun over like the car's and
+  the range's (game-internals.md 12c): the mouse / right stick turn it, the left stick centred, the gamepad's R1 fires.
+  In the mission (window shown): 20 counts a step 0.000 -> -0.300 and back to +0.300, no jump; fired down into the
+  street through the circle. controls_check `mounted_gun` (the mission's attachment, to a car): free aim off the mouse
+  -0.100 / +0.200 rad per 40 / 80 counts, the left stick turns it; on - the mouse, the right stick (-0.66 in 0.3 s), the
+  left stick centred, R1 as Circle; -70.0 / +70.0 deg at the limits; a man under the circle hit, one beside him not;
+  DETACH_CHAR_FROM_CAR ends it.
 - **Music / sound effects volume** (2026-10-28, asked for by the user): Audio > Music and Sound effects are the game's
   own levels, in step with its pause menu both ways and kept across save loads (game-internals.md 9c). controls_check
   checks that the levels reach the game and its prefs, a save load keeps them, and the pause menu's slider changes the

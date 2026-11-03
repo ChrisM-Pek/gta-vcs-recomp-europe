@@ -480,11 +480,17 @@ namespace vcs::input
                 {
                     // the scopes and first-person weapon views turn by the mouse itself, as the follow camera's heading:
                     // their update adds the stick's speed to +0x78 / +0x7C and keeps them in its limits
-                    // (FUN_00297cb8); zoomed in they turn slower
+                    // (FUN_00297cb8); zoomed in they turn slower. Attached to a vehicle (+0x858: a gun in a helicopter's
+                    // door) the heading is the turn from the side he faces, signed and kept within the attachment's
+                    // limit: wrapped into 0..2 pi, a turn right of the middle became the limit on the left
                     const float look = m.mouseLook * fov / 70.0f;
                     const float turn = -dx * look;
                     float beta = std::fmod(rdf(cam + 0x7C) + turn, 6.2831855f);
-                    wrf(cam + 0x7C, beta < 0.0f ? beta + 6.2831855f : beta);
+                    if (rd32(rd32(kPlayerPed) + 0x858))
+                        beta = std::remainder(rdf(cam + 0x7C) + turn, 6.2831855f);
+                    else if (beta < 0.0f)
+                        beta += 6.2831855f;
+                    wrf(cam + 0x7C, beta);
                     wrf(cam + 0x78, rdf(cam + 0x78) + up * look);
                 }
                 else if (on && game.footCamera)

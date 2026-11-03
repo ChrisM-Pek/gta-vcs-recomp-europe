@@ -15,7 +15,8 @@ and free aim off still lock on, the gamepad's RB and right stick, the sniper sco
 the wheel changing weapons; in a car, the game's drive-by free aim as in Jive Drive: the left stick with free aim off,
 the mouse / right stick with it on, the height limits, a shot through the circle, leaving the car; on foot, the game's
 forced free aim as in Phil's shooting range: the same, the gamepad's R1 firing, the right button keeping it, the side
-and height limits, the script's end); a mouse wheel binding; a menu key
+and height limits, the script's end; a gun on a vehicle as in Farewell To Arms: its camera turned by the mouse with no
+jump to the left, the right stick and R1 with free aim on, the limits, a shot through the circle); a mouse wheel binding; a menu key
 refuses a key a control has; the presets and Reset all settings; the screenshot key (F8) saves a PNG; screenshots of the settings menu's pages; Audio >
 Music / Sound effects are the game's own levels (set here, shown in its pause menu, changed there, kept by a save
 load) (src/game/vcs_volume.cpp). Results: OUT/summary.txt; screenshots OUT/*.png. Default
@@ -731,6 +732,122 @@ class Check:
         self.setting("mouse.free_aim", 0)
         self.ok("forced free aim: the script's end ends it", ended == (0, 4), "active %d mode %d" % ended)
 
+    def mounted_gun(self):
+        """A gun on a vehicle (ATTACH_CHAR_TO_CAR as Farewell To Arms attaches Vic to its helicopter's door: 1.6 1 0,
+        facing its right, 70 degrees either side, an M249; here a car standing still): its first-person camera (mode 45)
+        is the aim. Its heading is signed, the turn from the side Vic faces: a mouse turn to the right of the middle used
+        to jump to the limit on the left (the user's report; the scope's mouse wrapped it into 0..2 pi). Free aim off: the
+        mouse and the left stick turn it; on: the mouse and the right stick (the left stick centred), the gamepad's R1
+        fires; the game's limit either side, a shot through the circle, the end of the attachment."""
+        g = self.g
+        S = rig.Scm
+        # away from the car the drive-by check left at (575, 175): the new one landed on it and moved while aiming
+        g.teleport(575.0, 125.0, -100.0, 0.0)
+        time.sleep(3.0)
+        g.cmd("trainer toggle god 1")
+        _, (x, y, _), _ = g.player()
+        g.scm(S.op(S.GIVE_WEAPON_TO_CHAR, S.PLAYER, S.i(34), S.i(999)) +
+              S.op(S.REQUEST_MODEL, S.i(211)) + S.op(S.LOAD_ALL_MODELS_NOW) +
+              S.op(S.CREATE_CAR, S.i(211), S.f(x + 4.0), S.f(y), S.f(-100.0), S.LOCAL0) +
+              S.op(0x02B6, S.PLAYER, S.LOCAL0, S.f(1.6), S.f(1.0), S.f(0.0), S.i(3), S.f(70.0), S.i(34)) +  # ATTACH_CHAR_TO_CAR
+              S.op(0x04D0, S.PLAYER, S.f(55.0)) + S.op(0x04CF, S.PLAYER, S.f(10.0)))  # its vertical limits
+        time.sleep(2.0)
+        ped = g.player()[0]
+        limit = g.peekf(ped + 0x760, 1)[0]  # the attachment's limit either side (70 degrees)
+
+        def cam():
+            return 0x6F44D0 + 0x70 + g.peek(0x6F44D0 + 0x50, 1)[0] * 0x270
+
+        def beta():
+            g.wait_frames(5)
+            return g.peekf(cam() + 0x7C, 1)[0]
+
+        def mouse(counts):
+            b0 = beta()
+            for _ in range(10):
+                g.cmd("mouse %d 0" % (counts // 10))
+            return beta() - b0
+
+        def stick(key):
+            b0 = beta()
+            g.cmd("key %s down" % key)
+            time.sleep(0.5)
+            g.cmd("key %s up" % key)
+            return beta() - b0
+
+        mode = g.u32(cam()) & 0xFFFF
+        # free aim off: the scope's mouse (400 counts a radian) and the game's left stick
+        self.setting("mouse.free_aim", 0)
+        g.wait_frames(5)
+        off = self.aim()[0], mouse(40), mouse(-80), stick("d")
+        mouse(round(beta() * 400))  # to the middle
+        self.ok("a gun on a vehicle, free aim off: the mouse turns it, no jump to the left",
+                mode == 45 and abs(limit - math.radians(70.0)) < 0.01 and off[0] == 0 and abs(off[1] + 0.1) < 0.01 and
+                abs(off[2] - 0.2) < 0.01 and off[3] < -0.2,
+                "mode %d limit %.1f deg, active %d, mouse right %+.3f, left %+.3f, left stick %+.3f" % (
+                    (mode, math.degrees(limit)) + off))
+
+        # free aim on: the mouse and the right stick, not the left stick
+        self.setting("mouse.free_aim", 1)
+        g.wait_frames(5)
+        on = self.aim()[0], mouse(40), stick("d")
+        p = self.held("d")
+        g.cmd("gamepad on")
+        b0 = beta()
+        g.cmd("gamepad rx 1")
+        time.sleep(0.3)
+        g.cmd("gamepad rx 0")
+        pad = beta() - b0
+        g.cmd("gamepad rb 1")
+        rb = self.pad()["buttons"]
+        g.cmd("gamepad rb 0")
+        g.cmd("gamepad off")
+        self.ok("a gun on a vehicle, free aim on: the mouse and the right stick aim, R1 fires",
+                on[0] == 1 and abs(on[1] + 0.1) < 0.01 and abs(on[2]) < 0.005 and p["lx"] in (127, 128) and
+                -0.9 < pad < -0.3 and rb == CIRCLE,
+                "active %d, mouse %+.3f, left stick %+.3f (lx %d), right stick %+.3f, buttons %04x" % (
+                    on + (p["lx"], pad, rb)))
+
+        # the game's limit either side: far to the right stays on the right
+        mouse(1600)
+        right = beta()
+        mouse(-3200)
+        left = beta()
+        mouse(round(left * 400))
+        self.ok("a gun on a vehicle: the game's limit either side", abs(right + limit) < 0.01 and abs(left - limit) < 0.01,
+                "%+.1f / %+.1f deg" % (math.degrees(right), math.degrees(left)))
+
+        # a man 10 m along the camera's line, one 2 m beside him: the aim tilted onto the first one's middle, then fired
+        (sx, sy, _), (fx, fy, _) = g.peekf(cam() + 0x20, 3), g.peekf(cam() + 0x10, 3)
+        h = math.hypot(fx, fy)
+        ux, uy = fx / h, fy / h
+        on_ped = self.ped_at(sx + ux * 10.0, sy + uy * 10.0)
+        off_ped = self.ped_at(sx + ux * 10.0 - uy * 2.0, sy + uy * 10.0 + ux * 2.0)
+        time.sleep(1.0)
+        for _ in range(3):  # the camera's line through his middle: turned and tilted until it does
+            (sx, sy, sz), (fx, fy, fz) = g.peekf(cam() + 0x20, 3), g.peekf(cam() + 0x10, 3)
+            (qx, qy, qz) = g.peekf(on_ped + 0x30, 3)
+            along = math.hypot(qx - sx, qy - sy)
+            side = (math.atan2(qy - sy, qx - sx) - math.atan2(fy, fx) + math.pi) % (2 * math.pi) - math.pi
+            g.cmd("mouse %d %d" % (round(-side * 400),
+                                   round(-(math.atan2(qz - sz, along) - math.atan2(fz, math.hypot(fx, fy))) * 400)))
+            g.wait_frames(10)
+        g.cmd("press mouseleft 300")
+        time.sleep(1.0)
+        hit, missed = g.peekf(on_ped + self.PED_HEALTH, 1)[0], g.peekf(off_ped + self.PED_HEALTH, 1)[0]
+        self.shot("mounted_gun")
+        self.ok("a gun on a vehicle: the shot goes through the circle", hit < 100 and missed == 100,
+                "under the circle %.0f, beside it %.0f" % (hit, missed))
+
+        # detached (DETACH_CHAR_FROM_CAR): free aim lets go
+        g.scm(S.op(0x02B7, S.PLAYER))
+        time.sleep(1.5)
+        ended = self.aim()[0], g.u32(ped + 0x858), g.u32(cam()) & 0xFFFF
+        self.setting("mouse.free_aim", 0)
+        g.cmd("trainer toggle god 0")
+        self.ok("a gun on a vehicle: detached, free aim lets go", ended[0] == 0 and not ended[1] and ended[2] != 45,
+                "active %d attached %#x mode %d" % ended)
+
     def run(self):
         g = self.g = rig.Game.start(save=os.path.join(ROOT, "build", "rig", "saves", "fortbaxter"), name="controls_check",
                                     port=self.port, data_dir=os.path.join(ROOT, "build", "controls", "data"),
@@ -787,6 +904,7 @@ class Check:
             self.free_aim()
             self.car_free_aim()
             self.forced_free_aim()
+            self.mounted_gun()
 
             # a wheel notch as L1 (second slot); the menu key keeps F2 (the menu refuses keys a control has)
             self.setting("keys.l12", KEY_WHEEL_UP)

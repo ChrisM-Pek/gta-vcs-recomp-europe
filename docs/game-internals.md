@@ -2084,6 +2084,26 @@ hidden run (rig `peek` / `poke`, snapshots diffed).
   scored by HAS_OBJECT_BEEN_DAMAGED (+100; -200 when `$G1590[i]` is set - presumably the board not to shoot, not
   checked), the score `$G15A6`, the round's target `$G15A7`; their
   origin is at the board's foot (aim ~0.6 m above it).
+- **A gun on a vehicle: Farewell To Arms** (2026-11-03; mission 95 `GON_C4`). The mission puts Vic in its helicopter's
+  door (`$G1632`, a heli: SET_HELI_ORIENTATION) with `ATTACH_CHAR_TO_CAR(02B6) $G2A5 $G1632 1.6 1 0 3 70 34` (offset,
+  direction 3 = facing the vehicle's right, 70 deg either side, weapon 34 the M249; 0x1A09C2, called from 0x1A66E2 about
+  45 s after the launch) and `SET_ATTACHED_PLAYER_VERTICAL_CAMERA_ANGLE_MAX / MIN_LIMIT(04D0 / 04CF)` 55 / 10 (seen:
+  10 deg up, the rest down); DETACH_CHAR_FROM_CAR(02B7) at its ends. It is not the free aim: no bit 51 / 53, no dummy
+  (+0x820 0), ped state 0x16, **+0x858 the vehicle**, **+0x760 the limit either side** (1.222 = 70 deg), **+0x780 the
+  direction** (u16), and the camera **mode 45** (VC's HELICANNON_1STPERSON) with the free-aim circle in the middle. Its
+  update is the scopes' FUN_00297CB8: attached (FUN_0020C310(ped) and +0x858 set) alpha / beta start at 0 (+0xAC, the
+  camera's first frame), the left stick turns them (0.0005 x FOV a step at full tilt, eased through +0x140 / +0x130),
+  and **beta is the turn from the direction Vic faces, signed** - clamped to +-(+0x760) when that is below pi (wrapped
+  by FUN_00369178 otherwise), alpha to FUN_00297BC8's limits; the view is the vehicle's matrix turned by the direction
+  (1 +pi/2, 2 pi, 3 -pi/2) and beta, tilted by alpha. Not attached, the scopes' beta is the world heading in 0..2 pi.
+  Found by logging the player and the active CCam every second through the mission (window shown), then the decompile.
+  The scopes' mouse (vcs_input.cpp) wrapped beta into 0..2 pi, so the first turn right of the middle (beta just below
+  0) became ~6.27 and the clamp made it +1.222, the left limit: the user's snap to the left. vcs_input.cpp keeps it
+  signed when attached, and vcs_aim.cpp takes the mounted gun over when free aim is on (the mouse / right stick turn
+  beta / alpha before the update, the left stick centred, the gamepad's R1 as Circle). The shots go down the camera's
+  line as they are (a man under the circle hit, one 2 m beside him not: controls_check `mounted_gun`). The same
+  attachment to a car (model 211) gives the same state and camera - how the check sets it up. JER_A1 attaches Vic to a
+  car too (`0 0 0 0 360 0`: no weapon, not seen in its camera).
 
 ## 13. Open questions / next research targets
 

@@ -19,6 +19,7 @@
 #include <thread>
 #include <unordered_map>
 #include <vector>
+#include "runtime/ps2_host_std.h"
 
 #if defined(_WIN32)
 #ifndef WIN32_LEAN_AND_MEAN
@@ -219,7 +220,7 @@ namespace ps2control
                 }
                 const int ms = arg.empty() ? 150 : std::max(1, std::atoi(arg.c_str()));
                 setInjected(key, true);
-                g_releases.push_back({key, std::chrono::steady_clock::now() + std::chrono::milliseconds(ms), command});
+                g_releases.push_back({key, ps2x::hostNow() + std::chrono::milliseconds(ms), command});
             }
             else if (verb == "perf")
                 command->reply.set_value("ok " + ps2perf::summaryLine());
@@ -339,7 +340,7 @@ namespace ps2control
         for (ScreenshotRequest &shot : shots)
             shoot(shot.path, std::move(shot.done));
         g_injectedEdge.fill(false);
-        const auto now = std::chrono::steady_clock::now();
+        const auto now = ps2x::hostNow();
         for (size_t i = 0; i < g_releases.size();)
         {
             if (g_releases[i].at > now)

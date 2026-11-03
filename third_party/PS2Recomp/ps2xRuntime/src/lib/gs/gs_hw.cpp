@@ -31,6 +31,7 @@
 #include <unordered_set>
 #include <vector>
 #include <cmath>  // [gta-recomp] libstdc++ (Linux) does not bring it in
+#include "runtime/ps2_host_std.h"
 
 namespace
 {
@@ -112,7 +113,7 @@ void gsHwSetAspectWidening(float widening) { g_aspectWidening.store(widening, st
 // [gta-recomp] gsHwShownInputNs (gs_hw.h)
 static int64_t steadyNs()
 {
-    return std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
+    return std::chrono::duration_cast<std::chrono::nanoseconds>(ps2x::hostNow().time_since_epoch()).count();
 }
 // [gta-recomp] gsHwFrameBuildNs: input snapshot -> frame ready for the window (game, render worker, GS stage), the 95th
 // percentile of the last 64 frames - the frame lead's estimate (docs/PERFORMANCE.md 19). GS stage thread writes.
@@ -489,7 +490,7 @@ namespace
             ++m_frames;
             if (m_log)
             {
-                const auto now = std::chrono::steady_clock::now();
+                const auto now = ps2x::hostNow();
                 if (now - m_lastLog >= std::chrono::seconds(5))
                 {
                     m_lastLog = now;
@@ -565,7 +566,7 @@ namespace
         uint64_t m_frames = 0;
         bool m_log = false, m_table = false;
         std::unordered_map<uint64_t, Kind> m_kinds;
-        std::chrono::steady_clock::time_point m_lastLog = std::chrono::steady_clock::now();
+        std::chrono::steady_clock::time_point m_lastLog = ps2x::hostNow();
     };
 
     std::mutex g_drawSourcesMutex;
@@ -892,7 +893,7 @@ namespace
                     d.usage = rhi::UsageSampled;
                     d.name = "gs texture";
                     d.mipLevels = m_anisotropy ? 0u : 1u; // [gta-recomp] anisotropic filtering samples a mip chain
-                    const auto createStart = std::chrono::steady_clock::now(); // [gta-recomp] tex_create_us / tex_kb
+                    const auto createStart = ps2x::hostNow(); // [gta-recomp] tex_create_us / tex_kb
                     if (t.early) // [gta-recomp] made on a helper thread (makeTextureEarly): usually done long before
                     {
                         t.early->done.wait(false);
@@ -906,7 +907,7 @@ namespace
                     else
                         m_textures[t.key] = m_dev.createTexture(d, t.pixels.data(), t.w * 4u);
                     ps2perf::add(ps2perf::Counter::TexCreateUs, static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(
-                                                                    std::chrono::steady_clock::now() - createStart).count()));
+                                                                    ps2x::hostNow() - createStart).count()));
                     ps2perf::add(ps2perf::Counter::TexKBytes,
                                  ((t.early ? t.early->bytes : (t.pixels.size() + t.mips.size()) * 4u) + 1023u) / 1024u);
                     // [gta-recomp] PS2X_HW_DUMP_TEX=<key hex>: write that decoded texture (hw_tex_<key>.ppm, alpha dropped)
@@ -926,10 +927,10 @@ namespace
                 }
                 case CmdType::TexDelete:
                 {
-                    const auto deleteStart = std::chrono::steady_clock::now(); // [gta-recomp] tex_create_us: releases too
+                    const auto deleteStart = ps2x::hostNow(); // [gta-recomp] tex_create_us: releases too
                     m_textures.erase(f.texDeletes[c.index]);
                     ps2perf::add(ps2perf::Counter::TexCreateUs, static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(
-                                                                    std::chrono::steady_clock::now() - deleteStart).count()));
+                                                                    ps2x::hostNow() - deleteStart).count()));
                     break;
                 }
                 case CmdType::RtDrop:
@@ -1092,10 +1093,10 @@ namespace
                 if (f.displayFromRt && it != m_hud.end() && !it->second.stale && !it->second.draws.empty())
                     layer = &it->second;
                 static const bool rtLog = std::getenv("PS2X_HW_RT_LOG") != nullptr; // [gta-recomp] the targets, every 5 s
-                static auto rtLast = std::chrono::steady_clock::now();
-                if (rtLog && std::chrono::steady_clock::now() - rtLast > std::chrono::seconds(5))
+                static auto rtLast = ps2x::hostNow();
+                if (rtLog && ps2x::hostNow() - rtLast > std::chrono::seconds(5))
                 {
-                    rtLast = std::chrono::steady_clock::now();
+                    rtLast = ps2x::hostNow();
                     for (const auto &[fbp, rt] : m_rts)
                     {
                         const TargetRole *role = targetRole(fbp, 0u);
@@ -1105,10 +1106,10 @@ namespace
                     }
                 }
                 static const bool log = std::getenv("PS2X_HW_HUD_LOG") != nullptr; // the layers, every 2 s
-                static auto last = std::chrono::steady_clock::now();
-                if (log && std::chrono::steady_clock::now() - last > std::chrono::seconds(2))
+                static auto last = ps2x::hostNow();
+                if (log && ps2x::hostNow() - last > std::chrono::seconds(2))
                 {
-                    last = std::chrono::steady_clock::now();
+                    last = ps2x::hostNow();
                     std::string s;
                     for (const auto &[fbp, l] : m_hud)
                         s += " " + std::to_string(fbp) + (l.stale ? "(stale," : "(") + std::to_string(l.draws.size()) + " draws)";
@@ -1610,14 +1611,14 @@ namespace
                 d.depth.write = depthTest && zwrite;
                 d.depth.func = ztst == 1 ? rhi::Compare::Always : ztst == 2 ? rhi::Compare::GreaterEqual : rhi::Compare::Greater;
                 d.name = "gs draw";
-                const auto made = std::chrono::steady_clock::now();
+                const auto made = ps2x::hostNow();
                 p = m_dev.createPipeline(d);
                 // [gta-recomp] PS2X_HW_LOG_PIPELINES=1: each draw pipeline as it is made, with the time it took (a first
                 // use mid-game is a main-thread stall)
                 static const bool logPipelines = std::getenv("PS2X_HW_LOG_PIPELINES") != nullptr;
                 if (logPipelines)
                     std::fprintf(stderr, "[gs-hw] pipeline %08x (sample %u, mode %u) made in %.2f ms, %zu so far\n", key, sample, mode,
-                                 std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - made).count(),
+                                 std::chrono::duration<double, std::milli>(ps2x::hostNow() - made).count(),
                                  m_drawPipelines.size());
             }
             return *p;
@@ -2186,11 +2187,11 @@ namespace
             if (log)
             {
                 static uint64_t n[2][2] = {};
-                static auto since = std::chrono::steady_clock::now();
+                static auto since = ps2x::hostNow();
                 ++n[which][same ? 1 : 0];
-                if (std::chrono::steady_clock::now() - since > std::chrono::seconds(5))
+                if (ps2x::hostNow() - since > std::chrono::seconds(5))
                 {
-                    since = std::chrono::steady_clock::now();
+                    since = ps2x::hostNow();
                     std::fprintf(stderr, "[gs-hw] constants: draw %llu written, %llu skipped; world %llu written, %llu skipped\n",
                                  (unsigned long long)n[0][0], (unsigned long long)n[0][1], (unsigned long long)n[1][0],
                                  (unsigned long long)n[1][1]);
@@ -3393,7 +3394,7 @@ namespace
             { // PS2X_HW_UPSTATS=1: upload kinds every 5 s
                 static const bool stats = std::getenv("PS2X_HW_UPSTATS") != nullptr;
                 static uint64_t whole = 0, partial = 0, bytesWhole = 0, bytesPartial = 0;
-                static auto last = std::chrono::steady_clock::now();
+                static auto last = ps2x::hostNow();
                 if (stats)
                 {
                     (wholeTransfer ? whole : partial) += 1;
@@ -3402,7 +3403,7 @@ namespace
                         std::fprintf(stderr, "[upload] partial: %u bytes, rect %ux%u psm %u (expects %llu)\n", sizeBytes, t.trxreg.rrw,
                                      t.trxreg.rrh, t.bitbltbuf.dpsm,
                                      static_cast<unsigned long long>(uint64_t(t.trxreg.rrw) * t.trxreg.rrh * bitsPerPixel / 8u));
-                    const auto now = std::chrono::steady_clock::now();
+                    const auto now = ps2x::hostNow();
                     if (now - last > std::chrono::seconds(5))
                     {
                         last = now;
@@ -3447,14 +3448,14 @@ namespace
                     if (stats)
                     {
                         static std::map<std::string, uint64_t> why;
-                        static auto lastWhy = std::chrono::steady_clock::now();
+                        static auto lastWhy = ps2x::hostNow();
                         char key[96];
                         std::snprintf(key, sizeof(key), "%s psm %u %ux%u %u bytes%s", !wholeTransfer ? "partial" : "whole", dpsm, t.trxreg.rrw, t.trxreg.rrh, sizeBytes,
                                       wholeTransfer && overlapsRenderTarget(first, last) ? " over a render target" : "");
                         ++why[key];
-                        if (std::chrono::steady_clock::now() - lastWhy > std::chrono::seconds(5))
+                        if (ps2x::hostNow() - lastWhy > std::chrono::seconds(5))
                         {
-                            lastWhy = std::chrono::steady_clock::now();
+                            lastWhy = ps2x::hostNow();
                             std::vector<std::pair<uint64_t, std::string>> top;
                             for (const auto &[k, n] : why)
                                 top.push_back({n, k});
@@ -3932,10 +3933,10 @@ namespace
         void reportLazyStats()
         {
             static const bool stats = std::getenv("PS2X_HW_UPSTATS") != nullptr;
-            static auto lastReport = std::chrono::steady_clock::now();
-            if (!stats || std::chrono::steady_clock::now() - lastReport < std::chrono::seconds(5))
+            static auto lastReport = ps2x::hostNow();
+            if (!stats || ps2x::hostNow() - lastReport < std::chrono::seconds(5))
                 return;
-            lastReport = std::chrono::steady_clock::now();
+            lastReport = ps2x::hostNow();
             std::fprintf(stderr, "[upload] lazy: deferred %llu, written later %llu, made obsolete %llu, queued now %zu (%zu KB); forced by clut %llu, decode %llu, direct upload %llu, other %llu\n",
                          (unsigned long long)m_lazyDeferred, (unsigned long long)m_lazyWritten, (unsigned long long)m_lazyDropped,
                          m_pendingUploads.size(), m_pendingBytes >> 10, (unsigned long long)m_lazyWhy[0], (unsigned long long)m_lazyWhy[1],
@@ -4021,7 +4022,7 @@ namespace
                 std::unique_lock<std::mutex> lock(m_queueMutex);
                 // Don't let the game run more than a few frames ahead of the main thread.
                 const size_t depth = frameQueueDepth(); // [gta-recomp] gsHwSetShowEveryFrame
-                m_queueCv.wait_for(lock, std::chrono::milliseconds(100), [&] { return m_queue.size() < depth; });
+                ps2x::waitFor(m_queueCv, lock, std::chrono::milliseconds(100), [&] { return m_queue.size() < depth; });
                 m_frame->inputNs = PSPadBackend::lastInputNs();
                 m_frame->queuedNs = steadyNs();
                 m_queue.push_back(std::move(m_frame));
@@ -4301,7 +4302,7 @@ namespace
                 static const bool debug = std::getenv("PS2X_HW_DEBUG") != nullptr;
                 if (debug)
                 {
-                    static auto since = std::chrono::steady_clock::now();
+                    static auto since = ps2x::hostNow();
                     static uint64_t nFrames = 0, nDraws = 0, nVerts = 0, nTex = 0;
                     for (auto &fr : frames)
                     {
@@ -4310,7 +4311,7 @@ namespace
                         nVerts += fr->vertices.size();
                         nTex += fr->textures.size();
                     }
-                    const auto now = std::chrono::steady_clock::now();
+                    const auto now = ps2x::hostNow();
                     if (std::chrono::duration<double>(now - since).count() >= 1.0)
                     {
                         const Frame &l = *frames.back();
@@ -4626,7 +4627,7 @@ namespace
             tc.key = key;
             tc.w = d.textureWidth;
             tc.h = d.textureHeight;
-            const auto decodeStart = std::chrono::steady_clock::now(); // [gta-recomp] tex_decode_us
+            const auto decodeStart = ps2x::hostNow(); // [gta-recomp] tex_decode_us
             if (!decodeFromQueuedUpload(d, tc.pixels)) // [gta-recomp] step 3c
             {
                 if (materializeRectKeepTransfer(t.psm, t.tbp0, t.tbw, 0u, 0u, d.textureWidth, d.textureHeight))
@@ -4651,7 +4652,7 @@ namespace
             if (!makeTextureEarly(tc, mipChain) && mipChain)
                 buildMipChain(tc.pixels, tc.w, tc.h, tc.mips);
             ps2perf::add(ps2perf::Counter::TexDecodeUs, static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(
-                                                            std::chrono::steady_clock::now() - decodeStart).count()));
+                                                            ps2x::hostNow() - decodeStart).count()));
             f.cmds.push_back({CmdType::TexCreate, static_cast<uint32_t>(f.textures.size())});
             f.textures.push_back(std::move(tc));
             m_texLru[key] = m_frameIndex;

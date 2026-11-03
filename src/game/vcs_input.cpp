@@ -28,6 +28,7 @@
 #include <string>
 #include <thread>
 #include <vector>
+#include "runtime/ps2_host_std.h"
 
 namespace vcs::input
 {
@@ -418,7 +419,7 @@ namespace vcs::input
 
             // the mouse camera, on top of the right stick: worked out once per game frame (the game reads the pad three
             // times a frame; the frame's other reads repeat the deflection)
-            const auto now = std::chrono::steady_clock::now();
+            const auto now = ps2x::hostNow();
             const float dt = g_mouse.last.time_since_epoch().count() ? std::chrono::duration<float>(now - g_mouse.last).count() : 0.0f;
             const uint32_t frame = g_rdram ? rd32(kFrameCounter) : 0;
             if (freeCamera)

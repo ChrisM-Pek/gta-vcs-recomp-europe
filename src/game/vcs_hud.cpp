@@ -41,6 +41,7 @@
 #include <numeric>
 #include <unordered_map>
 #include <vector>
+#include "runtime/ps2_host_std.h"
 
 namespace vcs
 {
@@ -79,12 +80,12 @@ namespace vcs
         int g_traceAnchors = 0;      // VCS_TRACE_HUDANCHOR=<frames>
 
         // one window for all trace lines: from 30 s after the hooks went in, VCS_TRACE_IM2D lines in total
-        auto g_traceStart = std::chrono::steady_clock::now();
+        auto g_traceStart = ps2x::hostNow();
         int g_traceLeft = 0;
         int g_traceDelay = 30; // VCS_TRACE_IM2D_DELAY=<s>
         bool traceNow()
         {
-            if (g_traceLeft <= 0 || std::chrono::steady_clock::now() - g_traceStart < std::chrono::seconds(g_traceDelay))
+            if (g_traceLeft <= 0 || ps2x::hostNow() - g_traceStart < std::chrono::seconds(g_traceDelay))
                 return false;
             --g_traceLeft;
             return true;
@@ -250,7 +251,7 @@ namespace vcs
                 b.keyCount += 1; // (prims in the element, for the trace)
             }
             const bool traceFrame = g_traceAnchors > 0 &&
-                                    std::chrono::steady_clock::now() - g_traceStart >= std::chrono::seconds(g_traceDelay);
+                                    ps2x::hostNow() - g_traceStart >= std::chrono::seconds(g_traceDelay);
             if (traceFrame)
                 std::fprintf(stderr, "[hud-anchor] frame (%d left)\n", --g_traceAnchors);
             for (uint32_t i = 0; i < n; ++i)
@@ -419,7 +420,7 @@ namespace vcs
                     std::memcpy(rdram + rect + 8u, &moved[1], 4);
                 }
                 if (g_traceAnchors > 0 && (g_inHud || g_inMenu) &&
-                    std::chrono::steady_clock::now() - g_traceStart >= std::chrono::seconds(g_traceDelay))
+                    ps2x::hostNow() - g_traceStart >= std::chrono::seconds(g_traceDelay))
                     std::fprintf(stderr, "[hud-anchor]   text justify %#x rect %.0f..%.0f%s\n", justify, r[0], r[2],
                                  g_textCentred ? " centred" : "");
             }
@@ -473,7 +474,7 @@ namespace vcs
         if (const char *frames = std::getenv("VCS_TRACE_HUDANCHOR"))
             g_traceAnchors = std::atoi(frames);
         const char *traceEnv = std::getenv("VCS_TRACE_IM2D");
-        g_traceStart = std::chrono::steady_clock::now();
+        g_traceStart = ps2x::hostNow();
         if (const char *delay = std::getenv("VCS_TRACE_IM2D_DELAY")) // (VCS_TRACE_HUDANCHOR's too)
             g_traceDelay = std::atoi(delay);
         g_origHudDraw = runtime.lookupFunction(kHudDraw);

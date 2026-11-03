@@ -23,6 +23,7 @@
 #include <string>
 #include <utility>
 #include <vector>
+#include "runtime/ps2_host_std.h"
 
 namespace vcs::rslworld
 {
@@ -342,7 +343,7 @@ namespace vcs::rslworld
         } g_stats[KindCount];
         uint64_t g_packets = 0, g_verifySame = 0, g_verifyDiffer = 0, g_unmarked = 0, g_rasterMarks = 0;
         std::map<const char *, uint64_t> g_refusals;
-        auto g_reportAt = std::chrono::steady_clock::now();
+        auto g_reportAt = ps2x::hostNow();
 
         uint64_t hashBlock(const uint8_t *p, uint32_t bytes)
         {
@@ -504,7 +505,7 @@ namespace vcs::rslworld
 
         void report()
         {
-            const auto now = std::chrono::steady_clock::now();
+            const auto now = ps2x::hostNow();
             if (!g_log || now - g_reportAt < std::chrono::seconds(10))
                 return;
             g_reportAt = now;
@@ -2466,7 +2467,7 @@ namespace vcs::rslworld
         };
         std::map<std::string, CensusRow> g_census;
         uint64_t g_censusChains = 0;
-        auto g_censusAt = std::chrono::steady_clock::now();
+        auto g_censusAt = ps2x::hostNow();
 
         void census(uint32_t tagAddr, uint32_t id, uint32_t dataAddr, uint32_t qwc, uint64_t vifCodes, bool chainStart)
         {
@@ -2480,7 +2481,7 @@ namespace vcs::rslworld
                                      [](const Origin &x, const Origin &y) { return x.cursor < y.cursor; });
                 }
                 ++g_censusChains;
-                const auto now = std::chrono::steady_clock::now();
+                const auto now = ps2x::hostNow();
                 if (now - g_censusAt > std::chrono::seconds(5) && g_censusChains > 1)
                 {
                     g_censusAt = now;
@@ -2557,7 +2558,7 @@ namespace vcs::rslworld
             }
             if (chainStart)
             {
-                g_chainStartAt = std::chrono::steady_clock::now();
+                g_chainStartAt = ps2x::hostNow();
                 g_chainResolveMs = 0.0;
                 g_building = ChainTable{};
                 g_building.seq = ++g_chainSeq;
@@ -2580,9 +2581,9 @@ namespace vcs::rslworld
                     g_building.itemFrame = g_itemFrameKicked;
                     g_itemsKicked.clear();
                     g_arenaKicked.clear();
-                    const auto t0 = std::chrono::steady_clock::now();
+                    const auto t0 = ps2x::hostNow();
                     resolveItems(g_building);
-                    const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
+                    const double ms = std::chrono::duration<double, std::milli>(ps2x::hostNow() - t0).count();
                     g_chainResolveMs = ms;
                     static const bool slowLog = std::getenv("VCS_RSL_SLOW_LOG") != nullptr;
                     if (slowLog && ms > 3.0)
@@ -2712,7 +2713,7 @@ namespace vcs::rslworld
         {
             if (g_chainStartAt != std::chrono::steady_clock::time_point{})
             {
-                const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - g_chainStartAt).count();
+                const double ms = std::chrono::duration<double, std::milli>(ps2x::hostNow() - g_chainStartAt).count();
                 ++g_kickTime.chains;
                 g_kickTime.ms += ms;
                 g_kickTime.resolveMs += g_chainResolveMs;
@@ -2737,7 +2738,7 @@ namespace vcs::rslworld
             static const bool slowLog = std::getenv("VCS_RSL_SLOW_LOG") != nullptr;
             if (slowLog && !begin)
             {
-                const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t_chainStart).count();
+                const double ms = std::chrono::duration<double, std::milli>(ps2x::hostNow() - t_chainStart).count();
                 if (ms > 15.0)
                     std::fprintf(stderr, "[rsl-slow] chain processed in %.1f ms: %zu items, arena %zu KB, %zu refs\n", ms,
                                  t_table ? t_table->items.size() : size_t(0), t_table ? t_table->arena.size() >> 10 : size_t(0),
@@ -2765,7 +2766,7 @@ namespace vcs::rslworld
             }
             t_chain = static_cast<const uint8_t *>(key);
             t_seen.clear();
-            t_chainStart = std::chrono::steady_clock::now();
+            t_chainStart = ps2x::hostNow();
             ++g_measure.chains;
             g_measure.chainBytes += g_lastChainBytes.load(std::memory_order_relaxed);
             std::lock_guard<std::mutex> lock(g_tablesMutex);

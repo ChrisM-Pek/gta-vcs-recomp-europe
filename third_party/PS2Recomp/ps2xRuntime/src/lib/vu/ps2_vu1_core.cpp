@@ -25,6 +25,7 @@
 #include <filesystem>
 #include <limits>
 #include <ps2_log.h>
+#include "runtime/ps2_host_std.h"
 
 namespace
 {
@@ -2741,7 +2742,7 @@ void VU1Interpreter::runLoop(uint8_t *vuCode, uint32_t codeSize,
                 s_vu1MaxPc[s_vu1StartBucket] = s_vu1StartPc;
             }
         }
-        const auto now = std::chrono::steady_clock::now();
+        const auto now = ps2x::hostNow();
         static auto last = now;
         if (now - last > std::chrono::seconds(10))
         {

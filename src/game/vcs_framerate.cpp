@@ -33,6 +33,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <unordered_map>
+#include "runtime/ps2_host_std.h"
 
 namespace vcs
 {
@@ -88,7 +89,7 @@ namespace vcs
         uint64_t hostNs()
         {
             return static_cast<uint64_t>(
-                std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now().time_since_epoch()).count());
+                std::chrono::duration_cast<std::chrono::nanoseconds>(ps2x::hostNow().time_since_epoch()).count());
         }
 
         // the cap in frames per second: display refresh and unlimited included, at most kMaxFps unless the floor is

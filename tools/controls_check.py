@@ -273,6 +273,15 @@ class Check:
         state = g.cmd("carcam")
         self.ok("the vehicle camera goes back behind the car", abs(angle(behind(), h3)) < 0.03 and abs(p3 - p0) < 0.02 and
                 state.endswith("state=idle"), "heading %+.3f from behind, pitch %+.3f, %s" % (angle(behind(), h3), p3 - p0, state))
+        self.setting("mouse.car_sensitivity", 200)  # on top of Mouse sensitivity: twice as far
+        _, _, h0 = self.cam()
+        for _ in range(10):
+            g.cmd("mouse 20 0")
+        g.wait_frames(3)
+        _, _, h1 = self.cam()
+        self.setting("mouse.car_sensitivity", 100)
+        self.ok("car camera sensitivity", abs(angle(h0, h1) + 1.0) < 0.01, "200 counts at 200%%: %+.3f" % angle(h0, h1))
+        time.sleep(4.0)
         g.cmd("key w down")
         time.sleep(1.5)
         _, _, h0 = self.cam()

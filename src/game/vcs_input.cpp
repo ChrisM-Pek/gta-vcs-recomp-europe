@@ -168,6 +168,7 @@ namespace vcs::input
             bool mouseCamera = true;
             float mouseScale = 1.0f; // stick deflection per mouse count per second (the cameras the stick turns)
             float mouseLook = 0.0025f; // radians per mouse count (the on-foot camera, turned directly)
+            float carLook = 0.0025f;   // ... the camera behind a vehicle (Car camera sensitivity on top)
             bool mouseInvertY = false;
             bool freeAimMouse = false, freeAimPad = false; // free aim (game/vcs_aim.h) on the keyboard / mouse, the gamepad
             bool mouseWheel = true;                        // the wheel changes weapons on foot and zooms scopes
@@ -201,6 +202,7 @@ namespace vcs::input
             // (half an inch at 800 DPI) turn a radian, as the PC GTAs' default
             m.mouseScale = settings::value("mouse.sensitivity") / 100.0f / 1500.0f;
             m.mouseLook = settings::value("mouse.sensitivity") / 100.0f * 0.0025f;
+            m.carLook = m.mouseLook * settings::value("mouse.car_sensitivity") / 100.0f;
             m.mouseInvertY = settings::value("mouse.invert_y") != 0;
             m.freeAimMouse = settings::value("mouse.free_aim") != 0;
             m.freeAimPad = settings::value("pad.free_aim") != 0;
@@ -547,7 +549,7 @@ namespace vcs::input
                     // the camera behind a vehicle turns by the mouse itself and stays where it is put while the mouse
                     // moves, then goes back behind the car (game/vcs_carcam.h)
                     if (!game.paused)
-                        carcam::mouse(-dx * m.mouseLook, up * m.mouseLook);
+                        carcam::mouse(-dx * m.carLook, up * m.carLook);
                 }
                 else
                 {
@@ -712,6 +714,21 @@ namespace vcs::input
                 s.help = "How far the camera turns for a mouse movement (100%: 400 counts, half an inch at 800 DPI, turn the "
                          "camera on foot a radian). Looking up / down and the cameras the stick turns have a top speed "
                          "(the stick's), so very fast flicks there turn no faster.";
+                s.type = Type::Integer;
+                s.min = 10;
+                s.max = 400;
+                s.format = "%d%%";
+                s.defaultValue = 100;
+                s.onChange = onChange;
+                settings::add(s);
+
+                s = {};
+                s.key = "mouse.car_sensitivity";
+                s.page = kKeys;
+                s.section = "Mouse";
+                s.label = "Car camera sensitivity";
+                s.help = "How far the camera behind a car, bike or boat turns for a mouse movement, on top of Mouse "
+                         "sensitivity (100%: as far as on foot).";
                 s.type = Type::Integer;
                 s.min = 10;
                 s.max = 400;

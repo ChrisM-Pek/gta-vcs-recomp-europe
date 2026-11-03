@@ -679,6 +679,8 @@ dropped on uploads (lazy render-target patching).
   (game-internals.md 12b, DECISIONS.md). Measured at 30 / 60 / 144 fps: 200 counts -> -0.500 rad, held to 0.000 for 1 s
   standing and driving, back within 0.01 rad of behind in 2-2.5 s. `tools/controls_check.py`: three checks in place of
   the old one (turned and held, back behind the car, driving); 71 checks, 0 failed.
+  Then (the user's ask) Keyboard > Car camera sensitivity (100%, 10-400%, on top of Mouse sensitivity): controls_check
+  "car camera sensitivity" (200 counts at 200% -> -1.000 rad); 72 checks, 0 failed.
 - **Music / sound effects volume** (2026-10-28, asked for by the user): Audio > Music and Sound effects are the game's
   own levels, in step with its pause menu both ways and kept across save loads (game-internals.md 9c). controls_check
   checks that the levels reach the game and its prefs, a save load keeps them, and the pause menu's slider changes the

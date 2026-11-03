@@ -9,7 +9,7 @@ Keypad Enter, the mouse buttons) gives its PS2 button or stick direction, Alt+En
 Vic and the old one no longer does; the walk key holds the stick at walking speed; the mouse turns the on-foot camera
 by the amount asked (heading and pitch, inverted, off), right click locks on to a ped, the Driving keys (W / S / Space
 accelerate, brake, handbrake in a car, and nothing else there), the mouse on the vehicle camera (turned 1:1, held while
-the mouse moves, standing and driving, then back behind the car), on foot again after
+the mouse moves, standing and driving, then back behind the car; the right stick takes it back at once), on foot again after
 leaving the car; free aim (src/game/vcs_aim.cpp: the right button enters the game's free aim, the mouse turns it, a shot
 hits a man on the aim line and not one beside it, Vic strafes while aiming, the camera stays where the aim looked, fists
 and free aim off still lock on, the gamepad's RB and right stick, the sniper scope turned 1:1 and zoomed by the wheel,
@@ -281,6 +281,20 @@ class Check:
         _, _, h1 = self.cam()
         self.setting("mouse.car_sensitivity", 100)
         self.ok("car camera sensitivity", abs(angle(h0, h1) + 1.0) < 0.01, "200 counts at 200%%: %+.3f" % angle(h0, h1))
+        # the gamepad's right stick right after the mouse turns it at once (the game's camera again, no hold)
+        g.cmd("gamepad on")
+        g.cmd("gamepad rx 1")
+        time.sleep(0.5)
+        g.cmd("gamepad rx 0")
+        g.wait_frames(3)
+        _, _, h2 = self.cam()
+        state = g.cmd("carcam")
+        g.cmd("gamepad rx -1")  # and back (standing, the game's camera stays where the stick put it)
+        time.sleep(0.5)
+        g.cmd("gamepad off")
+        g.cmd("mouse 1 0")  # the mouse's return puts it right behind the car again
+        self.ok("the right stick takes the car camera back from the mouse", angle(h1, h2) < -0.3 and
+                state.endswith("state=idle"), "0.5 s of full right: %+.3f, %s" % (angle(h1, h2), state))
         time.sleep(4.0)
         g.cmd("key w down")
         time.sleep(1.5)

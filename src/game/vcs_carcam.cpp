@@ -60,6 +60,7 @@ namespace vcs::carcam
         State g_state = State::Idle;
         std::atomic<int> g_stateShown{0};
         float g_turn = 0.0f, g_tilt = 0.0f; // the mouse since the last update
+        bool g_stick = false;               // the right stick since the last update
         uint32_t g_vehicle = 0, g_frame = 0;
         float g_idle = 0.0f, g_returning = 0.0f; // seconds of game time without the mouse, on the way back
         float g_pitch = 0.0f;                    // the pitch before the mouse moved it, to go back to
@@ -179,8 +180,10 @@ namespace vcs::carcam
         // Before the game's update of the camera behind a vehicle (the vehicle has moved this frame).
         void prepare(uint32_t cam)
         {
-            const float turn = g_turn, tilt = g_tilt;
+            const bool stick = g_stick;
+            const float turn = stick ? 0.0f : g_turn, tilt = stick ? 0.0f : g_tilt;
             g_turn = g_tilt = 0.0f;
+            g_stick = false;
             const uint32_t mode = rd32(cam) & 0xFFFFu;
             const uint32_t vehicle = rd32(cam + kCamTargetEntity);
             const bool usable = cam == kCams + g_rdram[kActiveCam] * kCamSize && (mode == 18 || mode == 22) && vehicle &&
@@ -189,7 +192,9 @@ namespace vcs::carcam
             const uint32_t frame = rd32(kFrameCounter);
             const bool gap = frame - g_frame > 1;
             g_frame = frame;
-            if (!usable || vehicle != g_vehicle || gap)
+            // the stick turns it as the game does (the speeds it builds up are zeroed here while held, and its small
+            // steps snapped back)
+            if (!usable || vehicle != g_vehicle || gap || stick)
             {
                 reset(usable ? vehicle : 0);
                 if (!usable)
@@ -292,6 +297,8 @@ namespace vcs::carcam
         g_turn += turn;
         g_tilt += tilt;
     }
+
+    void stickMoved() { g_stick = true; }
 
     void setReturnDelay(float seconds) { g_delay.store(seconds, std::memory_order_relaxed); }
 }

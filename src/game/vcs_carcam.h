@@ -20,6 +20,11 @@ namespace vcs::carcam
     // update applies it.
     void mouse(float turn, float tilt);
 
+    // Game thread, at the pad read: the right stick turns the camera (the gamepad or the camera keys). The camera's
+    // next update leaves it to the game at once - held or on its way back, the stick would barely move it - and takes
+    // no mouse turn meanwhile.
+    void stickMoved();
+
     // Seconds after the mouse stops before the camera goes back behind the car; < 0 never.
     void setReturnDelay(float seconds);
 }

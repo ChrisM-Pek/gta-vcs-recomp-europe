@@ -601,6 +601,10 @@ namespace vcs::input
                 else
                     g_mouse.wheelSteps = 0;
             }
+            // the right stick (the gamepad's, or the camera keys) on the camera behind a vehicle hands it back to the
+            // game at once, should the mouse have held it a moment before (game/vcs_carcam.h)
+            if ((rx != 0.0f || ry != 0.0f) && game.driving)
+                carcam::stickMoved();
             rx += g_mouse.x;
             ry += g_mouse.y;
             buttons |= g_mouse.wheelButton;

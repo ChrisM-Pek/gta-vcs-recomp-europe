@@ -1970,7 +1970,10 @@ mission's runtime IP is 0x3CAE3 + (IP - its start)) and reproduced with the rig.
   mouse the hook eases beta toward behind the vehicle (the same rule the game uses: opposite its motion, else its nose)
   and the pitch back to before (1 - e^(-t / 0.6 s) of what is left, at most 2 rad/s), still with no drag or pull so it
   is as slow driving as standing, then gives the rows back; the game's camera carries on from there. The look-behind
-  button (`0x6F4D4C`), CCam +0x74 != 3 and a frame without this camera end it at once.
+  button (`0x6F4D4C`), CCam +0x74 != 3, a frame without this camera and the right stick (gamepad or camera keys) end it
+  at once. The stick could not turn it while held or returning: its term goes through +0x140, zeroed there every
+  update and smoothed from 0 (about a fifth of its speed), and steps below `0x487E94` are snapped back (the user's
+  report: the gamepad did nothing until the camera was back behind the car).
 - **The camera update** (2026-10-30, for the trainer's free camera; FUN_00378dd8 decompiled with `tools/eedecomp.py`):
   FUN_00378dd8 = CCamera::Process. At `0x378FC0` it calls **FUN_00294540 = CCam::Process** on the active CCam
   (`TheCamera + 0x70 + ActiveCam x 0x270`, ActiveCam = byte `TheCamera + 0x50`; the only caller), then

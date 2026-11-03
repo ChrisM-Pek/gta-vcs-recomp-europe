@@ -1931,7 +1931,8 @@ mission's runtime IP is 0x3CAE3 + (IP - its start)) and reproduced with the rig.
   pad read adds the mouse's turn to beta and turns +0x220 / +0x230 about the player by the same angle (exact: 300
   counts in 30 moves -> -0.750 rad, 400 counts a radian), and does the same for the pitch: alpha += the tilt, and
   +0x220 / +0x230 turned up / down by it about the target point +0x1A0 (90 counts -> +0.225 rad; 120 counts -> +0.3
-  two frames later, and it stays). Other cameras (vehicles, aiming, lock-on) get the mouse's speed as the right stick,
+  two frames later, and it stays). The camera behind a vehicle is turned directly too (below); other cameras (the
+  other vehicle cameras, lock-on) get the mouse's speed as the right stick,
   past the dead third. Checked by `tools/controls_check.py` (the `mouse dx dy` control command moves the mouse in
   hidden runs).
 - **Why up / down was slower than left / right** (2026-10-31, FUN_0029dab0 decompiled again; until then the mouse's
@@ -1946,6 +1947,30 @@ mission's runtime IP is 0x3CAE3 + (IP - its start)) and reproduced with the rig.
   neither 0 nor 4), read from the ELF: +0 0.6 (target height), +4 2, +8 0.15 (pitch offset), +0xC 2, +0x10 4, +0x14 0.8
   (alpha ease), +0x18 0.1 (its cap a step), +0x1C 0.5, +0x20 0.8 (the speeds' smoothing), +0x24 0.1 (the speeds' cap),
   +0x28 0.1, +0x2C 0.02, +0x30 1, **+0x34 0.7854 up / +0x38 1.4835 down** (indoors 0.7854 both).
+- **The camera behind a vehicle** (2026-11-03, FUN_0029FAF0 decompiled with `tools/eedecomp.py` for the mouse; modes 18
+  and 22, a0 the CCam, a1 the point it looks at; CCam +0x70 the vehicle). It is a camera on a string: at the start it
+  measures its heading and pitch from Front = the point looked at - **+0x220** (where it stood, placed from beta and the
+  pitch at the end of the last update), so a vehicle moving across the view drags it after itself. Then it turns that
+  heading toward the direction the vehicle moves (its move speed +0x140 past 0.02 units a step; its nose for a boat,
+  type +0x354 == 4) by a share `min(|the move speed across the view| x row +0x28 x step, 1)` of the gap, capped at
+  **row +0x2C x step** (`0x487C14` + class x 0x3C), makes that a speed with `/ max(step, 1)` (0x2A0790, patched in
+  section 4), adds the stick's term (|x| x x x 4.9e-5 x 0.000893 x FOV x row +0x30, only while **CCam +0x74 == 3**), caps
+  it at row +0x24 and smooths it into +0x140 (pow(row +0x20, step)); beta += +0x140 x step. A change of beta or alpha
+  below a small step is snapped back to the last update's (`0x487E8C` / `0x487E88`). The pitch is measured the same
+  way from +0x220 and kept between row +0x38 below and a limit from the vehicle's size (else row +0x34) above; alpha eases toward it.
+  At the end the source points are rebuilt from beta and that pitch, then the line of sight pushes Source (+0x20) in.
+  The rows: `0x487BE8` + class x 0x3C, 9 classes picked from the model and the vehicle
+  type (bikes, boats, ...); FUN_0029FAF0 is the only reader (a search of the generated code for the base's low half).
+  So the stick turns it at the stick's top speed while the vehicle's motion pulls it back: the mouse through the stick
+  was slow and fought the car (the user's report). **The mouse there** (src/game/vcs_carcam.cpp): a hook before
+  FUN_0029FAF0 moves the source points by the vehicle's displacement since the last update (no drag), sets row +0x2C
+  to 0 for every class (no pull), zeroes the speeds and turns beta, alpha, their last values and the source points
+  about the point looked at by the mouse's angle: measured, the heading is exactly where the mouse put it (400 counts
+  -1.000 rad) and stays there, at 30 / 60 / 144 fps, standing or driving. After Car camera return (1.5 s) without the
+  mouse the hook eases beta toward behind the vehicle (the same rule the game uses: opposite its motion, else its nose)
+  and the pitch back to before (1 - e^(-t / 0.6 s) of what is left, at most 2 rad/s), still with no drag or pull so it
+  is as slow driving as standing, then gives the rows back; the game's camera carries on from there. The look-behind
+  button (`0x6F4D4C`), CCam +0x74 != 3 and a frame without this camera end it at once.
 - **The camera update** (2026-10-30, for the trainer's free camera; FUN_00378dd8 decompiled with `tools/eedecomp.py`):
   FUN_00378dd8 = CCamera::Process. At `0x378FC0` it calls **FUN_00294540 = CCam::Process** on the active CCam
   (`TheCamera + 0x70 + ActiveCam x 0x270`, ActiveCam = byte `TheCamera + 0x50`; the only caller), then

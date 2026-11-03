@@ -7,6 +7,7 @@
 #include "game/vcs_input.h"
 
 #include "game/vcs_aim.h"
+#include "game/vcs_carcam.h"
 #include "game/vcs_freecam.h"
 #include "platform/platform.h"
 #include "ps2_runtime.h"
@@ -140,6 +141,7 @@ namespace vcs::input
         {
             bool driving = false;
             bool footCamera = false; // the on-foot follow camera, turned by the player (no script camera, controls on)
+            bool paused = false;     // the pause menu or the game's own pause
         };
 
         GameState gameState()
@@ -152,6 +154,7 @@ namespace vcs::input
             int16_t disabled;
             std::memcpy(&disabled, g_rdram + kPad0 + 0x96, 2);
             const bool paused = g_rdram[kUserPause] || g_rdram[kCodePause];
+            s.paused = paused;
             s.footCamera = ped && !s.driving && !paused && rd32(kCam) == kCamModeFollowPed && rd32(kLooksAtPlayer) == 1 &&
                            disabled == 0 && rd32(kCamStickLocked) == 0;
             return s;
@@ -539,6 +542,13 @@ namespace vcs::input
                         }
                     }
                 }
+                else if (on && game.driving && carcam::turns(mode))
+                {
+                    // the camera behind a vehicle turns by the mouse itself and stays where it is put while the mouse
+                    // moves, then goes back behind the car (game/vcs_carcam.h)
+                    if (!game.paused)
+                        carcam::mouse(-dx * m.mouseLook, up * m.mouseLook);
+                }
                 else
                 {
                     if (on && dt > 0.0f && dt < 0.25f)
@@ -687,7 +697,8 @@ namespace vcs::input
                 s.label = "Mouse camera";
                 s.help = "Moving the mouse turns the camera, and the mouse is held in the window while you play (free again "
                          "in the menus and when the window is in the background). On foot it turns the camera itself, as "
-                         "in a PC game; in vehicles and while aiming it moves the right stick. Off: the mouse only clicks.";
+                         "in a PC game, and behind a car too (it goes back behind the car after Car camera return); in other "
+                         "vehicle cameras and locked on it moves the right stick. Off: the mouse only clicks.";
                 s.type = Type::Toggle;
                 s.defaultValue = 1;
                 s.onChange = onChange;
@@ -707,6 +718,20 @@ namespace vcs::input
                 s.format = "%d%%";
                 s.defaultValue = 100;
                 s.onChange = onChange;
+                settings::add(s);
+
+                s = {};
+                s.key = "mouse.car_return";
+                s.page = kKeys;
+                s.section = "Mouse";
+                s.label = "Car camera return";
+                s.help = "Behind a car, boat or bike the camera stays where the mouse puts it while the mouse moves; this "
+                         "long after the mouse stops it eases back behind the vehicle. Never: it stays until the game's "
+                         "own camera turns it (when driving on).";
+                s.type = Type::Choice;
+                s.choices = {{"0.5 s", 5}, {"1 s", 10}, {"1.5 s", 15}, {"2 s", 20}, {"3 s", 30}, {"5 s", 50}, {"Never", -1}};
+                s.defaultValue = 15;
+                s.onChange = [](int v) { carcam::setReturnDelay(v < 0 ? -1.0f : v / 10.0f); };
                 settings::add(s);
 
                 s = {};

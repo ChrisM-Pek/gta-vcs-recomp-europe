@@ -671,6 +671,14 @@ dropped on uploads (lazy render-target patching).
   -0.100 / +0.200 rad per 40 / 80 counts, the left stick turns it; on - the mouse, the right stick (-0.66 in 0.3 s), the
   left stick centred, R1 as Circle; -70.0 / +70.0 deg at the limits; a man under the circle hit, one beside him not;
   DETACH_CHAR_FROM_CAR ends it.
+- **The mouse on the car camera** (2026-11-03, the user's report: slow and sluggish): behind a car, bike or boat (modes
+  18 / 22) the mouse turned the camera through the stick, at its top speed, while the car dragged the camera after it and
+  pulled it toward where it drove. Now a hook before the game's update (FUN_0029FAF0, src/game/vcs_carcam.cpp) turns it
+  by the mouse's angle, and while the mouse moves it stays where it is put; Keyboard > Car camera return (1.5 s) after
+  the mouse stops it eases back behind the car (~2 s, as slow driving as standing), then the game's camera has it again
+  (game-internals.md 12b, DECISIONS.md). Measured at 30 / 60 / 144 fps: 200 counts -> -0.500 rad, held to 0.000 for 1 s
+  standing and driving, back within 0.01 rad of behind in 2-2.5 s. `tools/controls_check.py`: three checks in place of
+  the old one (turned and held, back behind the car, driving); 71 checks, 0 failed.
 - **Music / sound effects volume** (2026-10-28, asked for by the user): Audio > Music and Sound effects are the game's
   own levels, in step with its pause menu both ways and kept across save loads (game-internals.md 9c). controls_check
   checks that the levels reach the game and its prefs, a save load keeps them, and the pause menu's slider changes the
@@ -826,6 +834,7 @@ Python scripts still usable on their own. docs/LAUNCHER.md has the whole of it; 
 | `VCS_MIN_STEP=x` | independent timing's step floor (default 50/240: the 240 fps ceiling; lower makes an unlimited cap unlimited) |
 | `VCS_TIMING_LOG=1` | independent timing: fps, host wait, EE clock vs real time, WaitVBlank callers every 2 s |
 | `VCS_GAME_VOLUME=0` | Audio > Music / Sound effects leave the game's own levels alone (no setter hooks, no sync; the reference) |
+| `VCS_CARCAM=0` | the hook on the camera behind a vehicle not installed: the mouse moves the right stick there, as before 2026-11-03; Car camera return does nothing |
 | `VCS_FREEAIM=0` | free aim's hooks not installed (CGame::Process, CCamera::Process, the weapons' line test): the game's aiming untouched, the setting does nothing |
 | `VCS_INPUT_MAP=0` | the runtime's fixed built-in key / gamepad mapping instead of the player's bindings (`ps2_pad.cpp`; the reference) |
 | `VCS_VSYNC=0\|1\|2` | Vertical sync for one run: off, on, off with tearing allowed |

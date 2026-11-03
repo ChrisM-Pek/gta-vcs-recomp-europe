@@ -1001,3 +1001,21 @@ distributions**, and **Linux released at the same time as Windows**.
   them on one GitHub release. A failing platform publishes nothing.
 - Tools pinned by version and SHA-256 (no "continuous" builds): appimagetool 1.9.1, the type 2 runtime 20251108,
   wayland-protocols 1.45.
+
+## 2026-11-03 - The mouse on the camera behind a car: free while it moves, then back (the user's request)
+
+The user found the mouse camera in a car slow and sluggish, and asked for it to move freely while the mouse moves and
+only a short time after it stops to go slowly back behind the car.
+- **Turned by the host, not through the stick.** The stick there has a top speed, is smoothed, and the camera turns
+  back toward where the car drives and is dragged after it (game-internals.md 12b, the camera behind a vehicle): the
+  mouse fought all of that. A hook before the game's update (FUN_0029FAF0) turns the camera by the mouse's angle, as
+  on foot. The gamepad keeps the game's own behaviour.
+- **While the mouse moves, the camera keeps its direction in the world**, the car turning under it - nothing drags or
+  pulls it (the source points moved with the car, the pull's cap set to 0 meanwhile). Kept relative to the car instead,
+  a look to the side would swing with every steering correction.
+- **The way back is the host's, at one speed**: an ease to behind the car (1 - e^(-t / 0.6 s), at most 2 rad/s; about 2
+  s from a quarter turn) with the drag and pull still off, so it is as slow driving as standing - with the game's own
+  camera working during the return, driving brought it back in 0.4 s, standing never. "Behind" is the game's rule
+  (opposite to where the car moves, its nose when slow or a boat), so the hand-back is seamless.
+- **Car camera return** (Keyboard > Mouse): 1.5 s by default, 0.5 / 1 / 2 / 3 / 5 s or Never. It is part of the mouse
+  camera (a control choice, on by default with it); `VCS_CARCAM=0` is the switch back to the stick path.

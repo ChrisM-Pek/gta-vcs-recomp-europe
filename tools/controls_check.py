@@ -8,7 +8,8 @@ Loads the Fort Baxter rig save (a copy, hidden), then: every default key binding
 Keypad Enter, the mouse buttons) gives its PS2 button or stick direction, Alt+Enter is not Start; a rebound key moves
 Vic and the old one no longer does; the walk key holds the stick at walking speed; the mouse turns the on-foot camera
 by the amount asked (heading and pitch, inverted, off), right click locks on to a ped, the Driving keys (W / S / Space
-accelerate, brake, handbrake in a car, and nothing else there), the mouse on the vehicle camera, on foot again after
+accelerate, brake, handbrake in a car, and nothing else there), the mouse on the vehicle camera (turned 1:1, held while
+the mouse moves, standing and driving, then back behind the car), on foot again after
 leaving the car; free aim (src/game/vcs_aim.cpp: the right button enters the game's free aim, the mouse turns it, a shot
 hits a man on the aim line and not one beside it, Vic strafes while aiming, the camera stays where the aim looked, fists
 and free aim off still lock on, the gamepad's RB and right stick, the sniper scope turned 1:1 and zoomed by the wheel,
@@ -243,13 +244,54 @@ class Check:
         stopped = forward()
         g.cmd("key space up")
         self.ok("W drives, Space is the handbrake", fast > 0.15 and abs(stopped) < 0.05, "%.3f then %.3f" % (fast, stopped))
+        # the camera behind the car (src/game/vcs_carcam.cpp): the mouse turns it itself (400 counts a radian), it stays
+        # where it is put while the mouse moves - standing and driving -, and Car camera return (1.5 s) after the mouse
+        # stops it eases back behind the car
+        def angle(a, b):
+            return (b - a + math.pi) % (2 * math.pi) - math.pi
+
+        def behind():
+            """The camera's heading behind the car: opposite to its motion, its nose when slow (vcs_carcam.cpp)."""
+            vx, vy = g.peekf(car + 0x140, 2)
+            if math.hypot(vx, vy) <= 0.02:
+                vx, vy = g.peekf(car + 0x10, 2)
+            return math.atan2(-vy, -vx) % (2 * math.pi)
+        time.sleep(2.0)  # the car settles after the handbrake
+        _, p0, h0 = self.cam()
+        for _ in range(10):
+            g.cmd("mouse 20 -4")
+        g.wait_frames(3)
+        _, p1, h1 = self.cam()
+        held = g.cmd("carcam")
+        time.sleep(0.8)
+        _, p2, h2 = self.cam()
+        self.ok("mouse turns the vehicle camera, and it stays", abs(angle(h0, h1) + 0.5) < 0.01 and
+                abs(p1 - p0 - 0.1) < 0.01 and abs(angle(h1, h2)) < 0.005 and abs(p2 - p1) < 0.005 and held.endswith("state=hold"),
+                "heading %+.3f pitch %+.3f, 0.8 s later %+.3f %+.3f, %s" % (angle(h0, h1), p1 - p0, angle(h1, h2), p2 - p1, held))
+        time.sleep(3.5)
+        _, p3, h3 = self.cam()
+        state = g.cmd("carcam")
+        self.ok("the vehicle camera goes back behind the car", abs(angle(behind(), h3)) < 0.03 and abs(p3 - p0) < 0.02 and
+                state.endswith("state=idle"), "heading %+.3f from behind, pitch %+.3f, %s" % (angle(behind(), h3), p3 - p0, state))
+        g.cmd("key w down")
+        time.sleep(1.5)
         _, _, h0 = self.cam()
-        for _ in range(20):  # the vehicle camera turns at the stick's speed: a steady movement over 0.6 s
+        for _ in range(20):
             g.cmd("mouse 20 0")
-            time.sleep(0.03)
-        g.wait_frames(20)
+        g.wait_frames(3)
         _, _, h1 = self.cam()
-        self.ok("mouse turns the vehicle camera", abs(h1 - h0) > 0.1, "heading %.3f -> %.3f" % (h0, h1))
+        time.sleep(0.8)
+        _, _, h2 = self.cam()
+        time.sleep(1.0)
+        _, _, h3 = self.cam()  # on the way back
+        time.sleep(3.0)
+        _, _, h4 = self.cam()
+        back = angle(behind(), h4)
+        g.cmd("key w up")
+        self.ok("driving, the mouse's view stays, then goes back slowly",
+                abs(angle(h0, h1) + 1.0) < 0.01 and abs(angle(h1, h2)) < 0.005 and -0.9 < angle(h0, h3) < -0.1 and
+                abs(back) < 0.05, "heading %+.3f, 0.8 s %+.3f, 1.8 s %+.3f, 4.8 s %+.3f from behind" %
+                (angle(h0, h1), angle(h0, h2), angle(h0, h3), back))
 
         # out of the car: the on-foot keys and the mouse look again
         g.cmd("key space down")

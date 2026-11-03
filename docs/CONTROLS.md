@@ -102,9 +102,13 @@ It does nothing of this while a control is bound to the wheel, while driving or 
   every movement turns it by the same angle at any speed and frame rate (100%: 400 counts - half an inch at 800 DPI -
   a radian), moving the mouse forward looks up. Looking up / down goes through the game's own stick pitch, which has a
   top speed (about 1.5 rad/s at 100%); a faster movement still arrives, a few frames later. **In the scopes and free
-  aim** it turns the view itself too (above). **In vehicles and locked on** the mouse's speed becomes the right stick's
-  tilt (1,500 counts a second is full tilt), so very fast flicks there turn no faster. **Mouse sensitivity**, **Invert
-  mouse up / down**, **Free aim** and **Mouse wheel** (above). (game-internals.md 12b, 12c)
+  aim** it turns the view itself too (above). **Behind a car, bike or boat** it turns the camera itself as well, and
+  while the mouse moves the camera stays where it is put - the car neither drags it along nor pulls it back; **Car
+  camera return** (1.5 s; 0.5-5 s or Never) after the mouse stops it eases back behind the vehicle (about 2 s) and the
+  game's camera carries on. `VCS_CARCAM=0` puts the old way back (the mouse as the right stick). **In the other vehicle
+  cameras and locked on** the mouse's speed becomes the right stick's tilt (1,500 counts a second is full tilt), so very
+  fast flicks there turn no faster. **Mouse sensitivity**, **Invert mouse up / down**, **Free aim** and **Mouse wheel**
+  (above). (game-internals.md 12b, 12c)
 
 ## Gamepad page
 

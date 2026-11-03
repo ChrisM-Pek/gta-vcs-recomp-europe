@@ -22,6 +22,7 @@
 #include "game/vcs_sound.h"
 #include "game/vcs_stream.h"
 #include "game/vcs_aim.h"
+#include "game/vcs_carcam.h"
 #include "game/vcs_freecam.h"
 #include "game/vcs_hud.h"
 #include "game/vcs_rsl_native.h"
@@ -1178,6 +1179,7 @@ namespace
         vcs::installHudHooks(runtime);     // 2D at the RenderWare level
         vcs::freecam::install(runtime);    // the trainer's free camera (game/vcs_freecam.h)
         vcs::aim::install(runtime);        // free aim with the mouse / right stick (game/vcs_aim.h)
+        vcs::carcam::install(runtime);     // the mouse on the camera behind a vehicle (game/vcs_carcam.h)
         vcs::installFrameRateHooks(runtime); // 30 / 60 fps (game/vcs_framerate.h)
         vcs::installScriptTimingHooks(runtime); // per-frame mission meters on the time step (game/vcs_script_timing.h)
         vcs::installPhysicsTimingHooks(runtime); // per-frame vehicle pushes on the time step (game/vcs_physics_timing.h)

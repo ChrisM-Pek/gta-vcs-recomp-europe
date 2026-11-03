@@ -3,10 +3,9 @@
 ## Phase 0 - setup (done)
 - Repo, GPL-3.0, `.gitignore` blocking game files; `tools/vcs_disc.py`
 - PS2Recomp vendored (changes in `docs/PS2RECOMP_PATCHES.md`)
-- Toolchain: clang-cl 23 + MSVC 14.29 STL, CMake, Ninja, Ghidra 12.1.4 + EE ext, JDK 21
-- Windows without Visual Studio (2026-11-03): `VCS_TOOLCHAIN=mingw` builds with llvm-mingw 20261020 (clang 23.1.4,
-  libc++, UCRT; downloaded by the build) - same pictures and exactness, ThinLTO game thread 5-15% slower, so not the
-  default yet (PERFORMANCE.md 29, DECISIONS.md 2026-11-03)
+- Toolchain: Windows llvm-mingw 20261020 (clang 23.1.4, libc++, UCRT; downloaded by the build - no Visual Studio since
+  2026-11-03; `VCS_TOOLCHAIN=msvc`: clang-cl 23 + MSVC 14.29 STL), CMake, Ninja, Ghidra 12.1.4 + EE ext, JDK 21. Same
+  pictures and exactness as clang-cl, ThinLTO game thread level (PERFORMANCE.md 29, DECISIONS.md 2026-11-03)
 
 ## Phase 1 - analysis (done)
 - 9,550 Ghidra functions + 833 indirectly-referenced ones Ghidra missed
@@ -825,7 +824,7 @@ Python scripts still usable on their own. docs/LAUNCHER.md has the whole of it; 
 | `PS2X_GS=cpu\|hw\|gpu\|null` | GS renderer (vcs.exe: default hw, set by src/main.cpp; the runtime's own default cpu) |
 | `PS2X_HW_SCALE=n`, `PS2X_HW_DEBUG=1` | hardware renderer scale / stats |
 | `VCS_CPU=AVX2\|AVX\|SSE4` | build tools: the CPU the build is for (default: this PC's, `toolchain.cpu_level`); an older one's build runs here (tests) |
-| `VCS_TOOLCHAIN=mingw\|msvc` | build tools, Windows: Visual Studio's clang-cl (default) or llvm-mingw (no Visual Studio); switching sets the build tree up again (everything rebuilt) |
+| `VCS_TOOLCHAIN=mingw\|msvc` | build tools, Windows: llvm-mingw (default; no Visual Studio) or Visual Studio's clang-cl; switching sets the build tree up again (everything rebuilt) |
 | `VCS_LLVM_MINGW=<folder>` | build tools, Windows: an llvm-mingw to use instead of the one in `build/build-tools` (clang 19+) |
 | `-DVCS_DXBC_CHECK_FXC=<fxc.exe>` | CMake: every D3D11 shader from `tools/hlsl_dxbc.py` also compiled by that fxc, the build failing on any byte that differs |
 | `VCS_FPS_LOG=1` | VBlanks and flips per second (was `VCS_FPS=1`; `VCS_FPS` is the frame rate cap) |

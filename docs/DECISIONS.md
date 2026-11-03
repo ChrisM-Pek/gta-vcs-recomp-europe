@@ -1049,9 +1049,14 @@ option first (the user's choice: keep the Visual Studio build until the new one 
   (statics mean difference 0.00-0.02); `PS2X_HLE_VERIFY` / `PS2X_VU0_VERIFY` 150 s the same classes (VU0 0 of millions
   differed; the world fast path's few off packets are on clang-cl's build too); SPU2 tests pass; profiler names and
   lines; ThinLTO builds; the Visual Studio build and launcher still build with every change.
-- **Not the default, because of speed**: the optimised (ThinLTO) game thread is 5-28% slower by spot, +14% driving
-  (PERFORMANCE.md 29) - libc++'s clock and timed waits, `memcmp`, `GetWriteWatch`. Performance is a hard requirement
-  (2026-10-21), so `toolchain.WINDOWS_TOOLCHAIN_DEFAULT` stays "msvc" until that is closed; then the default flips and
-  setup_vs.py and the launcher's Visual Studio step can go.
+- **First not the default, because of speed**: the optimised (ThinLTO) game thread was 5-28% slower by spot, +14%
+  driving (PERFORMANCE.md 29). Performance is a hard requirement (2026-10-21), so the user asked for the gap to be
+  closed first. It was libc++ on Windows, not the code generation: timed waits that spin their last millisecond, a slow
+  `steady_clock::now` and a CRITICAL_SECTION `recursive_mutex`; `runtime/ps2_host_std.h` replaces the three on that
+  platform only. Then the game thread was level (-2% to +4% by spot, inside the spread) and the worker / GS stage within
+  ~5% while driving, and **llvm-mingw became the default** (`toolchain.WINDOWS_TOOLCHAIN_DEFAULT = "mingw"`).
+  `VCS_TOOLCHAIN=msvc` keeps Visual Studio's build (and setup_vs.py, the launcher's Visual Studio step behind it) for
+  comparison; it goes when nothing needs it any more. A player's existing build folder is set up again from scratch on
+  the first build after the switch (one full build).
 - Switching compilers sets a build tree up from scratch (`toolchain.drop_other_compiler`: CMake can't change a tree's
   compiler), keeping its `--opt`.

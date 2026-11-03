@@ -1,8 +1,8 @@
 """Shared helpers for the build scripts (tools/build.py, recompile.py, run.py, ...). Standard library only.
 
-- Windows: finds the newest Visual Studio with the C++ x64 toolset (vswhere), takes the vcvars64 environment
-  (cached in build/msvc_env.json) and builds with clang-cl + Ninja. Standalone CMake / Ninja / LLVM / JDK from
-  scoop are preferred when installed. VCS_TOOLCHAIN=mingw: llvm-mingw instead (downloaded; no Visual Studio).
+- Windows: builds with llvm-mingw's clang + Ninja (downloaded into build/build-tools; no Visual Studio). With
+  VCS_TOOLCHAIN=msvc: the newest Visual Studio with the C++ x64 toolset (vswhere), its vcvars64 environment (cached in
+  build/msvc_env.json) and clang-cl. Standalone CMake / Ninja / LLVM / JDK from scoop are preferred when installed.
 - Linux: the newest LLVM 19+ (Debian / Ubuntu's /usr/lib/llvm-<N>/bin, apt.llvm.org, or the distro's own clang on
   PATH) goes first on PATH, so clang, clang++, ld.lld and llvm-profdata are one version; CMake and Ninja from PATH.
   `check_linux_deps()` lists the packages the build needs (docs/LINUX.md).
@@ -609,25 +609,25 @@ def _linux_llvm_bin(env):
     return max(found)[1] if found else None
 
 
-# VCS_TOOLCHAIN=mingw: Windows builds with llvm-mingw (github.com/mstorsjo/llvm-mingw), one zip with clang, lld, libc++,
+# Windows builds with llvm-mingw (github.com/mstorsjo/llvm-mingw), one zip with clang, lld, libc++,
 # compiler-rt, llvm-windres and mingw-w64's Windows headers and import libraries (D3D11, DirectWrite, dbghelp...) - no
 # Visual Studio (DECISIONS.md 2026-11-03). Pinned and SHA-256 checked (GitHub's asset digest), unpacked into
-# build/build-tools the first time a build needs it; VCS_LLVM_MINGW=<folder> takes another copy. Not the default yet:
-# its ThinLTO build is slower on the game thread (PERFORMANCE.md 29).
+# build/build-tools the first time a build needs it; VCS_LLVM_MINGW=<folder> takes another copy. The default since its
+# ThinLTO build is as fast as clang-cl's (PERFORMANCE.md 29); VCS_TOOLCHAIN=msvc keeps Visual Studio's for comparison.
 LLVM_MINGW_DOWNLOADS = {
     "windows": ("https://github.com/mstorsjo/llvm-mingw/releases/download/20261020/llvm-mingw-20261020-ucrt-x86_64.zip",
                 "fd5462b7f5d93b2ff981fcd3f9c7e427e47f3203c64ea91c27bcc444eebd74cd", "llvm-mingw-20261020-ucrt-x86_64"),
 }
 
 
-WINDOWS_TOOLCHAIN_DEFAULT = "msvc"  # until llvm-mingw's optimised build is as fast (PERFORMANCE.md 29)
+WINDOWS_TOOLCHAIN_DEFAULT = "mingw"  # llvm-mingw; "msvc": Visual Studio's clang-cl (PERFORMANCE.md 29)
 
 
 def windows_toolchain():
     """The Windows compiler: "mingw" (llvm-mingw) or "msvc" (Visual Studio's clang-cl); VCS_TOOLCHAIN chooses."""
     value = (os.environ.get("VCS_TOOLCHAIN") or WINDOWS_TOOLCHAIN_DEFAULT).strip().lower()
     if value not in ("mingw", "msvc"):
-        fail("VCS_TOOLCHAIN=%s: msvc (Visual Studio, the default) or mingw (llvm-mingw)" % value, "bad_toolchain")
+        fail("VCS_TOOLCHAIN=%s: mingw (llvm-mingw, the default) or msvc (Visual Studio)" % value, "bad_toolchain")
     return value
 
 

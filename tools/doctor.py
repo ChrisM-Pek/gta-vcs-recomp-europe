@@ -6,9 +6,8 @@
     python tools/doctor.py --iso PATH   check that disc instead of the one the build would find
 
 Checks: the folder (where the game is built: write access, synced / network folders, path length, free space), the
-memory, the processor (which build it gets: AVX2, AVX or SSE4 - toolchain.cpu_level), the compiler (Windows: Visual Studio with
-the C++ tools and its clang-cl - with VCS_TOOLCHAIN=mingw llvm-mingw, or the build downloads it; Linux: build.py
---check-deps), git
+memory, the processor (which build it gets: AVX2, AVX or SSE4 - toolchain.cpu_level), the compiler (Windows: llvm-mingw, or that the build
+downloads it - with VCS_TOOLCHAIN=msvc Visual Studio with the C++ tools and its clang-cl; Linux: build.py --check-deps), git
 when the dependencies aren't bundled (deps/), the disc (tools/vcs_disc.py check), and the state of the build:
 whether generated/ is current (recompile.py's stamp) and whether build/vcs.exe matches the source (build/build_info.json,
 file times). "next" says what to do: disc, tools, build or play. Nothing here changes anything.

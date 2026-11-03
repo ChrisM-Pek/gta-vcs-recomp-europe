@@ -777,10 +777,47 @@ About 4% of all samples, which is ~12% of the game thread's busy time (it works 
 Not the cause: C++ exceptions (the scheduler's `EeDispatcherTransfer`: the quick builds are level), TLS (llvm-mingw
 uses native TLS), libc++ hardening (off: `_LIBCPP_HARDENING_MODE_DEFAULT` is NONE).
 
-**Next here**: a clock of our own for the hot `steady_clock::now` callers (QueryPerformanceCounter with the frequency
-read once, inline), the timed waits through Win32's `SleepConditionVariableSRW` directly instead of libc++'s
-`condition_variable::wait_for`, and why `GetWriteWatch` costs more (called more often, or a larger range); then measure
-again. Until llvm-mingw's ThinLTO build is as fast, clang-cl stays the default.
+**The gap, closed (same day).** `VCS_PROFILE_CALLERS` named the callers, and a 30-line test program
+(`wait_until` / `wait_for` / `steady_clock::now` in a loop, built both ways) showed what libc++ does on Windows:
+
+- Its timed waits (`__libcpp_condvar_timedwait`) convert the deadline to `system_clock` and truncate what is left to
+  whole milliseconds, so with under 1 ms left `SleepConditionVariableSRW(0)` returns at once and the wait loops:
+  305 wake-ups in one 1 ms `wait_until` (MSVC's STL rounds up: 1). The EE scheduler's pacing waits
+  (`processPendingEvents`, `waitForNextEvent`) spun their last millisecond every time, and the GS stage drain's
+  `wait_for(1 ms)` guard was a busy loop - that was the `system_clock::now`, `GetLastError` and
+  `RtlSleepConditionVariableSRW` samples, and a core taken from the worker threads' hyperthread siblings.
+- `steady_clock::now` is out of line with two 64-bit divisions: 34 ns against MSVC's 15 (inline, a multiply for the
+  10 MHz counter). The hot caller: the IOP catch-up in `advanceIopEeCycles`, from `checkpointDue`.
+- `recursive_mutex` is a CRITICAL_SECTION (MSVC's: an SRW lock): the GS front end's state lock, taken for every GIF
+  packet, packed kick and native submit, 0.67% of the GS stage's samples in `RtlEnter/LeaveCriticalSection`.
+- Not differences: `memcmp` is UCRT's `memcpy` named by the nearest export (no symbols for ucrtbase); the memcpy family
+  adds up the same (GS stage 1.1% clang-cl, 1.0% llvm-mingw). `GetWriteWatch`: the same folds (~300 per 5 s) at the
+  same cost (0.17 / 0.18 ms each, `PS2X_WRITE_WATCH_LOG=1`) - the profile's difference was noise.
+
+`runtime/ps2_host_std.h` (PS2RECOMP_PATCHES.md): `ps2x::hostNow()` (QueryPerformanceCounter, the frequency read once,
+the same values as `steady_clock::now`), `waitUntil` / `waitFor` (`SleepConditionVariableSRW` with the timeout rounded
+up, on the native handles) and `RecursiveMutex` (a `std::mutex` - an SRW lock - with an owner and a depth). On Windows
+with libc++ only; with MSVC's STL and on Linux they are the standard ones. The runtime and `src/game` read the clock
+through `hostNow`; the timed waits on the game thread, the GS stage, the render worker and the streamer go through
+`waitUntil` / `waitFor`.
+
+ThinLTO, median of 5 alternating rounds each, game / worker / GS stage ms:
+
+| Spot | clang-cl | llvm-mingw, the clock and waits | llvm-mingw, + the lock |
+|---|---|---|---|
+| fortbaxter | 4.05 / 1.75 / 1.60 | 4.05 / 1.80 / 1.65 | 4.03 (-0.5%) / 1.77 / 1.65 |
+| city_575_175 | 3.05 / 0.50 / 0.50 | 3.15 / 0.50 / 0.55 | 3.12 (+2.3%) / 0.50 / 0.55 |
+| city_-675_1425 | 4.67 / 0.88 / 0.72 | 4.85 / 0.82 / 0.72 | 4.67 (0%) / 0.80 / 0.68 |
+| city_1325_-325 | 3.60 / 2.68 / 3.42 | 3.70 / 2.80 / 3.52 | 3.68 (+2.2%) / 2.80 / 3.58 |
+| city_-1425_-575 | 4.22 / 0.75 / 0.57 | 4.30 / 0.65 / 0.60 | 4.40 (+4.3%) / 0.72 / 0.60 |
+| drive | 6.05 / 4.02 / 4.30 | 6.18 / 4.30 / 4.70 | 5.93 (-2.0%) / 4.18 (+4%) / 4.53 (+5%) |
+
+(The clang-cl column is the last set of rounds; the first set's was within 0.1 ms of it. Both builds are ~20% faster
+than the morning's table above: the machine's background load, not the code - the clang-cl build has no change on
+its path.) The game thread is level, -2% to +4% by spot inside the round-to-round spread; the worker and the GS stage
+are within ~5% while driving (0.15-0.2 ms, the same as the spread between rounds). So llvm-mingw became the default
+(DECISIONS.md 2026-11-03). Left, if it ever matters: the GS stage's remaining few percent (no single symbol stands out
+in its profile any more), and the IOP host's / SIF RPC's `recursive_mutex`es (rare calls with the native IOP).
 
 ## Next
 

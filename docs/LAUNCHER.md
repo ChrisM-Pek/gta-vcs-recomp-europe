@@ -190,6 +190,12 @@ What each step and sheet holds:
   mount is gone; then it is the new version's window (an AppImage puts the new files in place first). After *Later*,
   Home's Updates card reads "Restart to finish" and Settings shows the installed version with the same Restart button.
   `update.py apply` marks a real update with `restart: true` in its result; "already the newest" has none and gets OK.
+  Checked on Linux (2026-11-04) end to end: a 0.2.0 AppImage updated to a local 0.2.1 one through Settings, Restart,
+  the old process ended at once, the new one opened as 0.2.1 with its files installed. That test found the old mount
+  *staying*: the AppImage runtime unmounts once every holder of its keep-alive pipe has closed it, and the new launcher
+  had inherited that pipe (fd 3, not close-on-exec) through our fork. The game and anything `openUrl` starts inherited
+  it too. Every child now marks the fds above stderr close-on-exec before exec (`closeInheritedFdsOnExec`, Linux's
+  `close_range`); with it the old mount and its FUSE process go when the old launcher ends.
 - **Help**: Make a report (tools/report.py), the game's last log, the build log, the README, the keyboard, version and
   folder.
 

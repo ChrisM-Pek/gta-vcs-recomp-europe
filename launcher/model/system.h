@@ -52,4 +52,10 @@ namespace launcher
     // block until process `pid` has ended, at most `seconds`: a launcher restarted after an update waits for the one
     // that started it (its renamed exe can only be removed, an AppImage's mount only goes, once it is gone)
     void waitForProcessExit(unsigned long pid, double seconds);
+#ifndef _WIN32
+    // in a forked child before exec: every fd above stderr closes on exec. Without it a child gets the fds we were
+    // given without O_CLOEXEC - an AppImage runtime's keep-alive pipe among them, so a launcher started by Restart (or
+    // the game, a browser) kept the old image mounted until it ended. Async-signal-safe
+    void closeInheritedFdsOnExec();
+#endif
 }

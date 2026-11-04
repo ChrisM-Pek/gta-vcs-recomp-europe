@@ -14,6 +14,7 @@
 #include <sys/resource.h>
 #include <sys/stat.h>
 #include <sys/statvfs.h>
+#include <sys/syscall.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
@@ -82,6 +83,7 @@ namespace launcher
                     ::dup2(nul, 1);
                     ::dup2(nul, 2);
                 }
+                closeInheritedFdsOnExec();
                 ::execvp(args[0], args.data());
                 const int err = errno;
                 [[maybe_unused]] ssize_t n = ::write(status[1], &err, sizeof(err));
@@ -289,6 +291,24 @@ namespace launcher
     }
 
     unsigned long processId() { return static_cast<unsigned long>(::getpid()); }
+
+    void closeInheritedFdsOnExec()
+    {
+        // close_range(CLOSE_RANGE_CLOEXEC): Linux 5.11. Marked, not closed: the child's exec-error pipe (O_CLOEXEC
+        // already) must still work if exec fails. Older kernels: each fd up to the limit
+        constexpr unsigned kCloseRangeCloexec = 1u << 2;
+#ifdef SYS_close_range
+        if (::syscall(SYS_close_range, 3u, ~0u, kCloseRangeCloexec) == 0)
+            return;
+#else
+        (void)kCloseRangeCloexec;
+#endif
+        rlimit lim{};
+        const long top = ::getrlimit(RLIMIT_NOFILE, &lim) == 0 && lim.rlim_cur != RLIM_INFINITY ? long(lim.rlim_cur) : 4096;
+        for (int fd = 3; fd < top && fd < 65536; ++fd)
+            if (const int flags = ::fcntl(fd, F_GETFD); flags >= 0 && !(flags & FD_CLOEXEC))
+                ::fcntl(fd, F_SETFD, flags | FD_CLOEXEC);
+    }
 
     void waitForProcessExit(unsigned long pid, double seconds)
     {

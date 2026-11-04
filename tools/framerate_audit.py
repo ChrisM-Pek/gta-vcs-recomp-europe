@@ -22,6 +22,11 @@ Scenarios (each from a fresh teleport, so earlier ones don't leak into later one
   bikecoast the PCJ-600 at full throttle for 0.4 s, then let go: its deceleration
   bikelean the PCJ-600 in a gentle left turn (0.4 s of throttle, then left for 0.5 s): its lean per g of sideways
           acceleration
+  brake   the car on the airport's runway at full throttle for 3 s, then the brake for 2.5 s: deceleration, nose dip,
+          how far its heading swings
+  bikebrake the PCJ-600 there at full throttle for 6 s (36 m/s), then the brake: deceleration, nose dip, the heading's
+          swing (fishtailing: 11 degrees at 30 fps, 58 at 144 and spun round onto its side at 240 before the brake
+          wobble was put on the step), lean, roll at the end (up z), whether the rider came off
   carwater the car dropped into the sea at 15 m/s: its speed 1 s after it reaches the water (the water's drag)
   bikewater the PCJ-600 dropped into the sea: how deep it settles
   ferris  the player in a ferris wheel carriage for 10 s: how long he stays where he stood in it, how far he drifts
@@ -59,6 +64,9 @@ FRAME_COUNTER = 0x4CD124  # CTimer::m_FrameCounter
 # straight pavement beside the open tarmac near the airport (the Fort Baxter door faces a fence; -675,-75 is sea)
 FOOT_SPOT = (-1425.0, -575.0, 90.0)
 CAR_SPOT = (-1425.0, -640.0, 0.0)  # a new car faces north; open for 4 s of full throttle here (scratch probe)
+# the airport: a PCJ-600 held at full throttle north from here ran 274 m in 9 s, up to 40 m/s, without hitting
+# anything (a probe of candidate lines; x -1700 has an obstacle at y -1369, CAR_SPOT a 7 m drop ~70 m north)
+RUNWAY_SPOT = (-1600.0, -1450.0, 0.0)
 
 
 class Session:
@@ -238,14 +246,14 @@ def leave_vehicle(s):
                 return
 
 
-def vehicle_run(s, name, model, act, body_at=None, extra=""):
-    """A vehicle scenario from CAR_SPOT, the player in a new `model`; body_at: a dead ped (fwd, right) metres from the
-    vehicle. act(s) drives it while the rig's `trace` records it every frame. Returns the trace rows (sim time s, then
-    the vehicle's matrix (16 floats), turn speed +0x70, move speed +0x140, bike lean +0x680 / +0x684, then the `extra`
-    trace spans' floats - "0x<addr> <count> ..."). The vehicle and the ped are deleted afterwards, so the next scenario
-    starts on clear ground."""
+def vehicle_run(s, name, model, act, body_at=None, extra="", spot=CAR_SPOT):
+    """A vehicle scenario from `spot` (x, y, heading; CAR_SPOT), the player in a new `model`; body_at: a dead ped (fwd,
+    right) metres from the vehicle. act(s) drives it while the rig's `trace` records it every frame. Returns the trace
+    rows (sim time s, then the vehicle's matrix (16 floats), turn speed +0x70, move speed +0x140, bike lean +0x680 /
+    +0x684, then the `extra` trace spans' floats - "0x<addr> <count> ...", VEH+0x<offset> for a field of the vehicle).
+    The vehicle and the ped are deleted afterwards, so the next scenario starts on clear ground."""
     g, S = s.g, rig.Scm
-    x, y, h = CAR_SPOT
+    x, y, h = spot
     leave_vehicle(s)  # (scenario_car leaves him in its car: a teleport would bring the car along)
     s.place(x, y, heading=h)
     # beside him, at the height he stands: with z = -100 (find the ground) the vehicle was sometimes put 1.6 m under the
@@ -276,13 +284,15 @@ def vehicle_run(s, name, model, act, body_at=None, extra=""):
         ped = ints[0]
         s.wait_sim(2.5)  # dies and lies down
     path = os.path.join(ROOT, "build", "audit", "trace_%d_%s.txt" % (s.step, name))
+    # "VEH+0x<off>" in `extra`: a field of this vehicle
+    extra = re.sub(r"VEH\+0x([0-9a-fA-F]+)", lambda m: "0x%x" % (vehicle + int(m.group(1), 16)), extra)
     g.cmd("trace %s 0x%x 16 0x%x 3 0x%x 3 0x%x 2 %s" % (path, vehicle, vehicle + 0x70, vehicle + 0x140, vehicle + 0x680,
                                                         extra))
     try:
         act(s)
     finally:
         g.cmd("trace off")
-        for k in ("Shift", "A", "D"):
+        for k in ("Shift", "A", "D", "W", "S"):
             s.key(k, False)
     leave_vehicle(s)  # then both gone
     g.scm(S.op(DELETE_CAR, S.i(car)) + (S.op(DELETE_CHAR, S.i(ped)) if ped is not None else b""))
@@ -333,6 +343,47 @@ def scenario_bikebody(s):
 def scenario_bikecoast(s):
     rows = vehicle_run(s, "bikecoast", BIKE, held("Shift", 0.4, then=2.0))
     return {"decel_m_s2": deceleration(rows)}
+
+
+def brake_run(s, name, model, accelerate):
+    """Full throttle for `accelerate` s, then the brake (S: Square while driving) for 2.5 s. The player's vehicle
+    pointer is traced too (as a float: 0 once he is off), to see the rider thrown over the bars."""
+    ped = s.g.player()[0]
+    def act(s):
+        s.key("W", True)
+        s.wait_sim(accelerate)
+        s.key("W", False)
+        s.key("S", True)
+        s.wait_sim(2.5)
+        s.key("S", False)
+        s.wait_sim(0.5)
+    rows = vehicle_run(s, name, model, act, extra="0x%x 1" % (ped + PED_VEHICLE), spot=RUNWAY_SPOT)
+    peak = max(range(len(rows)), key=lambda k: speed(rows[k]))
+    t0 = rows[peak][0]
+    def at(t):
+        return min(rows, key=lambda r: abs(r[0] - t))
+    braking = [r for r in rows if t0 <= r[0] <= t0 + 2.5]
+    def heading(r):
+        return math.degrees(math.atan2(-r[1 + 4], r[1 + 5]))
+    h0 = heading(rows[peak])
+    # the speed lost in the first 0.5 s of braking (before a slow bike's rear wheel lifts or it stops)
+    return {"peak_m_s": speed(rows[peak]), "decel_m_s2": (speed(rows[peak]) - speed(at(t0 + 0.5))) / 0.5,
+            "nose_fwd_z": min(r[1 + 6] for r in braking),
+            # turn speed about the vehicle's right axis (nose down / up), radians per 1/50 s
+            "pitch_rate": max(abs(sum(r[1 + 16 + i] * r[1 + i] for i in range(3))) for r in braking),
+            "rider_off": float(any(r[1 + 24] == 0.0 for r in braking)),
+            # how far the heading swings from where it pointed (a bike fishtailing), the lean drawn, the bike's roll
+            "heading_deg": max(abs((heading(r) - h0 + 180.0) % 360.0 - 180.0) for r in braking),
+            "lean_deg": max(abs(math.degrees(r[1 + 23])) for r in braking),
+            "end_up_z": braking[-1][1 + 10]}
+
+
+def scenario_brake(s):
+    return brake_run(s, "brake", 211, 3.0)
+
+
+def scenario_bikebrake(s):
+    return brake_run(s, "bikebrake", BIKE, 6.0)
 
 
 def scenario_bikelean(s):
@@ -592,6 +643,8 @@ SCENARIOS = {
     "bikebody": scenario_bikebody,
     "bikecoast": scenario_bikecoast,
     "bikelean": scenario_bikelean,
+    "brake": scenario_brake,
+    "bikebrake": scenario_bikebrake,
     "carwater": scenario_carwater,
     "bikewater": scenario_bikewater,
     "ferris": scenario_ferris,

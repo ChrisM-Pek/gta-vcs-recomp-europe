@@ -136,7 +136,10 @@ disassembly with names from `game/vcs/functions.csv`), `tools/vudis.py` (VU micr
   FUN_002f47c0 call (ra 0x2F4C04) puts back a step the 0.5 minimum raised (floor 0.05); the limiter's WaitVBlank
   (ra 0x317A50) presents the frame, paces to the cap on the host clock, brings the EE clock up to real time on the
   VBlank chain (`EeScheduler::syncToRealTime`) and sets the VBlank count to 2. Measured: game clock = wall clock
-  (x1.001) at 30 and 144; steps 1.65-1.70 at 30, 0.55-0.60 at ~85 fps.
+  (x1.001) at 30 and 144; steps 1.65-1.70 at 30, 0.55-0.60 at ~85 fps. The cap also paces the host's main loop
+  (`applyPresentRate`); "Display refresh" reads the window's display, and vcs.ini is applied before SDL starts (no
+  display: 60), so the limiter re-applies the pace whenever the cap it sees changes (GitHub issue 64: 60 fps after every
+  start until the setting was touched).
 - **Steps below 0.5 break the game** (frame-rate audit `tools/framerate_audit.py`, 2026-10-24): with the minimum lifted
   the player runs at 4.7 m/s up to 1/100 s steps, then 1.4 m/s at 1/110, 1.0 at 1/120, 0.5 at 1/240 (per-frame
   movement shrinks with the step squared); with the game's own 0.5 floor at 1/110 he runs 5.15 m/s (= 4.7 x 0.5 /
@@ -242,6 +245,42 @@ disassembly with names from `game/vcs/functions.csv`), `tools/vudis.py` (VU micr
     (at 30 fps and 16 m/s a frame moves the car 0.55 m into it). The per-frame part is what made them grow.
   - **Still per frame** (read in ProcessWheel, not measured or fixed): a burst tyre's wobble - a random sideways amount
     added every frame when the wheel status (last argument) is 1.
+  - **CBike's brake wobble** (found 2026-11-04 from GitHub issue 64: at 240 fps a bike braked from speed threw its
+    rider; the user saw it too). CBike::ProcessControl FUN_00337208 at 0x33BD18..0x33BE54: while `brake - gas > 0.9`
+    (+0x260 / +0x25C), the speed along the bike is over 0.02 and a wheel touches (suspension +0x540 / +0x544 < 1), a
+    phase +0x5FC grows by `random(0.5..1) * 0.2 * step` (FUN_004080B8), and the bike gets `ApplyTurnForce(min(speed,
+    0.2) * FUN_0044A2D0(phase) * turn mass (+0xD4) * k * right vector, a contact point)`, k = 0.03 with a rear wheel
+    down (+0x548 / +0x54C < 1), else 0.007 (`lui 0x3CF5` / `0x3BE5` at 0x33BDDC / 0x33BE00) - once a frame, the step
+    only in the phase (reVC's m_fBrakeDestabilization). So the shove came 4.8 times as often per second at 144 fps. Found
+    with `VCS_TURN_LOG=212` (every ApplyTurnForce on the PCJ-600: caller, its change to the yaw and pitch rates) summed
+    by caller over the first 0.15 s of braking: ra 0x33BE5C turned the bike at -0.32 yaw units/s at 144 fps against
+    -0.086 at 30; the other callers (the wheels 0x3E7E34 / 0x3E7E9C, the springs 0x34E330 / dampers 0x34E750) were the
+    same per second or reacted to it. Fixed in `src/game/vcs_physics_timing.cpp` like the body push (force * step /
+    (50/30), return address 0x33BE5C). The way there, for the next one: the sideways speed at the wheels (`VCS_WHEEL_LOG=1`)
+    grew at the same rate per second at both rates; at 144 the wheel's grip per frame (adhesion * step) is a fifth of
+    30's, so the full-cancel sideways demand tipped a wheel into skidding (state 2) within 10 frames and it lost its
+    traction (handling +0x6C). Scaling that sideways demand by the step instead was tried and made it worse (the bike
+    spun 180 degrees at 240): the slip was the symptom, the wobble the cause.
+  - **Braking audit** (`framerate_audit.py --only bikebrake,brake`, the airport runway: RUNWAY_SPOT, a PCJ-600 from 36
+    m/s, a Sentinel from 24; before = `VCS_PHYSICS_TIMESTEP=0`):
+
+    | | 1/30 | 1/60 | 1/144 | 1/240 |
+    |---|---|---|---|---|
+    | bike: heading swing, degrees (before) | 4.3 (11) | 3.3 (5.3) | 1.3 (58) | 0.5 (180: spun round) |
+    | bike: lean drawn, degrees (before) | 4.8 (6.7) | 9.7 (11) | 5.7 (37) | 2.4 (33) |
+    | bike: up z at the end (before) | 1.0 (1.0) | 1.0 (1.0) | 1.0 (1.0) | 1.0 (-0.55: on its side) |
+    | bike: time to stop / distance | 1.63 s / 30 m | 1.37 s / 26 m | 1.22 s / 23 m | 1.12 s / 21 m |
+    | car: time to stop | 1.13 s | 1.08 s | 1.09 s | 1.10 s |
+
+    (At 1/30 the fix scales by 1: before and after are the same code there, 4.3 and 11 degrees are two runs of the
+    wobble's random phase.)
+
+    **Left: the bike still stops sooner at high frame rates.** With both wheels down it brakes at ~30 m/s^2 at any rate
+    (brake and grip per wheel are per second the same: `VCS_WHEEL_LOG`), but at 30 fps it pitches further forward
+    (forward z -0.26 against -0.13 at 240) and in some runs its rear wheel leaves the ground for ~0.5 s, braking at
+    half that. The pitch torques per second by caller (springs, dampers, the front brake) match between 30 and 144, and
+    the stopping time moves smoothly with the step: explicit integration of a stiff suspension at the PS2's 1/30 s, like
+    the jump heights above - not a per-frame term. Not corrected.
 - **Moving platforms: `1 / max(step, 1.0)`** (found 2026-10-31 from GitHub issue 10: Vic fell out of the ferris wheel
   at 60 fps, not at 30). Objects that the game places itself each frame get the move speed `(new position - old) * 1 /
   max(ms_fTimeStep, 1.0)`, so that a ped standing on them moves with them. On the PS2 the step is 1.67 and the 1.0 never

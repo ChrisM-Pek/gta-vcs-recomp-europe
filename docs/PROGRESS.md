@@ -426,6 +426,22 @@ dropped on uploads (lazy render-target patching).
       brake's constants patched to load from guest RAM 0x7FF00..), and CBike's lean `max(step, 0.5)` patched like the
       ped one (a gentle turn leant 22 degrees at 144 fps against 30). After: coasting 3.45 / 3.45 / 3.45 m/s^2 at 1/30
       / 60 / 144, the run-over pitch rate 0.042 / 0.043 / 0.041, the bike past a body upright at all three.
+- [x] Bike braking at high frame rates (2026-11-04, GitHub issue 64: at 240 fps a bike braked from speed threw its
+      rider). CBike::ProcessControl's brake wobble (a sideways shove at a wheel while the brake is held, its phase on
+      the step but the shove once a frame) came 4.8 times as often per second at 144 fps: braking from 36 m/s the bike
+      fishtailed 58 degrees at 144 fps and spun round onto its side at 240 (11 / 5 degrees at 30 / 60). Scaled by step /
+      (50/30) in `src/game/vcs_physics_timing.cpp` (the ApplyTurnForce hook, return address 0x33BE5C): 4 / 3 / 1.3 /
+      0.5 degrees at 1/30 / 60 / 144 / 240, upright at all. Cars brake the same at every rate (stop in 1.08-1.13 s from
+      24 m/s). Left: a bike stops in 1.63 s at 30 fps and 1.12 s at 240 - at 30 it pitches further and its rear wheel
+      can lift; the integration's step, not a per-frame term (game-internals.md 4). `framerate_audit.py` scenarios
+      `bikebrake`, `brake` (on the airport runway, RUNWAY_SPOT). Found with `VCS_TURN_LOG` / `VCS_WHEEL_LOG`.
+      Seen on the way, not looked into: at 1/240 the audit's bikecoast / bikelean bike started moving ~0.4 s after the
+      throttle (it did at once at 1/30 - 1/144).
+- [x] "Display refresh" cap stuck at 60 after a restart (2026-11-04, GitHub issue 64): vcs.ini is applied before SDL
+      starts, so the cap read the display's refresh with no display (`platform::displayRefreshHz`'s fallback, 60) and
+      paced the main loop at 60 until the setting was changed. The limiter now re-applies the pace when the cap it sees
+      differs from the one applied (also a window moved to another display); `[framerate] cap N fps` in the log.
+      Checked: 60 at start, then 144 (this machine's display), host 143 fps.
 - [x] Ferris wheel and escalators above 50 fps (2026-10-31, GitHub issue 10: Vic fell out of the ferris wheel at 60
       fps). The wheel (FUN_00175620) and the escalators (FUN_002469A0) give their objects the move speed `displacement /
       max(step, 1.0)`, step times too small above 50 fps (0.35 at 144); a ped on them moves with that speed, so he
@@ -857,7 +873,9 @@ Python scripts still usable on their own. docs/LAUNCHER.md has the whole of it; 
 | `VCS_INPUT_MAP=0` | the runtime's fixed built-in key / gamepad mapping instead of the player's bindings (`ps2_pad.cpp`; the reference) |
 | `VCS_VSYNC=0\|1\|2` | Vertical sync for one run: off, on, off with tearing allowed |
 | `VCS_SCRIPT_TIMESTEP=0` | mission meters that count per frame stay on the frame rate (game-internals.md 11f; the reference) |
-| `VCS_PHYSICS_TIMESTEP=0` | the push of a body under a wheel and the rolling resistance stay per frame (game-internals.md 4; the reference) |
+| `VCS_PHYSICS_TIMESTEP=0` | the push of a body under a wheel, the rolling resistance and a bike's brake wobble stay per frame (game-internals.md 4; the reference) |
+| `VCS_TURN_LOG=<model>` | every ApplyTurnForce on vehicles of that model (212 = PCJ-600): caller, its change to the yaw / pitch rate (sum by caller to find a per-frame push) |
+| `VCS_WHEEL_LOG=1` | each bike wheel's ProcessWheel inputs per frame: brake, grip, the contact's forward / sideways speed, wheel state |
 | `VCS_COLL_LOG=1` | each ApplyCollisionAlt (FUN_0034D670) of the player's vehicle: the other entity, contact point, normal, speeds |
 | `VCS_SCRIPT_TIMESTEP_LOG=1`, `VCS_SCRIPT_TIMESTEP_CHECK=1` | per scaled instruction every 2 s game time: runs, the game's amount vs applied; log each listed instruction found in a newly loaded mission |
 | `VCS_PERF_OVERLAY=0\|1` | the perf overlay setting for one run |

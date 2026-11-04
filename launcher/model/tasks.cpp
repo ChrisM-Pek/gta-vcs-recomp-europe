@@ -128,6 +128,10 @@ namespace launcher
             {"git_checkout", {"This is a git checkout", "Update it with git pull, then build again."}},
             {"build_dir_refused", {"That folder can't be used", "Choose another folder for the build."}},
             {"network", {"No connection", "Check the internet connection and try again."}},
+            {"update_incomplete", {"The update couldn't replace every file",
+                                   "Something held some of them open (often an antivirus or a cloud-synced folder); "
+                                   "the folder is still the old release. Close the game and update again, or extract "
+                                   "the new release's zip into a new folder."}},
         };
 #ifndef _WIN32
         // the same codes where Linux needs other words, and its own (tools/build.py --install-deps, doctor.py)

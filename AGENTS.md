@@ -225,6 +225,9 @@ itself ("GTA Vice City Stories Launcher vX"), so the file has no heading. Follow
 - A save gone after saving (an empty slot file, or the whole save folder deleted): a card name the host could not
   store, or a failed card write - the game deletes its save folder after one (game-internals.md 10f). The card is
   zipped into `<data>/backups/auto-*.zip` before every change (`[MC] card backup` in the log).
+- `Could NOT find Python3` in configure.log: CMake left to find a Python of its own (a release's is in `python/`,
+  not on PATH); the build passes its own (`toolchain.python_defines`, DECISIONS.md 2026-11-05). A build that stops
+  with no log in a long folder (Quiver's): MAX_PATH while unpacking a tool (`toolchain.long_path`).
 - First things to grep in a log: `[ee] thread N -> dormant`, `[guest-branch:unlisted-resume]`.
 
 ## Working style for long autonomous runs

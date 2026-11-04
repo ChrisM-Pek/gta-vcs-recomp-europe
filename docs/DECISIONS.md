@@ -1078,3 +1078,38 @@ screen-linear; `pos.w` 1 for recorded draws, `pos.z = depth * w` for native ones
 driver's choice). It also turns early depth rejection on. Reference scenes with and without the shader depth on the
 GTX 1080 Ti: statics 0.00-0.02, moving ones only their timing; the fire scene the same. A best guess without an AMD GPU to check on:
 `PS2X_HW_SHADER_DEPTH=1` brings the shader depth back, and the reporters are asked to try the build.
+
+## 2026-11-05 - 0.2.1's build problems (issues 62, 66-70, 73): the build's Python, long folders, half updates
+
+Six reports in the day after 0.2.1, four of them one error: `Could NOT find Python3 (missing: Python3_EXECUTABLE
+Interpreter)` at `src/render/CMakeLists.txt:8`. 0.2.1 compiles the D3D11 shaders with `tools/hlsl_dxbc.py` (no Windows
+SDK), so CMake needs a Python for the first time, and it looks for one of the PC's own: a release runs on its bundled
+embeddable CPython (`python/`), which isn't on PATH. A PC with no Python failed (issues 68, 70, 73); one with a broken
+Python got "Cannot use the interpreter" (67). Reinstalling Python "fixed" it for the reporters. Reproduced in a 0.2.1
+release folder with every other Python hidden (an empty `USERPROFILE`, since `build_env` adds scoop's shims): the same
+message. **The build now hands CMake the Python it runs on** (`-DPython3_EXECUTABLE`, `toolchain.python_defines`, for
+the game's and the launcher's trees), and a tree whose cache has another Python or none (a 0.2.0 tree, a failed
+configure) is configured again once (`toolchain.python_changed`). Checked: a fresh tree, a retry after the failed
+configure, a tree set up by 0.2.0 - each configures and builds `vcs_render` with the bundled Python; the next build
+doesn't configure again.
+
+Issue 69 (a Quiver install, a 105-character folder) had no 0.2.1 logs at all: the build stopped before configuring. 0.2.1
+also downloads llvm-mingw, unpacked into `build/build-tools/<folder>.unpack/<folder>/`; its deepest files are 117
+characters, so below a folder longer than 86 characters 77 of them pass MAX_PATH, and `zipfile` stops with a
+FileNotFoundError unless Windows' LongPathsEnabled is on (it is on this PC, so not reproduced here). The unpacking now
+uses `\?\` paths (`toolchain.long_path`); the program's path handed to PATH and CMake stays the plain one. The likely
+cause, not a confirmed one.
+
+Issue 66: the update from 0.1.1 stopped halfway - `VERSION` said 0.2.1 (the zip's 12th file), `tools/doctor.py` was
+0.1.1's (its 4,938th). Updating a copy of 0.1.1 here works, and neither zip marks a file read-only, so something on that
+PC held a file (a scanner, a synced folder); the report has no update log to say which. `update.py apply` now retries a
+file held open, skips and names one it still can't write, writes `VERSION` and `RELEASE.json` last and only when every
+other file is in, and fails with `update_incomplete` - the folder still says it is the old release, so the launcher
+offers the update again. Checked with `tools/doctor.py` held open with no sharing: the update names it and stops, the
+folder stays 0.1.1; the retry completes it. A player whose folder is already mixed updates with the old `update.py`:
+extracting 0.2.1 into a new folder is their way out.
+
+Issue 62 (0.2.0, still in 0.2.1): `UnicodeEncodeError: 'charmap' codec can't encode character '꞉'` - a disc
+named with "꞉". The launcher sets `PYTHONIOENCODING` / `PYTHONUTF8`, but runs the tools with `-I`, and isolated mode
+ignores every PYTHON* variable: stdout to the launcher's pipe was cp1252. `toolchain` now sets stdout / stderr to UTF-8
+(errors replaced) itself; `report.py` reads `doctor.py`'s output as UTF-8.

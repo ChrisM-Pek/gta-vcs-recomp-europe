@@ -50,9 +50,13 @@ def show(path):
     return path if rel.startswith("..") else rel
 IS_WINDOWS = platform.system() == "Windows"
 
-# our progress lines and the tools' output interleave in order even when stdout is a pipe
-if hasattr(sys.stdout, "reconfigure"):
-    sys.stdout.reconfigure(line_buffering=True)
+# our progress lines and the tools' output interleave in order even when stdout is a pipe. UTF-8 whatever the
+# console's code page: the launcher reads UTF-8, and its PYTHONIOENCODING / PYTHONUTF8 do nothing under -I (isolated
+# mode ignores PYTHON* variables), so a disc named with a character cp1252 lacks ("꞉") stopped the build with a
+# UnicodeEncodeError on Windows (issue 62). errors="replace": printing a name never stops a tool.
+for _stream in (sys.stdout, sys.stderr):
+    if hasattr(_stream, "reconfigure"):
+        _stream.reconfigure(encoding="utf-8", errors="replace", line_buffering=_stream is sys.stdout or None)
 ISO_GLOB = "*Vice City Stories*.iso"
 
 
@@ -928,6 +932,17 @@ def _version_text(version):
 CMAKE_HINT = "install it (https://cmake.org/download, or your system's cmake / ninja package)"
 
 
+def long_path(path):
+    """Windows: `path` as an extended-length path (\\\\?\\C:\\..., \\\\?\\UNC\\server\\...), which file calls take past
+    the 260-character MAX_PATH whatever the LongPathsEnabled policy says. Elsewhere `path` itself."""
+    if not IS_WINDOWS:
+        return path
+    path = os.path.abspath(path)
+    if path.startswith("\\\\?\\"):
+        return path
+    return "\\\\?\\UNC\\" + path[2:] if path.startswith("\\\\") else "\\\\?\\" + path
+
+
 def _download_tool(title, downloads, probe, minimum, names, hint=CMAKE_HINT, code="no_cmake", need=None):
     """Unpacks this platform's build from `downloads` into TOOLS_DIR (once) and returns its program; fails (`code`,
     with `hint` on what to do instead) when there is none for this machine or it can't be fetched."""
@@ -969,6 +984,10 @@ def _download_tool(title, downloads, probe, minimum, names, hint=CMAKE_HINT, cod
         fail("the %s download is not the file it should be (SHA-256 %s, expected %s): try again; a proxy or antivirus "
              "may have changed it" % (title, digest.hexdigest(), sha256), "download_failed")
     os.replace(archive + ".part", archive)
+    # unpacked into <folder>.unpack\<folder>\...: llvm-mingw's deepest files then pass Windows' 260-character limit
+    # below a folder longer than ~86 characters (Quiver's are 105) and the build stopped at a FileNotFoundError with
+    # nothing in its logs (issue 69). The \\?\ form has no such limit; the unpacked tree's own paths are shorter.
+    unpacked, target = long_path(unpacked), long_path(target)
     shutil.rmtree(unpacked, ignore_errors=True)
     if archive.endswith(".zip"):
         with zipfile.ZipFile(archive) as z:
@@ -993,6 +1012,7 @@ def _download_tool(title, downloads, probe, minimum, names, hint=CMAKE_HINT, cod
     else:
         shutil.copytree(source, target)
     shutil.rmtree(unpacked, ignore_errors=True)
+    target = os.path.join(TOOLS_DIR, folder)  # the plain form again: the program goes on PATH and into CMake
     for d in (os.path.join(target, "bin"), target):
         for name in names:
             path = os.path.join(d, exe(name))
@@ -1117,7 +1137,7 @@ def configure(env, force=False, build_dir=BUILD_DIR, defines=None):
     """CMake configure of `build_dir` (first time, when forced, or with `defines`: {"PS2X_LTO": "THIN", ...}). The
     CPU baseline follows this PC (cpu_level): a tree set up for another CPU - or from before PS2X_CPU, i.e. AVX2 - is
     configured again for this one, which rebuilds everything."""
-    force = drop_foreign_cache(build_dir, ROOT) or stale_tools(build_dir) or force
+    force = drop_foreign_cache(build_dir, ROOT) or stale_tools(build_dir) or python_changed(build_dir) or force
     kept = drop_other_compiler(build_dir, env)
     if kept is not None:
         force, defines = True, dict(kept, **(defines or {}))
@@ -1133,7 +1153,7 @@ def configure(env, force=False, build_dir=BUILD_DIR, defines=None):
         return
     cmd = ["cmake", "-S", ROOT, "-B", build_dir, "-G", "Ninja", "-DCMAKE_BUILD_TYPE=Release", "-DPS2X_ENABLE_AGRESSIVE_LOGS=OFF"]
     cmd += ["-D%s=%s" % (k, v) for k, v in (defines or {}).items()]
-    cmd += compiler_defines(env) + deps_defines()
+    cmd += compiler_defines(env) + deps_defines() + python_defines()
     if os.path.normcase(os.path.abspath(build_dir)) == os.path.normcase(BUILD_DIR):
         cmd.append("-DVCS_GAME_DIR=" + BUILD.replace(os.sep, "/"))  # vcs.exe at the top of the build folder
     print("[build] configuring " + show(build_dir) + "".join(" %s=%s" % kv for kv in (defines or {}).items()))
@@ -1211,6 +1231,27 @@ def deps_defines(deps_dir=DEPS_DIR):
     if os.path.isfile(os.path.join(deps_dir, "manifest.json")):  # complete (tools/deps.py fetch): never download
         defines.append("-DFETCHCONTENT_FULLY_DISCONNECTED=ON")
     return defines
+
+
+def python_defines():
+    """The Python running this one for CMake's find_package(Python3): the build runs tools/hlsl_dxbc.py (and on Linux
+    hlsl_spirv.py) to compile the shaders. Left to itself CMake looks for a Python of the PC's own, and a release runs
+    on the one it carries (python/, python.org's embeddable CPython, not on PATH): with none installed - or a broken
+    one - 0.2.1's configure stopped at "Could NOT find Python3" (issues 67-70, 73)."""
+    return ["-DPython3_EXECUTABLE=" + sys.executable.replace(os.sep, "/")] if sys.executable else []
+
+
+def python_changed(build_dir):
+    """A configured tree whose CMake cache has another Python than this one (or none: set up before 0.2.1's shader
+    step, or by a configure that failed to find one) - configured again so the build's shader step runs with this."""
+    if not sys.executable or not os.path.isfile(os.path.join(build_dir, "build.ninja")):
+        return False
+    cached = cached_value(build_dir, "Python3_EXECUTABLE")
+    same = bool(cached) and os.path.normcase(os.path.normpath(cached)) == os.path.normcase(os.path.normpath(sys.executable))
+    if not same:
+        print("[build] %s: CMake set up %s; using this one (%s)" % (
+            show(build_dir), "with another Python (%s)" % cached if cached else "without a Python", sys.executable))
+    return not same
 
 
 def configure_failure(log):

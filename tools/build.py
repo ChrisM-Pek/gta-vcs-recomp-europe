@@ -161,10 +161,11 @@ def build_launcher(env, verbose):
     if not tc.IS_WINDOWS and not tc.check_linux_deps(env, tc.LAUNCHER_LINUX_DEPS):
         tc.fail("missing packages for the launcher (above)", "missing_packages")
     if tc.drop_foreign_cache(LAUNCHER_BUILD, os.path.join(tc.ROOT, "launcher")) or tc.stale_tools(LAUNCHER_BUILD) or \
-            tc.drop_other_compiler(LAUNCHER_BUILD, env) is not None or \
+            tc.drop_other_compiler(LAUNCHER_BUILD, env) is not None or tc.python_changed(LAUNCHER_BUILD) or \
             not os.path.isfile(os.path.join(LAUNCHER_BUILD, "build.ninja")):
         cmd = ["cmake", "-S", os.path.join(tc.ROOT, "launcher"), "-B", LAUNCHER_BUILD, "-G", "Ninja",
-               "-DCMAKE_BUILD_TYPE=Release"] + tc.launcher_compiler_defines(env) + tc.deps_defines()
+               "-DCMAKE_BUILD_TYPE=Release"] + tc.launcher_compiler_defines(env) + tc.deps_defines() + \
+              tc.python_defines()
         if os.environ.get("VCS_WAYLAND_PROTOCOLS_DIR"):  # a release built on an older distribution (CI)
             cmd.append("-DVCS_WAYLAND_PROTOCOLS_DIR=" + os.environ["VCS_WAYLAND_PROTOCOLS_DIR"])
         log = os.path.join(tc.BUILD, "configure_launcher.log")

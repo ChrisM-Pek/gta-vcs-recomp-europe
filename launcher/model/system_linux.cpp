@@ -287,4 +287,23 @@ namespace launcher
         auto seconds = [](const timeval &t) { return double(t.tv_sec) + double(t.tv_usec) / 1e6; };
         return seconds(u.ru_utime) + seconds(u.ru_stime);
     }
+
+    unsigned long processId() { return static_cast<unsigned long>(::getpid()); }
+
+    void waitForProcessExit(unsigned long pid, double seconds)
+    {
+        // not our child: polled. A zombie (ended, its parent not reaping it yet) counts as gone
+        const std::string stat = "/proc/" + std::to_string(pid) + "/stat";
+        for (double waited = 0; waited < seconds; waited += 0.05)
+        {
+            std::ifstream in(stat);
+            std::string line;
+            if (!std::getline(in, line))
+                return;
+            const size_t paren = line.rfind(')'); // "pid (name) S ...": the name may hold spaces and brackets
+            if (paren == std::string::npos || paren + 2 >= line.size() || line[paren + 2] == 'Z' || line[paren + 2] == 'X')
+                return;
+            ::usleep(50 * 1000);
+        }
+    }
 }

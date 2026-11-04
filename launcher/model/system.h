@@ -48,4 +48,8 @@ namespace launcher
     bool redirectOutput(const std::filesystem::path &file); // CLI mode --out: our output and the tools' to a file
     uint64_t freeBytes(const std::filesystem::path &dir);
     double processCpuSeconds();                           // user + kernel time of this process
+    unsigned long processId();                            // this process's id
+    // block until process `pid` has ended, at most `seconds`: a launcher restarted after an update waits for the one
+    // that started it (its renamed exe can only be removed, an AppImage's mount only goes, once it is gone)
+    void waitForProcessExit(unsigned long pid, double seconds);
 }

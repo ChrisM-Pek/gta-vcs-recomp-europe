@@ -170,7 +170,7 @@ def apply_appimage(mine, appimage_path=None):
     os.replace(new, target)
     print("[update] %s -> %s: %s. Start the launcher again; it puts the new files in place, then build the game again."
           % (mine["version"], version, target))
-    tc.event(result="ok", version=version)
+    tc.event(result="ok", version=version, restart=True)  # the launcher offers Restart (the new AppImage)
 
 
 def install(source, target):
@@ -276,7 +276,7 @@ def apply(zip_path=None, appimage_path=None):
                 set_aside(path)
     print("[update] %s -> %s (%d files, %d removed). Build the game again (the launcher, or python tools/build.py "
           "--recompile-if-needed)." % (mine["version"], new["version"], len(names), len(gone)))
-    tc.event(result="ok", version=new["version"])
+    tc.event(result="ok", version=new["version"], restart=True)  # the launcher offers Restart (its new exe)
 
 
 def main():

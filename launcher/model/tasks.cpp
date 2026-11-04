@@ -530,6 +530,11 @@ namespace launcher
             drives = t.result["drives"];
         if ((t.kind == "update_check") && t.ok())
             updateInfo = t.result;
+        if (t.kind == "update" && t.ok() && t.result["restart"].boolean())
+        {
+            updatedTo = t.result["version"].str(); // in place: this launcher is the old one until it restarts
+            updateInfo = Json();
+        }
         if (t.kind == "rip" && t.ok() && t.result.has("iso"))
             chooseDisc(pathFrom(t.result["iso"].str()));
         if (t.kind == "backup" && t.ok())
@@ -718,6 +723,37 @@ namespace launcher
         gameRunning = true;
         gameEnded = false;
         gameStart = m_now;
+        return true;
+    }
+
+    fs::path App::restartTarget() const
+    {
+        // Linux: the AppImage file (update.py renamed the new one over it; the old image stays mounted until we end)
+        if (const char *appimage = std::getenv("APPIMAGE"); appimage && *appimage && !payload.empty())
+            return pathFrom(appimage);
+        // Windows: the release's launcher, written fresh by update.py (this one runs as VCSLauncher.exe.old)
+        return root / os::kLauncherExe;
+    }
+
+    bool App::restart(std::string &error)
+    {
+        const fs::path exe = restartTarget();
+        if (!fs::is_regular_file(exe))
+        {
+            error = "The new launcher isn't there: " + pathText(exe);
+            return false;
+        }
+        Process::Options options;
+        options.cwd = root;
+        // its output to a file, not a pipe: the pipe's reader (us) is about to end
+        options.outputFile = build / "run" / "launcher_restart.log";
+        options.killOnClose = false; // it outlives us
+        m_restarted = std::make_unique<Process>();
+        if (!m_restarted->start({pathText(exe), "--after-update", std::to_string(processId())}, options, error))
+        {
+            m_restarted.reset();
+            return false;
+        }
         return true;
     }
 

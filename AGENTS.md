@@ -149,6 +149,31 @@ card copies to start from (never the user's live card).
   (`screens::runPending`), and keep it idle - no animation that runs forever while nothing happens, except Home's
   backdrop (the user's wish, 2026-11-01: 30 fps, off while the game runs and with reduce motion; DECISIONS.md).
 
+## Release notes
+
+Each release's notes are `docs/releases/v<VERSION>.md`. CI publishes them as the release's text and sets the title
+itself ("GTA Vice City Stories Launcher vX"), so the file has no heading. Follow `docs/releases/v0.2.1.md`'s format
+(the user's choice, 2026-11-04):
+
+- **Sources:** `git log <previous tag>..HEAD`, with the commit bodies. Group the changes by what a player notices, not
+  by commit. Leave out anything a player never sees (tools, CI, docs, test rigs) unless it changes how they build,
+  update or report a problem.
+- **Layout:** the first line is `**Full Changelog**: https://github.com/gothamor/gta-vcs-recomp/compare/vPREV...vNEW`.
+  Sections are plain lines, not Markdown headings, each followed by bullets. The biggest change comes first as
+  `New: <what it is>`. Then come sections named by topic (`The car camera`), then `Fixes`, then `Launcher` (or `Also`).
+  The last line is an `Updating:` paragraph: the Windows steps in the launcher, that saves aren't touched, extracting
+  into a new folder as the other way, and the Linux AppImage.
+- **Writing:** write for players, in plain words. Say what they see or do now, and what it was like before ("Before,
+  it moved slowly and fought you."). Name settings in bold with where to find them ("the game's settings (F2) →
+  Keyboard: **Car camera sensitivity**") and give their defaults. Put a GitHub issue at the end of its bullet as
+  `(#N)`. Prefix a bullet that only applies to one platform or one mission with its name (`Linux:`, `Farewell To
+  Arms:`). Never use function names, addresses, environment variables or internal file names.
+- **Be honest:** if a fix couldn't be reproduced here, say it's hoped to fix the problem. Tell updaters about costs:
+  a full rebuild, a large download (with its size), or a feature they'll only see from the next update on.
+- **Before tagging:** bump `VERSION` to the tag's number, and commit the notes in the same commit. Never put `[skip ci]`
+  in the message of the commit the `v*` tag points at: GitHub then skips the tag's workflow, so no release is made.
+  If that happens anyway, `gh workflow run launcher.yml --ref vX` builds and publishes it.
+
 ## Rules that keep things working
 
 1. **Reference first.** A native replacement of an emulated path is checked against it (bit-exact

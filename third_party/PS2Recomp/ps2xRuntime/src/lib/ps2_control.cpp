@@ -91,7 +91,7 @@ namespace ps2control
                 c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
             struct Named { const char *name; int key; };
             static const Named named[] = {
-                {"return", platform::KEY_ENTER}, {"enter", platform::KEY_ENTER}, {"start", platform::KEY_ENTER}, {"shift", platform::KEY_LEFT_SHIFT}, {"shiftkey", platform::KEY_LEFT_SHIFT},
+                {"return", platform::KEY_ENTER}, {"enter", platform::KEY_ENTER}, {"start", platform::KEY_ESCAPE}, {"shift", platform::KEY_LEFT_SHIFT}, {"shiftkey", platform::KEY_LEFT_SHIFT}, // [gta-recomp] "start": Start's default key (Escape)
                 {"cross", platform::KEY_LEFT_SHIFT}, {"space", platform::KEY_SPACE}, {"square", platform::KEY_SPACE}, {"triangle", platform::KEY_F}, {"ctrl", platform::KEY_LEFT_CONTROL},
                 {"controlkey", platform::KEY_LEFT_CONTROL}, {"circle", platform::KEY_LEFT_CONTROL}, {"escape", platform::KEY_ESCAPE}, {"esc", platform::KEY_ESCAPE},
                 {"backspace", platform::KEY_BACKSPACE}, {"back", platform::KEY_BACKSPACE}, {"select", platform::KEY_BACKSPACE}, {"tab", platform::KEY_TAB}, {"up", platform::KEY_UP},

@@ -221,7 +221,7 @@ def step_menushape(out, quick):
         for phase in ("in", "out"):
             os.makedirs(os.path.join(d, phase), exist_ok=True)
             g.cmd("burst %s 50" % os.path.join(d, phase).replace(os.sep, "/"))
-            g.cmd("press Return 150")
+            g.cmd("press Escape 150")
             time.sleep(4)
     finally:
         g.quit()

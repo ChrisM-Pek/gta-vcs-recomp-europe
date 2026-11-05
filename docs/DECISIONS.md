@@ -1113,3 +1113,24 @@ Issue 62 (0.2.0, still in 0.2.1): `UnicodeEncodeError: 'charmap' codec can't enc
 named with "꞉". The launcher sets `PYTHONIOENCODING` / `PYTHONUTF8`, but runs the tools with `-I`, and isolated mode
 ignores every PYTHON* variable: stdout to the launcher's pipe was cp1252. `toolchain` now sets stdout / stderr to UTF-8
 (errors replaced) itself; `report.py` reads `doctor.py`'s output as UTF-8.
+
+## 2026-11-05 - The game's pause menu: Escape is Start, Enter selects, the mouse points and clicks (the user's request)
+The user asked for the in-game menu on Escape, Enter as select in it, the cursor shown and the menu usable with the
+mouse, the gamepad unchanged. "The in-game menu" is the game's own pause menu (the F2 settings menu already had the
+mouse, Escape and Enter): Start was Enter and the menu took only the pad's buttons, with the cursor captured.
+- **Start's default key is Escape** (Keyboard page, rebindable as before). Players who never changed Start get it with
+  the update (vcs.ini keeps changed keys only). Enter outside the menu is nothing now.
+- **In the menu, Enter = Cross and Escape = Triangle** (while held, pressed in the menu): Escape goes back a level and
+  closes the menu from the tab bar - the game's own Triangle does exactly that (FUN_003b5138), and it is a PC game's
+  Escape. Start (any page) would close it at once from deep in a save dialog; the gamepad's Start still does.
+- **The mouse plays the pad** rather than changing the menu's state: pointing walks the D-pad to the item (a search over
+  the items' own focus moves), a click is Cross / D-pad right / slider steps, the right button Triangle, the wheel L1 /
+  R1 on the map. So the game's sounds, page previews, wrap-arounds and save flow are its own, and nothing it keeps can
+  be left inconsistent. The cost: a step every other game frame (~70 ms at 30 fps for a far item). The map's pan is the
+  one direct write (+0xE4 / +0xE8, clamped to the range the D-pad reaches - past it the game draws the map wrong).
+- **Where items are** comes from their drawing (each item class's draw hooked; its Im2D primitives make its box), not
+  from their layout rects: those are wider than the text and overlap (the tabs' are 100 units wide, 53 apart). The
+  game shows its 640x448 menu drawing shrunk to 480x360 in the middle of the picture (the emulated GS path too), a
+  constant in `vcs_frontend.cpp`.
+- Would change: a menu page whose items can't be reached by focus moves (none seen) would need its own handling; the
+  shrink, if a setting turned out to change it.

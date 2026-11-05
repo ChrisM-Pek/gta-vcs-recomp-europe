@@ -20,7 +20,7 @@ menu (F2): the **Keyboard** and **Gamepad** pages (src/game/vcs_input.cpp).
 | L2 | 1, Z | LT |
 | R2 | 3, X | RT |
 | L3 / R3 | C / V | stick clicks |
-| Start | Enter | Start / Menu |
+| Start (pause menu) | Escape | Start / Menu |
 | Select | Backspace | Back / View |
 | Walk (hold) | - (unbound) | - (a small stick tilt) |
 
@@ -36,7 +36,7 @@ foot they keep their bindings above (W walks, Space jumps):
 | Lean back / nose up | Keypad 5 | Left stick down |
 
 Steering stays on A / D (the left stick); Shift still accelerates and E / the right mouse button is still R1. The
-game's own PS2 controls apply on top. Start or Cross (Enter / Shift) skips the intro movie; the Rockstar logos before
+game's own PS2 controls apply on top. Start or Cross (Escape / Shift) skips the intro movie; the Rockstar logos before
 it can't be skipped, as on the PS2 (Game > Skip intro movies skips both).
 
 **Right mouse button = R1**: on foot it locks on to the ped nearest in front while held (with fists or a weapon), as R1
@@ -123,6 +123,32 @@ It does nothing of this while a control is bound to the wheel, while driving or 
 - **Vibration**: the DualShock 2's motors on the gamepad's rumble, 0-200% (100% as on the PS2, 0% off). The game
   drives them itself (crashes, explosions, gunfire; game-internals.md 12a).
 
+## The game's pause menu
+
+Escape (Start) opens it - also the Save menu a safehouse opens - and it works as a PC game's menu (src/game/vcs_frontend.cpp,
+game-internals.md 6m; before 2026-11-05 Start was Enter and the menu took the pad's buttons only):
+- **Keyboard**: the arrow keys move, **Enter** selects (Cross), **Escape** goes back (Triangle) - on the tab bar
+  (map / brief / game / stats / controls / audio / display) that closes the menu. Shift / F still work as Cross /
+  Triangle, and Start's own key (Escape unless rebound) is the menu's back while it is up. Enter does nothing outside it.
+- **Mouse**: the cursor shows while the menu is up. Pointing at a tab or an item moves the game's highlight there (a tab
+  shows its page, as the D-pad does); a click selects it - a tab opens its page, an item of the page under the tab bar
+  opens that page and selects it (Game > Load Game in one click). The **right button** goes back (closes the menu on
+  the tab bar).
+  - **Sliders** (Audio > Music / SFX volume, Display > Brightness): a click on a bar sets the level, holding the button
+    and moving drags it, the wheel turns it a step a notch; a click on the label only moves the highlight there.
+  - **Choices** (Speaker setup, Radio station, Subtitles, Radar, HUD, Widescreen, Trails, the Controls page): a click
+    turns to the next one, the wheel turns either way (up: next).
+  - **Map**: drag it with the left button (it stays in the range the D-pad scrolls it); the wheel zooms (up: in, as R1).
+    Cross (Enter) shows the legend, Square (Space) places the target as on the PS2.
+  - **Brief, Stats**: the wheel scrolls.
+- **Gamepad**: unchanged (Start opens and closes, the D-pad / left stick move, Cross selects, Triangle goes back).
+- What the menu takes stays out of the game: the mouse buttons and the wheel aren't Circle / R1 / weapon changes while
+  it is up, nor while still held after it closed (a click on Load Game doesn't punch); Escape held from opening it
+  isn't a back. Any key or gamepad button pressed while the mouse is on its way to an item takes over.
+- It all goes through the game's own pad: the menu sees D-pad steps, Cross and Triangle, so it sounds, highlights and
+  switches pages as on the PS2. `VCS_MENU_MOUSE=0` leaves the mouse out (Enter / Escape stay).
+  `python tools/menu_check.py` checks all of it.
+
 ## Menus
 
 F2 (or Back + Start on a gamepad) opens the settings, F5 (or Back + RB) the trainer (docs/TRAINER.md), F6 (or Back + LB)
@@ -147,7 +173,7 @@ the settings menu waits for a key to bind. `VCS_SCREENSHOT_DIR=<dir>` saves them
 ## Window
 
 Alt+Enter switches between full screen and the window (Display > Window mode; saved in vcs.ini). Enter with Alt
-held is not Start. Game > **In the background** decides what happens when another window is in front: keep running
+held is not Cross in the pause menu (nor a binding). Game > **In the background** decides what happens when another window is in front: keep running
 (as before), mute, or pause.
 
 ## Debug keys

@@ -367,17 +367,17 @@ class Check:
             # nothing of the trainer's left in the script list while paused
             self.t("toggle god 1")
             self.t("toggle wanted 1")
-            g.cmd("press Return 150")
+            g.cmd("press Escape 150")
             time.sleep(2.0)
             left = [s for s in g.scripts() if s[1] == "trainer"]
             self.shot("paused")
             self.ok("no trainer script while paused", not left, str(left))
-            g.cmd("press Return 150")
+            g.cmd("press Escape 150")
             time.sleep(1.5)
             self.t("heal")
             self.ok("actions after the pause", True)
             # the menu, driven by keys: opening it and flipping a row; the game behind it keeps running and gets
-            # none of the keys (Enter is the game's Start: it would open the pause map)
+            # none of the keys (Escape, the trainer's back, is the game's Start: it would open the pause map)
             self.t("toggle god 0")
             g.cmd("press f5 60")
             time.sleep(0.5)

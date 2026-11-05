@@ -1246,6 +1246,52 @@ planes leave in the sky (seen outside the Little Havana Empire site, 08:28, 16:9
   (Z 0), so fire that loses to every written depth still shows over the sky - the AMD symptom of issue 4
   (DECISIONS.md 2026-11-04).
 
+### 6m. The pause menu ("frontend"): pages, items, input (2026-11-05)
+
+Found for the menu's keyboard / mouse (`src/game/vcs_frontend.cpp`, CONTROLS.md): RAM reads of the running menu
+through the rig (`peek`, the item lists below dumped page by page) and `tools/eedecomp.py` of the routines named here.
+- **The manager** at `0x729480` (`FUN_00471400` returns it, built once by `FUN_003b45e8`; `0x4CD7B0` its "made" flag):
+  +0 the tab bar's page "MASTER" (items Map_t, Brief_t, Game_t, Stats_t, Controls_t, Audio_t, Display_t), +4 / +8 a
+  vector of 29 pages (MAP_PAGE, BRIEF_PAGE, LOAD_PAGE (the Game tab), STATS_PAGE, CONTROLS_PAGE, AUDIO_PAGE,
+  DISPLAY_PAGE, CONTROLS_PAGE_WIDE, the load / save / delete slot pages, the Yes / No pages, the result / "...ing" /
+  no-card pages), +0x14 / +0x18 the help bars (popups), +0x24 the page shown (s8; -1 none), +0x25 the help bar shown,
+  **+0x28 non-zero while the tab bar has the focus** (0: the page has it; `FUN_003b5ba8` = the page with the focus),
+  **+0x40 non-zero while the menu is up** (`FUN_003b5130`), +0x4C the draw state (0 on the tab bar: the page shown,
+  the tab bar, a help bar; 3 in a page: the page and a help bar - the tab bar is hidden).
+- **A page**: +0 its name, +0x1C the name of the item focused when it opens, +0x2C / +0x30 a vector of items, **+0x3C
+  the focused item**, +0x18 the input latch, +0x40 the last up / down.
+- **An item** (0xF0+ bytes): +0 its name, **+0x10 x, y, w, h** (ints, in the PSP's 480x272 units; w / h are a layout
+  box, not the text: the tabs are 100 wide 53 apart), +0x24 visible (byte), **+0x28 the class** (vtable: +0xC is-a,
+  +0x14 draw, +0x18 update, +0x2C draw focused, +0x3C input(dir) = `FUN_00411e70`, which runs the direction's
+  actions). **+0x6C + d x 0x10, d = 0..6: a vector of actions** for left, right, up, down, select (Cross), back
+  (Triangle), getting the focus. An action: +0 type, +4 / +8 a string (begin, end) and more after. Types seen: **0
+  focus the item named** (the D-pad's moves between items, all of them - the tabs wrap around: Map left = Stats),
+  1 / 2 turn the item named up / down (slider or choice), 3 open a page, 5 open the tab's page (the tabs' select), 6
+  back, 7 (scroll lists' focus), 9 / 10 / 14 / 15 / 16 / 20 / 21 / 22 / 23 the game's new / delete / save / load
+  steps. The tabs' focus actions (d = 6) are type 3: moving along the tab bar shows each page.
+- **Classes**: `0x490A58` text item (tabs, menu lines, choices: +0xEC the number of choices, +0xED the one shown),
+  `0x490680` slider (**+0xDC the value 0..1, +0xE8 its steps**: Music / SFX volume 8), `0x4905E8` the map (below),
+  `0x48F9A8` scroll list (Brief, Stats), `0x48F4B0` save slot, `0x4905A0` the screen-position frame, `0x48FE10` a
+  page's backdrop (0, 0, 480, 272), `0x491F68` the pad picture, `0x48FDC8` radio icons, `0x48F3D8` / `0x48F420` /
+  `0x48F468` animated icons.
+- **Input**, once a frame: `FUN_003cdff8(page)` asks `FUN_003b5758` for a direction - the left stick past 16 / 26 or the
+  D-pad's press (0 left, 1 right, 2 up, 3 down), **Cross's press 4, Triangle's release 5** - and, if none was given
+  the frame before (the latch +0x18), runs the focused item's input with it. So a held D-pad moves once: the pad must
+  be let go a frame between steps. `FUN_003b5138` (the menu's update): **Start's press opens and closes the menu from
+  any page; Triangle's release closes it while the tab bar has the focus** (CPad 0 at `0x5147A8`: +0x22 / +0x52 Start
+  new / old, +0x28 / +0x58 Triangle, +0x2A / +0x5A Cross).
+- **Drawing**: `FUN_0021f7d8` (each frame) -> `FUN_003b53f8` (the menu) -> `FUN_003cdf20(page)` for each page drawn,
+  which calls each visible item's draw (+0x2C for the focused one of the page with the focus); then `FUN_003e0b10` (a
+  full-screen overlay, the brightness). Items draw through Im2D in the full 640x448 (x 4/3, y 1.647 of the units); **the
+  picture shows that 640x448 drawing shrunk to 480x360 in the middle** (80 + 0.75x, 44 + 0.804y) - in the emulated GS
+  path too (`VCS_MENU_NATIVE=0 VCS_HUD_NATIVE=0`, same screenshot), so it is the game's. The Save menu a safehouse
+  opens (`ACTIVATE_SAVE_MENU`) is this menu on SURE_SAVE_GAME_PAGE, the same layout and no 3D behind.
+- **The map item** (`FUN_0026be00`, its update): +0xE4 / +0xE8 the map's offset in units, +0xF0 the zoom (100..580,
+  +0x104 / +0x108; it opens at 400), +0x100 the zoom's step a frame (8; L1 out, R1 in while held), +0xF4 / +0xF8 the
+  D-pad's scroll. **The D-pad scrolls the offset only while |offset - (240, 114)| <= zoom - 100** (measured at the
+  smallest zoom, 392 and 576: x -236.6..715.9 and y -362.6..589.9 at 576); written past that, the map's tiles are drawn
+  wrong (the 3D world shows through). Cross toggles the legend, Square the target (the crosshair).
+
 ## 7. Textures: `.XTX`
 
 Confirmed from `LOADSC*.XTX` (263,372 bytes each, 512x512 8-bit):

@@ -9,6 +9,7 @@
 #include "game/vcs_aim.h"
 #include "game/vcs_carcam.h"
 #include "game/vcs_freecam.h"
+#include "game/vcs_frontend.h"
 #include "platform/platform.h"
 #include "ps2_runtime.h"
 #include "runtime/ps2_audio_out.h"
@@ -83,7 +84,7 @@ namespace vcs::input
             {"r2", "R2", "Buttons", Target::Button, kR2, 0, 0, KEY_THREE, KEY_X, kPadRT},
             {"l3", "L3 (left stick click)", "Buttons", Target::Button, kL3, 0, 0, KEY_C, 0, GAMEPAD_LEFT_STICK},
             {"r3", "R3 (right stick click)", "Buttons", Target::Button, kR3, 0, 0, KEY_V, 0, GAMEPAD_RIGHT_STICK},
-            {"start", "Start (pause menu)", "Buttons", Target::Button, kStart, 0, 0, KEY_ENTER, 0, GAMEPAD_START},
+            {"start", "Start (pause menu)", "Buttons", Target::Button, kStart, 0, 0, KEY_ESCAPE, 0, GAMEPAD_START},
             {"select", "Select", "Buttons", Target::Button, kSelect, 0, 0, KEY_BACKSPACE, 0, GAMEPAD_BACK},
             {"dpad_up", "D-pad up", "D-pad", Target::Button, kUp, 0, 0, KEY_UP, 0, GAMEPAD_DPAD_UP},
             {"dpad_down", "D-pad down", "D-pad", Target::Button, kDown, 0, 0, KEY_DOWN, 0, GAMEPAD_DPAD_DOWN},
@@ -223,11 +224,13 @@ namespace vcs::input
 
         // A bound key is down: the key itself (physical or injected over the control channel), the other side's
         // Shift / Ctrl / Alt, Keypad Enter for Enter. Enter with Alt held is Alt+Enter (full screen), not a binding.
+        // The pause menu's own keys (Enter, Escape, the mouse buttons and wheel while it is up: game/vcs_frontend.h)
+        // are not bindings then.
         bool bound(int key, bool alt)
         {
             if (key <= 0)
                 return false;
-            auto down = [](int k) { return ps2control::keyDown(k); };
+            auto down = [](int k) { return ps2control::keyDown(k) && !frontend::ownsKey(k); };
             switch (key)
             {
             case KEY_LEFT_SHIFT: return down(KEY_LEFT_SHIFT) || down(KEY_RIGHT_SHIFT);
@@ -416,6 +419,9 @@ namespace vcs::input
                     ly *= m.walk / mag;
                 }
             }
+            // the pause menu: Enter / Escape as Cross / Triangle, the mouse's steps and clicks (game/vcs_frontend.h);
+            // what the player presses meanwhile takes over
+            buttons |= frontend::padButtons(buttons, lx != 0.0f || ly != 0.0f || rx != 0.0f || ry != 0.0f, blocked);
 
             // the mouse camera, on top of the right stick: worked out once per game frame (the game reads the pad three
             // times a frame; the frame's other reads repeat the deflection)
@@ -571,7 +577,8 @@ namespace vcs::input
                 bool notch[2] = {};
                 for (int w = 0; w < 2; ++w)
                 {
-                    const bool down = !blocked && ps2control::keyDown(w ? KEY_WHEEL_DOWN : KEY_WHEEL_UP);
+                    const int key = w ? KEY_WHEEL_DOWN : KEY_WHEEL_UP;
+                    const bool down = !blocked && ps2control::keyDown(key) && !frontend::ownsKey(key);
                     notch[w] = down && !g_mouse.wheelWas[w];
                     g_mouse.wheelWas[w] = down;
                 }
@@ -1059,7 +1066,9 @@ namespace vcs::input
             std::lock_guard<std::mutex> lock(g_mapMutex);
             camera = g_map.mouseCamera || g_map.freeAimMouse;
         }
-        setMouseCaptured(((g_enabled && camera) || freecam::flying()) && !menuOpen && ps2control::physicalInputOn());
+        // the cursor shows over the game's pause menu (game/vcs_frontend.h), as over ours
+        setMouseCaptured(((g_enabled && camera) || freecam::flying()) && !menuOpen && !frontend::open() && ps2control::physicalInputOn());
+        frontend::onHostFrame();
 
         // the window in the background (Game > In the background): a hidden test run never is
         const bool behind = !ps2control::hiddenMode() && !windowFocused();

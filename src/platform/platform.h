@@ -194,6 +194,9 @@ namespace platform
     bool keyDown(int key);
     bool keyPressed(int key); // main thread: went down at the last pumpEvents
     bool mouseDown(MouseButton button);
+    // The cursor in drawable pixels from the window's top-left (windowSize's units); false while it is not over the
+    // window, the mouse is captured or the window is hidden.
+    bool mousePosition(float &x, float &y);
     bool gamepadConnected();
     bool gamepadButton(GamepadButton button);
     float gamepadAxis(GamepadAxis axis);

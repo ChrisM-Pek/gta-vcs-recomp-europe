@@ -49,8 +49,8 @@ DEFAULTS = [
     ("c", L3), ("v", R3), ("backspace", SELECT),
     ("up", UP), ("down", DOWN), ("left", LEFT), ("right", RIGHT),
 ]
-# Start opens the game's pause menu: checked last
-START_KEYS = [("return", START), ("kpenter", START)]
+# Start (Escape) opens the game's pause menu: checked last. Enter is Cross in the pause menu only (tools/menu_check.py)
+NOT_START_KEYS = ["return", "kpenter"]
 
 
 class Check:
@@ -122,14 +122,14 @@ class Check:
         self.ok("music / effects settings reach the game", s.get("music") == "32" and s.get("effects") == "64" and
                 prefs == "4000000020000000", "%s prefs %s" % (s, prefs))
         # loading the card's save (it holds the defaults) keeps the player's levels: pause menu > Game > Load, slot 1
-        self.keys("Return@3", "Right", "Right", "Shift@2", "Shift@3", "Down", "Shift@3", "Up", "Shift@25")
+        self.keys("Escape@3", "Right", "Right", "Shift@2", "Shift@3", "Down", "Shift@3", "Up", "Shift@25")
         s = self.sound()
         with open(g.log_path, encoding="utf-8", errors="replace") as f:
             loaded = "the game sets the music level 80 (ra=0x3add90): the player's 32" in f.read()
         self.ok("a save load keeps the player's levels", loaded and s.get("music") == "32" and s.get("effects") == "64",
                 "%s, load %s" % (s, "seen" if loaded else "not seen"))
         # the pause menu's Audio page shows them (2 and 4 bars) and its slider changes the setting
-        self.keys("Return@3", "Down@2", "Right@2")
+        self.keys("Escape@3", "Down@2", "Right@2")
         self.shot("game_audio_page")
         self.keys("Shift@2", "Left@2")
         s = self.sound()
@@ -190,12 +190,12 @@ class Check:
         turn, up = self.mouse_moves(10, 20, 5)
         self.setting("mouse.camera", 1)
         self.ok("mouse camera off", abs(turn) < 0.005 and abs(up) < 0.005, "heading %+.3f pitch %+.3f" % (turn, up))
-        self.keys("Return@3")  # the game's pause menu: the camera stays
+        self.keys("Escape@3")  # the game's pause menu: the camera stays
         _, _, h0 = self.cam()
         g.cmd("mouse 400 0")
         time.sleep(1.0)
         _, _, h1 = self.cam()
-        self.keys("Return@3")
+        self.keys("Escape@3")
         self.ok("the mouse leaves the camera in the pause menu", abs(h1 - h0) < 0.001, "heading %.3f -> %.3f" % (h0, h1))
 
         # right click locks on to a ped next to Vic (the game's lock-on camera, mode 11), and the mouse does not break it
@@ -1041,10 +1041,14 @@ class Check:
             # Start last (it opens the pause menu); Alt+Enter is full screen, not Start
             p = self.held("alt", "return")
             self.ok("Alt+Enter is not Start", not p["buttons"] & START, str(p))
-            for key, want in START_KEYS:
+            for key in NOT_START_KEYS:
                 p = self.held(key)
-                self.ok("%s is Start" % key, p["buttons"] == want, str(p))
-                time.sleep(1.0)
+                self.ok("%s presses nothing outside the pause menu" % key, p["buttons"] == 0, str(p))
+                time.sleep(0.5)
+            # Escape is Start: held, the menu opens and has the key from then on (the report shows nothing after)
+            self.held("escape")
+            time.sleep(1.0)
+            self.ok("escape is Start (the pause menu opens)", g.cmd("menustate").startswith("open=1"), g.cmd("menustate")[:40])
             self.ok("still running", g.alive())
         finally:
             g.quit()

@@ -763,6 +763,12 @@ dropped on uploads (lazy render-target patching).
   Same day: a mission launched under it hung on "Loading..." (the first version replaced the camera's update, which
   drives a cutscene's end); fixed, and a launch turns it off. `--freecam` 8 checks (Soldier's cutscene played out
   under it), 0 failed; the full check 41, 0 failed.
+- **The game's pause menu with the keyboard and the mouse** (2026-11-05, the user's request; CONTROLS.md, DECISIONS.md,
+  game-internals.md 6m, `src/game/vcs_frontend.cpp`): Start is Escape (was Enter); in the menu Enter = Cross, Escape =
+  Triangle (back; closes it from the tab bar); the cursor shows; pointing moves the game's highlight, a click selects,
+  sliders follow the cursor, the wheel turns choices / scrolls / zooms the map, the map drags, the right button goes
+  back - all as pad input, the gamepad unchanged. `tools/menu_check.py`: 27 checks, 0 failed; `saves.py` (Escape now
+  opens the menu) passes.
 
 ## Milestone 9 - Linux (started 2026-10-30)
 
@@ -942,6 +948,7 @@ Python scripts still usable on their own. docs/LAUNCHER.md has the whole of it; 
 | `PS2X_HW_FRAME=WxH` | the native frame's size whatever the window (tests) |
 | `PS2X_HW_DUMP_ALLVERTS=1` | the F12 draw log prints every vertex of every draw |
 | `VCS_MENU_NATIVE=0` | menus drawn into the PS2 frame buffer instead of the native layer |
+| `VCS_MENU_MOUSE=0` | the game's pause menu without the mouse (Enter / Escape as Cross / Triangle stay; game/vcs_frontend.h) |
 | `VCS_LOADING_NATIVE=0` | loading screens drawn into the PS2 frame buffer instead of the native layer |
 | `PS2X_HW_PATH2_PACKED=0` | PATH2 draw packets (Im2D, effect strips) through the GS front end vertex by vertex instead of recorded whole |
 | `PS2X_TRACE_PATH2_TAGS=1` | PATH2 (VIF DIRECT) packets by the shape of their first GIFtag, and the register sequence of A+D packets that draw, every 5 s (`[path2]`) |

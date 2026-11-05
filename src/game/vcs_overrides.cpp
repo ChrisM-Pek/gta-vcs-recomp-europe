@@ -24,6 +24,7 @@
 #include "game/vcs_aim.h"
 #include "game/vcs_carcam.h"
 #include "game/vcs_freecam.h"
+#include "game/vcs_frontend.h"
 #include "game/vcs_hud.h"
 #include "game/vcs_rsl_native.h"
 #include "game/vcs_rsl_world.h"
@@ -1101,6 +1102,7 @@ namespace
         vcs::volume::onGameFrame(rdram);            // the music / effects levels and the pause menu's (game/vcs_volume.h)
         vcs::gameinfo::onGameFrame(rdram);          // the F3 game-state panel's snapshot (debug/game_info.h)
         vcs::onFrameKick();                         // the HUD context ends (game/vcs_hud.h)
+        vcs::frontend::onFrameKick();               // the pause menu's drawing is over (game/vcs_frontend.h)
         vcs::rsltrace::onFrameKick(rdram);          // VCS_TRACE_RSL (debug/rsl_trace.h)
         vcs::rslshadow::onFrameKick(rdram);         // VCS_RSL_SHADOW (debug/rsl_shadow.h)
         vcs::rslworld::onFrameKick();               // world / model draws from RSL calls (game/vcs_rsl_world.h)
@@ -1178,6 +1180,7 @@ namespace
         runtime.replaceFunction(0x002723E8u, &markFrameKick);
         vcs::installDisplayHooks(runtime); // widescreen (settings menu)
         vcs::installHudHooks(runtime);     // 2D at the RenderWare level
+        vcs::frontend::install(runtime);   // the pause menu with Enter / Escape and the mouse (game/vcs_frontend.h)
         vcs::freecam::install(runtime);    // the trainer's free camera (game/vcs_freecam.h)
         vcs::aim::install(runtime);        // free aim with the mouse / right stick (game/vcs_aim.h)
         vcs::carcam::install(runtime);     // the mouse on the camera behind a vehicle (game/vcs_carcam.h)

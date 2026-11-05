@@ -1282,9 +1282,13 @@ through the rig (`peek`, the item lists below dumped page by page) and `tools/ee
   new / old, +0x28 / +0x58 Triangle, +0x2A / +0x5A Cross).
 - **Drawing**: `FUN_0021f7d8` (each frame) -> `FUN_003b53f8` (the menu) -> `FUN_003cdf20(page)` for each page drawn,
   which calls each visible item's draw (+0x2C for the focused one of the page with the focus); then `FUN_003e0b10` (a
-  full-screen overlay, the brightness). Items draw through Im2D in the full 640x448 (x 4/3, y 1.647 of the units); **the
-  picture shows that 640x448 drawing shrunk to 480x360 in the middle** (80 + 0.75x, 44 + 0.804y) - in the emulated GS
-  path too (`VCS_MENU_NATIVE=0 VCS_HUD_NATIVE=0`, same screenshot), so it is the game's. The Save menu a safehouse
+  full-screen overlay, the brightness). Items draw through Im2D in the full 640x448 (x 4/3, y 1.647 of the units), and **that
+  drawing is the picture**: the menu's 640x448 coordinates map 1:1 onto the 4:3 area the frame shows it in (the
+  presenter's `fitRect(4:3, game aspect)`; in a wide frame the HUD squeeze puts it in the middle 4:3). An earlier note
+  here said the picture shows it shrunk to 480x360 (80 + 0.75x, 44 + 0.804y): that was a hidden run's 16:9 letterbox
+  inside its 4:3 window (120 / 66 of 960 x 672) read as the game's - and screenshots of a hidden run are 960x672 while
+  its window is 640x448. Checked by drawing `menustate`'s boxes over a screenshot (they sit on the text) and by
+  `tools/menu_check.py`'s window check. The Save menu a safehouse
   opens (`ACTIVATE_SAVE_MENU`) is this menu on SURE_SAVE_GAME_PAGE, the same layout and no 3D behind.
 - **The map item** (`FUN_0026be00`, its update): +0xE4 / +0xE8 the map's offset in units, +0xF0 the zoom (100..580,
   +0x104 / +0x108; it opens at 400), +0x100 the zoom's step a frame (8; L1 out, R1 in while held), +0xF4 / +0xF8 the

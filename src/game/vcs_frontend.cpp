@@ -365,16 +365,18 @@ namespace vcs::frontend
         }
 
         // ---- the cursor (main thread -> game thread) -------------------------------------------------------------------
-        // where the menu's 640x448 drawing is shown in the 640x448 picture: 480x360, centred
-        constexpr float kShownX0 = 80.0f, kShownY0 = 44.0f, kShownScaleX = 480.0f / 640.0f, kShownScaleY = 360.0f / 448.0f;
         std::atomic<float> g_cursorX{0.0f}, g_cursorY{0.0f}; // over the 640x448 picture
         std::atomic<bool> g_cursorValid{false};
-        std::atomic<bool> g_injected{false};                 // "menumouse x y" (tests): the cursor set from here
+        std::atomic<int> g_windowW{0}, g_windowH{0}; // drawable pixels, at the last host frame (menustate)
+        // "menumouse" (tests): the cursor set from the control channel - over the 640x448 picture ("menumouse x y") or
+        // in window pixels ("menumouse window x y": through onHostFrame's mapping, as the real cursor)
+        enum Injected : int { kNotInjected, kInjectedPicture, kInjectedWindow };
+        std::atomic<int> g_injected{kNotInjected};
         std::atomic<float> g_injectedX{0.0f}, g_injectedY{0.0f};
 
         bool cursor(float &x, float &y)
         {
-            if (g_injected.load(std::memory_order_relaxed))
+            if (g_injected.load(std::memory_order_relaxed) == kInjectedPicture)
             {
                 x = g_injectedX.load(std::memory_order_relaxed);
                 y = g_injectedY.load(std::memory_order_relaxed);
@@ -614,6 +616,16 @@ namespace vcs::frontend
                 std::replace(focus.begin(), focus.end(), ' ', '_');
                 std::snprintf(buf, sizeof(buf), "open=1 tabbar=%d page=%s focus=%s", m.tabBar ? 1 : 0, page.c_str(), focus.c_str());
                 s = buf;
+                // the window's size in pixels ("menumouse window"'s units; a screenshot may be another size) and the
+                // cursor over the 640x448 picture, as the menu sees it
+                float cx = 0.0f, cy = 0.0f;
+                const bool on = cursor(cx, cy);
+                std::snprintf(buf, sizeof(buf), " window=%dx%d cursor=", g_windowW.load(std::memory_order_relaxed),
+                              g_windowH.load(std::memory_order_relaxed));
+                s += buf;
+                if (on)
+                    std::snprintf(buf, sizeof(buf), "%.1f,%.1f", cx, cy);
+                s += on ? buf : "-";
                 // the items of the page shown and of the tab bar: name:x0,y0,x1,y1[:i interactive][:v level/steps]
                 // [:m pan x, pan y] ("menumouse" takes the same 640x448 coordinates)
                 s += " items=";
@@ -828,21 +840,33 @@ namespace vcs::frontend
     {
         int w = 0, h = 0;
         windowSize(w, h);
+        g_windowW.store(w, std::memory_order_relaxed);
+        g_windowH.store(h, std::memory_order_relaxed);
         float mx = 0.0f, my = 0.0f;
-        const bool over = g_mouseOn && ps2control::physicalInputOn() && mousePosition(mx, my) && w > 0 && h > 0;
+        bool over = false;
+        if (g_injected.load(std::memory_order_relaxed) == kInjectedWindow)
+        {
+            mx = g_injectedX.load(std::memory_order_relaxed);
+            my = g_injectedY.load(std::memory_order_relaxed);
+            over = g_mouseOn && w > 0 && h > 0;
+        }
+        else
+            over = g_mouseOn && ps2control::physicalInputOn() && mousePosition(mx, my) && w > 0 && h > 0;
         if (over)
         {
-            // the menu is shown at 4:3 in the frame (vcs_hud.cpp anchors it in the middle; presenter's fitRect)
+            // The menu is shown at 4:3 in the game's frame (vcs_hud.cpp anchors it in the middle; the presenter's
+            // fitRect: a 4:3 frame fills it, a wide one has the menu squeezed into its middle 4:3), and its 640x448
+            // drawing fills that area - the items' boxes are in the same coordinates. (A shrink to 480x360 here once
+            // was the frame's own letterbox counted twice: the hit areas sat towards the middle of the screen.)
             float x0 = 0.0f, y0 = 0.0f, fw = 0.0f, fh = 0.0f;
             present::fitRect(4.0f / 3.0f, present::displayAspect(true), static_cast<float>(w), static_cast<float>(h), x0, y0, fw, fh);
             if (fw > 0.0f && fh > 0.0f)
             {
-                // the 640x448 picture -> the menu's drawing: the game shows its 640x448 menu shrunk to 480x360 in the
-                // middle of the picture (the emulated GS path too; game-internals.md 6m)
-                const float px = (mx - x0) / fw * 640.0f, py = (my - y0) / fh * 448.0f;
-                g_cursorX.store((px - kShownX0) / kShownScaleX, std::memory_order_relaxed);
-                g_cursorY.store((py - kShownY0) / kShownScaleY, std::memory_order_relaxed);
+                g_cursorX.store((mx - x0) / fw * 640.0f, std::memory_order_relaxed);
+                g_cursorY.store((my - y0) / fh * 448.0f, std::memory_order_relaxed);
             }
+            else
+                over = false;
         }
         g_cursorValid.store(over, std::memory_order_relaxed);
     }
@@ -912,20 +936,21 @@ namespace vcs::frontend
             std::lock_guard<std::mutex> lock(g_stateMutex);
             reply("ok " + g_state);
         });
-        // menumouse <x> <y> | menumouse off -> ok: the cursor over the 640x448 picture set from here (hidden test runs;
-        // the buttons and the wheel are keys: "key mouseleft down", "press wheelup")
+        // menumouse <x> <y> | menumouse window <x> <y> | menumouse off -> ok: the cursor set from here (hidden test
+        // runs): over the 640x448 picture, or in the window's pixels (the real cursor's mapping, at the next host
+        // frame). The buttons and the wheel are keys: "key mouseleft down", "press wheelup".
         ps2control::addCommand("menumouse", [](const std::string &args, ps2control::Reply reply) {
             float x = 0.0f, y = 0.0f;
             if (args == "off")
-                g_injected.store(false, std::memory_order_relaxed);
-            else if (std::sscanf(args.c_str(), "%f %f", &x, &y) == 2)
+                g_injected.store(kNotInjected, std::memory_order_relaxed);
+            else if (std::sscanf(args.c_str(), "window %f %f", &x, &y) == 2 || std::sscanf(args.c_str(), "%f %f", &x, &y) == 2)
             {
                 g_injectedX.store(x, std::memory_order_relaxed);
                 g_injectedY.store(y, std::memory_order_relaxed);
-                g_injected.store(true, std::memory_order_relaxed);
+                g_injected.store(args.rfind("window", 0) == 0 ? kInjectedWindow : kInjectedPicture, std::memory_order_relaxed);
             }
             else
-                return reply("error usage: menumouse <x> <y> | menumouse off");
+                return reply("error usage: menumouse <x> <y> | menumouse window <x> <y> | menumouse off");
             reply("ok");
         });
     }

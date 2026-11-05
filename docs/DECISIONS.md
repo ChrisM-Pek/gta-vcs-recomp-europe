@@ -1130,7 +1130,8 @@ mouse, Escape and Enter): Start was Enter and the menu took only the pad's butto
   one direct write (+0xE4 / +0xE8, clamped to the range the D-pad reaches - past it the game draws the map wrong).
 - **Where items are** comes from their drawing (each item class's draw hooked; its Im2D primitives make its box), not
   from their layout rects: those are wider than the text and overlap (the tabs' are 100 units wide, 53 apart). The
-  game shows its 640x448 menu drawing shrunk to 480x360 in the middle of the picture (the emulated GS path too), a
-  constant in `vcs_frontend.cpp`.
-- Would change: a menu page whose items can't be reached by focus moves (none seen) would need its own handling; the
-  shrink, if a setting turned out to change it.
+  boxes are in the menu's 640x448 drawing, which fills the 4:3 area the frame shows the menu in; the cursor is mapped
+  there through the presenter's `fitRect`. (A 480x360 "shrink" applied on top of that at first pulled the hit areas
+  towards the middle of the screen - the player had to point a little off an item; game-internals.md 6m. The menu
+  check now moves the cursor in window pixels, through the same mapping as the real cursor.)
+- Would change: a menu page whose items can't be reached by focus moves (none seen) would need its own handling.

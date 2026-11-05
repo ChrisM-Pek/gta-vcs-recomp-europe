@@ -4,10 +4,12 @@
     python tools/menu_check.py [OUT] [--port N]
 
 One hidden session from a copy of build/rig/saves/fortbaxter. The cursor is set over the menu's 640x448 drawing with
-the control channel's `menumouse` (the boxes come from `menustate`: where each item was drawn), the buttons and the
+the control channel's `menumouse` (or in window pixels: `menumouse window x y`; the boxes come from `menustate`: where each item was drawn), the buttons and the
 wheel are the keys mouseleft / mouseright / wheelup / wheeldown. Checks:
   keys      Escape opens the menu (Start), Enter selects, Escape goes back, Escape on the tab bar closes it; Enter
             outside the menu presses nothing
+  window    the cursor in window pixels (the real cursor's mapping onto the menu's 4:3 area, at 16:9) over a tab's
+            text - its middle and near its corners - points at that tab
   hover     pointing at a tab gives it the focus (and shows its page)
   click     a tab opens its page; the right button goes back; an item of the page shown under the tab bar opens the
             page and is selected (Game > Delete Game: the slot list), Cancel there
@@ -29,6 +31,21 @@ import rig  # noqa: E402
 
 ROOT = rig.ROOT
 CIRCLE = 0x2000
+
+
+def fit_rect(aspect, frame_aspect, width, height):
+    """present::fitRect: a picture of `aspect` as large as fits in the frame (the window letterboxed at frame_aspect),
+    centred -> x0, y0, w, h"""
+    fw, fh = width, height
+    if frame_aspect > 0:
+        fh = fw / frame_aspect
+        if fh > height:
+            fh, fw = height, height * frame_aspect
+    w = fw
+    h = w / aspect
+    if h > fh:
+        h, w = fh, fh * aspect
+    return (width - w) / 2, (height - h) / 2, w, h
 
 
 class Check:
@@ -108,7 +125,7 @@ def main():
     out = os.path.abspath(a.out)
     os.makedirs(out, exist_ok=True)
     g = rig.Game.start(save=os.path.join(ROOT, "build", "rig", "saves", "fortbaxter"), name="menu_check",
-                       data_dir=os.path.join(out, "data"), port=a.port)
+                       data_dir=os.path.join(out, "data"), port=a.port, env={"VCS_ASPECT": "169"})
     c = Check(g, out)
     try:
         g.wait_ingame()
@@ -125,6 +142,32 @@ def main():
         c.ok("keys: Escape goes back to the tab bar", c.where()[1:] == ("1", "BRIEF_PAGE", "Brief_t"), c.where())
         c.press("escape", 1.5)
         c.ok("keys: Escape on the tab bar closes the menu", c.where()[0] == "0", c.where())
+
+        # ---- the cursor in window pixels: the real cursor's mapping (the 4:3 area of the 16:9 frame) ----
+        c.press("escape", 2.0)
+        ww, wh = (int(v) for v in c.state()["window"].split("x"))  # (a screenshot may be another size)
+        x0, y0, fw, fh = fit_rect(4 / 3, 16 / 9, ww, wh)
+
+        def window_point(item, fx=0.5, fy=0.5):
+            """`item`'s box at (fx, fy) of its size, in window pixels"""
+            b = c.state()["items"][item][0]
+            return x0 + (b[0] + fx * (b[2] - b[0])) / 640 * fw, y0 + (b[1] + fy * (b[3] - b[1])) / 448 * fh
+        missed = []
+        # the tabs at the bottom corners of the menu and in the middle; their text's middle and near its corners (a
+        # mapping off by a few pixels at the edges - the hit areas pulled to the middle - misses those)
+        for item in ("Map_t", "Stats_t", "Controls_t", "Display_t", "Audio_t"):
+            for fx, fy in ((0.5, 0.5), (0.1, 0.15), (0.9, 0.85)):
+                x, y = window_point(item, fx, fy)
+                g.cmd("menumouse window %.1f %.1f" % (x - 6, y))
+                time.sleep(0.15)
+                g.cmd("menumouse window %.1f %.1f" % (x, y))
+                time.sleep(0.8)
+                if c.where()[3] != item:
+                    missed.append("%s@%.1f,%.1f->%s" % (item, fx, fy, c.where()[3]))
+        g.cmd("menumouse off")
+        c.ok("window: the cursor over a tab's text (window %dx%d, 16:9) points at it" % (ww, wh), not missed,
+             " ".join(missed))
+        c.press("escape", 1.5)
 
         # ---- the mouse ----
         c.press("escape", 2.0)

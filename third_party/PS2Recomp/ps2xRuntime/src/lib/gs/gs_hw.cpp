@@ -2288,7 +2288,12 @@ namespace
             bindPass(colorTarget, depthTarget);
             {
                 // [gta-recomp] the scissor passes GS pixels scx0..scx1, sampled at their integer positions: moved by the
-                // pixel-centre offset like the geometry, a target pixel passes when its centre does
+                // pixel-centre offset like the geometry, a target pixel passes when its centre does. Above 640x448 a GS
+                // pixel X stands for the target pixels whose centres are nearest to X - [X - 0.5, X + 0.5) once the
+                // geometry is offset - so the edges are scx0 - o and scx1 + 1 - o: at 1x the same pixels as before;
+                // scx0 + 0 / scx1 + 1 (until 2026-11-06) cut half a GS pixel off the left / top and passed half of one
+                // more on the right / bottom: the first glyph of a menu label scissored to its own text ("stats")
+                // lost its left edge
                 const float o = pixelCentreOffset();
                 const float sx = target ? target->scaleX : targetScale.x, sy = target ? target->scaleY : targetScale.y;
                 const float ox = target ? static_cast<float>(target->originX) : 0.0f, oy = target ? static_cast<float>(target->originY) : 0.0f;
@@ -2300,8 +2305,8 @@ namespace
                 // a squeezed HUD layer draw: its scissor edges go where its vertices went (appendHudDraw), unrounded
                 const float pv = target ? target->squeezePivot : 0.0f, sq = target ? target->squeeze : 1.0f;
                 auto edgeX = [&](float e) { return sq == 1.0f ? e : pv + (e + o - pv) * sq - o; };
-                const int x0 = edge(edgeX(s.scx0 * scw), sx, ox, tw), x1 = std::max(x0, edge(edgeX((s.scx1 + 1.0f) * scw), sx, ox, tw));
-                const int y0 = edge(static_cast<float>(s.scy0), sy, oy, th), y1 = std::max(y0, edge(s.scy1 + 1.0f, sy, oy, th));
+                const int x0 = edge(edgeX(s.scx0 * scw - o), sx, ox, tw), x1 = std::max(x0, edge(edgeX((s.scx1 + 1.0f) * scw - o), sx, ox, tw));
+                const int y0 = edge(s.scy0 - o, sy, oy, th), y1 = std::max(y0, edge(s.scy1 + 1.0f - o, sy, oy, th));
                 m_dev.setScissor(x0, y0, x1 - x0, y1 - y0);
             }
 

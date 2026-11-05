@@ -672,7 +672,7 @@ Found from frame dumps (`PS2X_HW_DUMP`, draw lists with depth) during the widesc
 - The radar is drawn straight onto the screen (corrected 2026-10-24 from a frame dump at Fort Baxter: there is no
   off-screen radar target - the 128x128 at FBP 420 is the reflection map, 6g): the round outline is a fan at far Z
   (GEQUAL, Z write on) and the map tiles (128x128 T4 textures, far Z, GEQUAL) are clipped by the **scissor** to the
-  radar's rectangle (37,336 - 120,412 at 4:3). Menu labels are scissored too.
+  radar's rectangle (37,336 - 120,412 at 4:3). Menu labels are scissored too - to their own text (2026-11-06, F12 draw log of the pause menu at 4:3): "stats" has the scissor 413..545 and its first glyph's quad starts at GS x 412.5 (the Im2D half-pixel bias), its shadow 414 / 414.5. On the GS that loses nothing (pixel 413 is the first the quad covers); a renderer above 640x448 must put the scissor's edge at 412.5 too, or the letter's edge is cut (PS2RECOMP_PATCHES.md, the scissor fix).
 - Pause menus have no depth-tested geometry below the far plane (that is how "3D frame" vs "2D
   frame" is told apart for the widescreen presentation).
 

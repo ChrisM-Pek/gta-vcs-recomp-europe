@@ -11,6 +11,11 @@ namespace vcs
     void setAspectWidening(float r);
     float aspectWidening();
 
+    // "Car reflections" (Graphics): how the reflection map (FBP 420, 128 wide) reads the frame. 0 Original (the GS's four
+    // bilinear taps per map texel), 1 Smooth (a filter over each texel's whole footprint), 2 Auto (Smooth above 1x
+    // internal resolution, Original at 1x). docs/game-internals.md 6g. Any thread, any time.
+    void setReflectionFilter(int mode);
+
     // Game thread, before CCamera::IsSphereVisible (FUN_003816F8) runs on this camera: widens its side planes to the
     // Hor+ view. Called by the display hooks' wrapper, and by any other wrapper of that function.
     void prepareSphereTest(uint8_t *rdram, uint32_t camera);

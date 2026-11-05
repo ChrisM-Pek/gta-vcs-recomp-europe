@@ -1135,3 +1135,23 @@ mouse, Escape and Enter): Start was Enter and the menu took only the pad's butto
   towards the middle of the screen - the player had to point a little off an item; game-internals.md 6m. The menu
   check now moves the cursor in window pixels, through the same mapping as the real cursor.)
 - Would change: a menu page whose items can't be reached by focus moves (none seen) would need its own handling.
+
+## 2026-11-06 - Car reflections: Smooth above 1x by default, the PS2's sampling at 1x (the user's request)
+
+Players reported flickering car reflections (GitHub). The user thought this was the PS2's own behaviour made worse by
+the resolution, and asked for a fix that keeps the PS2's behaviour at its resolution. Found (game-internals.md 6g): the
+flicker is the PS2's. A flat panel shows one texel of a 128x128 map that the game samples from the frame with four
+bilinear taps per ~5 x 3.5 pixels, and the renderer reproduces that exactly at every resolution. Above 1x the rest of
+the picture is clean, so the panels' jumps stand out.
+
+- **The fix filters the map's source, not the effect's strength.** Toning the reflection down at high resolutions would
+  make the flashes fainter but no rarer, and the paint duller than the PS2's even when nothing moves. A tent over each
+  map texel's footprint keeps the reflection's average colour (the same strength, the same picture in a still frame)
+  and takes away the jumps: a texel's swing under sub-pixel motion falls ~2.7x.
+- **Setting "Car reflections": Auto (default) / Original / Smooth.** Auto is Original at 1x internal resolution - the
+  authentic picture - and Smooth above it, where the player has already chosen a cleaner picture than the PS2's. "1x"
+  goes by the frame's height: widescreen's 1x is wider, not finer.
+- **Not done:** a blend over time (the PS2 has none: the map is overwritten every frame). It would also lag reflections
+  behind the camera. Worth trying only if Smooth is not enough.
+- Would change: if players find Smooth too soft compared with the original's crispness, a narrower footprint (a box of
+  one texel instead of the tent over two) is the middle ground.

@@ -776,7 +776,8 @@ jumped between left, middle and right, and the radar sometimes left its corner; 
   1/16 pixel, minus 8: the half-pixel bias; z 32-bit). Every PATH2 packet that draws in normal play has this shape
   except a few effect strips.
 - **Effect strips** in A+D packets: `PRIM`, then per vertex `UV` / `RGBAQ` / `XYZ2` register writes (the full-screen
-  flat quads, 20 strips of 6 vertices; the reflection map's copies of FBP 140 into FBP 420, context 2, `PRIM 0x35C`
+  flat quads, 20 strips of 6 vertices; the reflection map's copies of FBP 140 into FBP 420, context 2, `PRIM 0x31C` (corrected 2026-11-06 from
+  `FUN_002f39d8`, 6g; `0x35C` is the offset passes of the blur in `FUN_001ed220`)
   with UV). Packets that set other registers before their `PRIM` (TEX0, ALPHA, TEST, ...) are state.
 - The rest of PATH2 is A+D register setting and texture uploads (IMAGE).
 
@@ -822,10 +823,42 @@ UV mapping per primitive fitted from the vertices, u = du/dx * x + offset in tex
   sampling, tap offsets of a texel), added into 140 at FIX 100 (bilinear upsample, 0.4 x 0.57 texels per pixel).
 - Trails: 640x448 -> 512x512 at FBP 384 (bilinear, 1.25 x 0.875), blended back at FIX 7 from 103 strips with offsets
   of up to 11 texels (a smear), then added at FIX 128 with a tint colour (0x10 0x03 0x09 at noon).
-- A 128x128 sample of the picture (5 x 3.5 texels per pixel, no offset) goes into the corner of FBP 420, blended
-  with what is there at FIX ~6-19 (a running average), plus an additive sun / glow sprite (64x64); right after,
-  3D draws (vehicles, z ~0.001, blend FIX 6) are textured from that 128x128 corner - a reflection map refreshed
-  every frame. After the bloom (which overwrites FBP 420) the sample is added again for the next frame.
+- A 128x128 sample of the picture (5 x 3.5 texels per pixel, no offset) goes into the corner of FBP 420, plus an
+  additive sun / glow sprite (64x64); right after, 3D draws (vehicles, z ~0.001) are textured from that 128x128
+  corner - a reflection map refreshed every frame. After the bloom (which overwrites FBP 420) the sample is drawn
+  again for the next frame.
+- **The reflection map, corrected 2026-11-06** (user reports of flickering car reflections; F12 draw log of a parked
+  car at Fort Baxter, 12:00, and the game's code). The map is built by `FUN_002f39d8`: FRAME / TEX0 for a 2^n x 2^n
+  target (here 128x128) reading the frame, then one A+D packet - XYOFFSET_2, TEST_2 0x30003, SCISSOR_2 0..w / 0..h,
+  **PRIM 0x31C** (strip, Gouraud, textured, UV, context 2, **no ABE**) - and `FUN_002f3bf8` writes the vertices: one
+  quad, 640x448 onto 128x128, bilinear. It is **not** a running average, as 6g said before: blending is off, so the
+  map is overwritten every frame. The ALPHA_2 the draw log shows on it (`(Cs-Cd)*FIX+Cd`, FIX 6-19) is left over from
+  the trails pass and has no effect. The map is therefore a 4-tap bilinear sample of every ~5 x 3.5 block of the frame,
+  with no prefilter. The vehicles' second pass (stage table 0x13, 6d) blends the map in **decal**, ALPHA
+  `(Cs-Cd)*FIX+Cd` with FIX 19 (~15%) or 0 (no reflection) per draw. Its ST comes from the view-space normal, so a flat
+  panel has a nearly constant ST: a whole panel shows **one map texel** (seen: s/q 0.0426..0.0430 over a door), i.e.
+  the frame's colour at one fixed spot on screen. When the camera moves, what is under that spot changes (sky, wire,
+  a pole) and the whole panel's colour jumps. That is the flicker, and the PS2 has it too. The renderer reproduces it
+  at every internal resolution: render targets that are not read 1:1 are read one target pixel per PS2 texel
+  (`fetchTexel` in gs_draw.hlsl), so the window-scaled map (`gsHwSetTargetRole(420, 2, ..., true)`) is read only at
+  its 128x128 PS2 texel centres. Match window with and without `PS2X_HW_REFLECTION_SCALE=0`: car paint differs by a
+  mean 0.13 / 255 (frame-to-frame noise 0.04). What higher resolutions change is how visible it is: the rest of the
+  picture stops shimmering, and the panels' jumps stand out.
+- **Car reflections: Smooth** (2026-11-06, Graphics page; `VCS_REFLECTIONS=0|1|2` = Original / Smooth / Auto, the
+  default Auto = Smooth when the frame is above 1x by its height, so 1x 16:9 (853x448) stays Original). The game's copy
+  into FBP 420 / FBW 2 (`gsHwSetTargetFilter`) is marked as a filtered copy (`markFiltered`: axis-aligned, more than
+  1.5 source texels per target pixel). With Smooth, the shader (`sampleRtFiltered`) gives each map texel a tent over
+  its whole footprint and its neighbours' (±5 x ±3.5 frame pixels, up to 16 taps per axis at the frame's resolution),
+  instead of four bilinear taps. The other pixels of a map drawn above 1x keep the four taps: the paint never reads
+  them. Measured:
+  - A map texel's swing under sub-pixel camera motion, simulated on three frames at 1.5x: Original 4.7-6.8, Smooth
+    2.0-2.5 (out of 255).
+  - Spatial roughness of in-frame maps while circling the barracks at 3x: 7.4 -> 4.5. In Original, poles break into
+    dashes and the fence into moiré, which crawl when the camera moves; in Smooth they are whole.
+  - GPU: ~0.2 ms per copy at 4x3 on the GTX 1080 Ti (Original 0.04). Filtering every map pixel had cost 1.1 ms.
+
+  The reflection's strength (FIX 19), the sun glow and what is reflected are unchanged. Checked: Auto at 1x 16:9 never
+  filters (no `[gs-hw] filtered copy` line in the log); Smooth forced at 1x does (footprint 5.00 x 3.50).
 
 **Pixel centres** (found from the copies above, fixed 2026-10-23): the GS samples a pixel at its integer position,
 D3D at +0.5. Our renderer had drawn without the offset, so the copies (u = x + 0.5) read halfway between two texels:

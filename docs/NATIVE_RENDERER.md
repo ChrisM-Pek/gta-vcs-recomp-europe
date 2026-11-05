@@ -459,6 +459,11 @@ it is 1920x1080, 3 x 2.41 pixels per PS2 pixel.
   textures (effects, copies, the self-copy), the display, growth, dumps - sees a single-sampled copy resolved when the
   target was drawn to since the last read (`readable`, `Rt::dirty`); a multisampled frame copy is drawn instead of
   copied. Effect buffers stay single-sampled. Depth buffers are kept per scale and sample count.
+- **Car reflections** (Graphics > Car reflections, `graphics.reflections` / `VCS_REFLECTIONS`, live; Auto = Smooth
+  above 1x): the game's copy of the frame into the reflection map (FBP 420, FBW 2) is read through a tent over each
+  map texel's footprint instead of the GS's four taps (`gsHwSetTargetFilter`, `sampleRtFiltered`,
+  `atstArefAfailRt.w == 3`, the full shader only). Car panels then stop flickering as the camera moves.
+  game-internals.md 6g has the numbers.
 - **Anisotropic filtering** (Display > Texture filtering, `display.aniso` / `PS2X_HW_ANISO` = 2-16, restart; off =
   the original bilinear): the game's textures get a mip chain, and bilinear-filtered draws with plain repeat / clamp
   wrapping (about 90% of textured draws outside the barracks) are sampled by the hardware - trilinear, anisotropic -

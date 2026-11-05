@@ -142,7 +142,10 @@ point at (-925, 1175) classed "water" this run - the same fall, landing in a wat
   `PS2X_HW_REFLECTION_SCALE=0`. At 1x nothing changes. (2026-10-30: the scale goes by the FBP, not the draw's width -
   the native bloom's write-back into FBP 420 at width 4 had flipped the target back to the integer scale every frame;
   PERFORMANCE.md section 15.) The reflection is faint by design (the game blends it in at
-  ~5%), so the picture changes little.
+  ~15%, FIX 19), so the picture changes little. (2026-11-06: in fact it changes nothing. Both the copy into the map and
+  the paint's read of it go through `fetchTexel`, one target pixel per PS2 texel, so only the map's 128x128 PS2 texel
+  centres are ever read. Car paint at Match window differs by a mean 0.13 / 255 with and without the scale.
+  game-internals.md 6g has the reflection map and why it flickers.)
 - **The radar** needed nothing: a frame dump at Fort Baxter shows it drawn straight into the HUD layer from 128x128 T4
   tile textures under a scissor - at the window's resolution already (game-internals.md 6f corrected: the 128x128 at
   FBP 420 had been taken for the radar's; it is the reflection map).

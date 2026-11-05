@@ -145,6 +145,12 @@ namespace vcs
 
     float aspectWidening() { return g_widening.load(std::memory_order_relaxed); }
 
+    // The reflection map is the 128x128 copy of the frame into FBP 420 that car paint samples (game-internals.md 6g): a
+    // flat panel shows one of its texels, so the GS's four taps out of ~5 x 3.5 frame pixels make the panel jump as the
+    // camera moves. Smooth reads the copy through the renderer's filter (gsHwSetTargetFilter); the bloom at FBP 420 is
+    // 256 wide (FBW 4), so only the reflection map's draws are filtered.
+    void setReflectionFilter(int mode) { gsHwSetTargetFilter(420u, 2u, mode == 1 ? 1 : mode == 2 ? 2 : 0); }
+
     void installDisplayHooks(PS2Runtime &runtime)
     {
         runtime.replaceFunction(0x001AB9E0u, &setViewWindow);

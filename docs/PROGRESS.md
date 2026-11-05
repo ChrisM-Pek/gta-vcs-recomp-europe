@@ -878,6 +878,7 @@ Python scripts still usable on their own. docs/LAUNCHER.md has the whole of it; 
 | `VCS_FREEAIM=0` | free aim's hooks not installed (CGame::Process, CCamera::Process, the weapons' line test): the game's aiming untouched, the setting does nothing |
 | `VCS_INPUT_MAP=0` | the runtime's fixed built-in key / gamepad mapping instead of the player's bindings (`ps2_pad.cpp`; the reference) |
 | `VCS_VSYNC=0\|1\|2` | Vertical sync for one run: off, on, off with tearing allowed |
+| `VCS_REFLECTIONS=0\|1\|2` | Car reflections for one run: Original, Smooth, Auto (Smooth above 1x; the default) - game-internals.md 6g |
 | `VCS_SCRIPT_TIMESTEP=0` | mission meters that count per frame stay on the frame rate (game-internals.md 11f; the reference) |
 | `VCS_PHYSICS_TIMESTEP=0` | the push of a body under a wheel, the rolling resistance and a bike's brake wobble stay per frame (game-internals.md 4; the reference) |
 | `VCS_TURN_LOG=<model>` | every ApplyTurnForce on vehicles of that model (212 = PCJ-600): caller, its change to the yaw / pitch rate (sum by caller to find a per-frame push) |
@@ -972,6 +973,7 @@ Python scripts still usable on their own. docs/LAUNCHER.md has the whole of it; 
 | `VCS_RSL_MEASURE=1` | with `VCS_RSL_WORLD_LOG`: per chain the bytes copied, the marked blocks and the distinct ones |
 | `PS2X_HW_RT_LOG=1` | the render targets with their names (gsHwSetTargetRole), sizes and scales, every 5 s |
 | `PS2X_HW_REFLECTION_SCALE=0` | the reflection map stays 1x with "Match window" |
+| `PS2X_HW_DUMP_STEPS=1` with F12 | the target after every full-screen draw or render-target read, as `hw_stepN_fbpF.ppm` (the reflection map: the first `_fbp420` file - the end-of-frame dump of FBP 420 is the bloom) |
 | `VCS_RSL_RASTERS=0` | textures not named by raster (no upload REFs recorded) |
 | `PS2X_HW_DECODE_FROM_UPLOAD=0`, `PS2X_HW_DECODE_VERIFY=1` | textures decoded from emulated VRAM (writing the queued uploads there first) instead of the queued upload's data; both, compared (`[gs-hw] textures from upload`) |
 | `PS2X_HW_CLUT_FROM_UPLOAD=0`, `PS2X_HW_CLUT_VERIFY=1` | CLUT loads read emulated VRAM (writing the queued uploads there first) instead of the queued upload's data; both, compared (`[gs-hw] clut from upload`) |

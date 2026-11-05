@@ -109,6 +109,11 @@ void gsHwSetOutputSize(uint32_t width, uint32_t height);
 // map); kept at 1x while the GS bloom (PS2X_HW_POSTFX without b) shares its memory. The names show in PS2X_HW_RT_LOG.
 // Main thread, before rendering; up to 16.
 void gsHwSetTargetRole(uint32_t fbp, uint32_t fbw, const char *name, bool windowScale);
+// [gta-recomp] A target whose minifying copies from another render target are read filtered: a tent over each target
+// pixel's whole footprint in the source, at the source's resolution, instead of the GS's four bilinear taps (VCS's
+// reflection map: "Car reflections: Smooth", docs/game-internals.md 6g). mode 0 off (the GS's read), 1 always, 2 when
+// the source is drawn above 1x (its vertical scale: widescreen's 1x is wider, not finer). Any thread, any time; up to 4.
+void gsHwSetTargetFilter(uint32_t fbp, uint32_t fbw, int mode);
 // [gta-recomp] Texture identity by raster (docs/FULLY_NATIVE.md step 3d): the RAM address of the raster the next upload on
 // this thread sends, and its byte count - taken by the next upload of exactly that many bytes; a texture made from that
 // upload is named by the address (gsHwTextureForRaster). The thread that processes the VIF1 chain.

@@ -57,6 +57,23 @@ namespace
                 return &g_targetRoles[i];
         return nullptr;
     }
+    struct TargetFilter                                 // [gta-recomp] gsHwSetTargetFilter
+    {
+        uint32_t fbp = 0, fbw = 0;
+        std::atomic<int> mode{0};
+    };
+    TargetFilter g_targetFilters[4];
+    std::atomic<uint32_t> g_targetFilterCount{0};
+    std::mutex g_targetFilterMutex; // registration only (readers take the count)
+    // the filter mode for draws into (fbp, fbw): 0 none, 1 always, 2 when the source is above 1x
+    int targetFilter(uint32_t fbp, uint32_t fbw)
+    {
+        const uint32_t n = g_targetFilterCount.load(std::memory_order_acquire);
+        for (uint32_t i = 0; i < n; ++i)
+            if (g_targetFilters[i].fbp == fbp && g_targetFilters[i].fbw == fbw)
+                return g_targetFilters[i].mode.load(std::memory_order_relaxed);
+        return 0;
+    }
     // [gta-recomp] any role at fbp (whatever its width) wants the window's scale
     bool windowScaleAt(uint32_t fbp)
     {
@@ -100,6 +117,24 @@ void gsHwSetTargetRole(uint32_t fbp, uint32_t fbw, const char *name, bool window
         return;
     g_targetRoles[n] = {fbp, fbw, name ? name : "", windowScale};
     g_targetRoleCount.store(n + 1u, std::memory_order_release);
+}
+
+void gsHwSetTargetFilter(uint32_t fbp, uint32_t fbw, int mode)
+{
+    std::lock_guard<std::mutex> lock(g_targetFilterMutex);
+    const uint32_t n = g_targetFilterCount.load(std::memory_order_relaxed);
+    for (uint32_t i = 0; i < n; ++i)
+        if (g_targetFilters[i].fbp == fbp && g_targetFilters[i].fbw == fbw)
+        {
+            g_targetFilters[i].mode.store(mode, std::memory_order_relaxed);
+            return;
+        }
+    if (n >= 4u)
+        return;
+    g_targetFilters[n].fbp = fbp;
+    g_targetFilters[n].fbw = fbw;
+    g_targetFilters[n].mode.store(mode, std::memory_order_relaxed);
+    g_targetFilterCount.store(n + 1u, std::memory_order_release);
 }
 
 void gsHwSetFrameSize(uint32_t width, uint32_t height)
@@ -230,7 +265,11 @@ namespace
         uint8_t zte, ztst, zmsk, ate, atst, aref, afail, abe;
         uint8_t ba, bb, bc, bd, fix, tme, tfx, tcc;
         uint8_t fst, linear, wms, wmt, fge, fogR, fogG, fogB;
-        uint8_t iip, mode, texIsRt, rtFull; // rtFull [gta-recomp]: a render target read 1:1 (rtFullScale)
+        uint8_t iip, mode, texIsRt, rtFull; // rtFull [gta-recomp]: 1 a render target read 1:1 (rtFullScale); 2 a
+                                            // minifying copy into a filtered target (gsHwSetTargetFilter, markFiltered)
+        uint8_t filterX4, filterY4;         // [gta-recomp] rtFull 2: one target pixel's footprint in source texels, x4
+        uint16_t filterU, filterV;          // [gta-recomp] rtFull 2: the source's extent the copy reads (texels)
+        uint16_t filterSpare;               // (no padding: HwState is compared bytewise)
         uint16_t tw, th, minu, maxu, minv, maxv;
         uint32_t rtFbp;
         uint16_t rtOx, rtOy;
@@ -662,6 +701,8 @@ namespace
         float rtOrigin[4];
         int32_t blendCPremul[4];
         float fogColor[4];
+        float filterSize[4]; // [gta-recomp] a filtered read (sampleRtFiltered): footprint xy, source size zw (texels)
+        float filterDest[4]; // [gta-recomp] ... and the target's own scale xy (only its pixels a texel read takes are filtered)
     };
 
     struct QuadConstants // render/shaders/gs_util.hlsl, cbuffer Quad
@@ -1526,6 +1567,8 @@ namespace
                 return 1;                   // no texture
             if (c.atstArefAfailRt[3] == 2)
                 return 6;                   // a render target 1:1 at full resolution
+            if (c.atstArefAfailRt[3] == 3)
+                return 0;                   // [gta-recomp] a filtered copy (sampleRtFiltered): the full shader has it
             if (linear == 2)
                 return 4;                   // the hardware sampler
             return linear == 0 ? 2 : 3;     // nearest / the GS's bilinear by four loads
@@ -1950,7 +1993,7 @@ namespace
             if (!d || d->count < 3u)
                 return 0;
             const HwState &s = d->s;
-            if (!s.tme || !s.texIsRt || !s.rtFull || !s.fst || s.fbw != 10u || s.rtFbp == s.fbp || s.rtOx || s.rtOy || s.fbmsk ||
+            if (!s.tme || !s.texIsRt || s.rtFull != 1u || !s.fst || s.fbw != 10u || s.rtFbp == s.fbp || s.rtOx || s.rtOy || s.fbmsk ||
                 s.mode != 0u || s.scx0 != 0u || s.scy0 != 0u || s.scx1 < 639u || s.scy1 < 447u)
                 return 0;
             auto src = m_rts.find(s.rtFbp);
@@ -2363,7 +2406,30 @@ namespace
             c.atstArefAfailRt[0] = s.atst;
             c.atstArefAfailRt[1] = s.aref;
             c.atstArefAfailRt[2] = 0;
-            c.atstArefAfailRt[3] = (s.texIsRt && !plainTexture) ? (s.rtFull ? 2 : 1) : 0; // [gta-recomp] 2: read 1:1 at full resolution
+            c.atstArefAfailRt[3] = (s.texIsRt && !plainTexture) ? (s.rtFull == 1u ? 2 : 1) : 0; // [gta-recomp] 2: read 1:1 at full resolution
+            // [gta-recomp] 3: a filtered copy (markFiltered, gsHwSetTargetFilter) - when the target's mode asks for it now:
+            // always, or with the source above 1x - by its height: 1x at 16:9 is 853x448, x 1.33 for the wider view at the
+            // PS2's own pixel density. Off, the GS's read as before
+            if (s.texIsRt && !plainTexture && s.rtFull == 2u && tex)
+            {
+                const int mode = targetFilter(s.fbp, s.fbw);
+                if (mode == 1 || (mode == 2 && rtScale.y > 1.001f))
+                {
+                    c.atstArefAfailRt[3] = 3;
+                    c.filterSize[0] = s.filterX4 * 0.25f;
+                    c.filterSize[1] = s.filterY4 * 0.25f;
+                    c.filterSize[2] = s.filterU;
+                    c.filterSize[3] = s.filterV;
+                    c.filterDest[0] = targetScale.x;
+                    c.filterDest[1] = targetScale.y;
+                    if (!m_filterReported)
+                    {
+                        m_filterReported = true;
+                        std::fprintf(stderr, "[gs-hw] filtered copy into fbp %u (fbw %u) from fbp %u at %.2fx%.2f, footprint %.2fx%.2f\n",
+                                     s.fbp, s.fbw, s.rtFbp, rtScale.x, rtScale.y, c.filterSize[0], c.filterSize[1]);
+                    }
+                }
+            }
             c.texSizeWrap[0] = s.tw;
             c.texSizeWrap[1] = s.th;
             c.texSizeWrap[2] = s.wms;
@@ -2491,6 +2557,7 @@ namespace
         uint32_t m_displayW = 640, m_displayH = 448;
         std::unordered_set<uint32_t> m_reportedBlend;
         uint64_t m_feedbackReported = 0;
+        bool m_filterReported = false; // [gta-recomp] the first filtered copy (gsHwSetTargetFilter) logged
         bool m_inPass = false;
         rhi::Texture *m_passColor = nullptr, *m_passDepth = nullptr;
     };
@@ -2861,6 +2928,8 @@ namespace
                 }
             if (s.texIsRt && rtFullScale())
                 s.rtFull = isOneToOne(s, out, n) ? 1u : 0u;
+            if (s.texIsRt && s.rtFull == 0u && s.rtFbp != s.fbp && targetFilter(s.fbp, s.fbw) != 0)
+                markFiltered(s, out, n);
             // [gta-recomp] VCS draws its HUD, text, radar and menus (RwIm2D) at the largest Z, whatever the depth test
             // (RenderWare keeps ZTE on: ZTE=0 is prohibited on the GS); projected sprites (clouds, coronas) take the
             // same path at their real depth.
@@ -2991,6 +3060,39 @@ namespace
             const double dvdx = (v1 * y2 - v2 * y1) / det, dvdy = (v2 * x1 - v1 * x2) / det;
             constexpr double tol = 0.01; // the self-copy maps 448 rows to 450 texels (1.004)
             return std::fabs(dudx - 1.0) < tol && std::fabs(dvdy - 1.0) < tol && std::fabs(dudy) < tol && std::fabs(dvdx) < tol;
+        }
+
+        // [gta-recomp] A minifying, axis-aligned copy of another render target into a target named for filtering
+        // (gsHwSetTargetFilter: VCS's reflection map, 640x448 onto 128x128): rtFull 2 with one target pixel's footprint
+        // in source texels and the extent it reads. The executor's draw reads it filtered when the target's mode says so
+        // (atstArefAfailRt.w 3); otherwise it is drawn as before.
+        static void markFiltered(HwState &s, const HwVertex *v, uint32_t n)
+        {
+            if (n < 3u || s.mode != 0u)
+                return;
+            const float su = s.fst ? 1.0f : static_cast<float>(s.tw), sv = s.fst ? 1.0f : static_cast<float>(s.th);
+            auto u = [&](const HwVertex &p) { return p.s / p.q * su; };
+            auto w = [&](const HwVertex &p) { return p.t / p.q * sv; };
+            const double x1 = v[1].x - v[0].x, y1 = v[1].y - v[0].y, x2 = v[2].x - v[0].x, y2 = v[2].y - v[0].y;
+            const double det = x1 * y2 - x2 * y1;
+            if (std::fabs(det) < 1e-6)
+                return;
+            const double u1 = u(v[1]) - u(v[0]), u2 = u(v[2]) - u(v[0]), v1 = w(v[1]) - w(v[0]), v2 = w(v[2]) - w(v[0]);
+            const double dudx = (u1 * y2 - u2 * y1) / det, dudy = (u2 * x1 - u1 * x2) / det;
+            const double dvdx = (v1 * y2 - v2 * y1) / det, dvdy = (v2 * x1 - v1 * x2) / det;
+            if (std::fabs(dudy) > 0.01 || std::fabs(dvdx) > 0.01 || (std::fabs(dudx) < 1.5 && std::fabs(dvdy) < 1.5))
+                return; // rotated, or not a reduction
+            float umax = 0.0f, vmax = 0.0f;
+            for (uint32_t i = 0; i < n; ++i)
+            {
+                umax = std::max(umax, u(v[i]));
+                vmax = std::max(vmax, w(v[i]));
+            }
+            s.rtFull = 2u;
+            s.filterX4 = static_cast<uint8_t>(std::clamp(std::lround(std::fabs(dudx) * 4.0), 1l, 255l));
+            s.filterY4 = static_cast<uint8_t>(std::clamp(std::lround(std::fabs(dvdy) * 4.0), 1l, 255l));
+            s.filterU = static_cast<uint16_t>(std::clamp(std::lround(umax), 1l, 2048l));
+            s.filterV = static_cast<uint16_t>(std::clamp(std::lround(vmax), 1l, 2048l));
         }
 
         struct DepthInfo // [gta-recomp] depth buffers seen in use (see depthFill)

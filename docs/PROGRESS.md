@@ -748,6 +748,18 @@ dropped on uploads (lazy render-target patching).
   Sector culling was already right. Checked: plane edge = view window x at 16:9 (0.9336) and 16:10 (0.8402),
   regress step "widecull" (fails with `VCS_WIDE_CULL=0`: 0.7002); spheres passing the test at 16:9 +8-25% over the
   three bench spots; 4:3 untouched (the wrapper returns before reading memory).
+- **The game's own widescreen option retired; Cutscene black bars a setting** (2026-11-06, the user's report: with the
+  pause menu's Display > Widescreen on, cutscenes had no bars). Every effect of that option read from the code
+  (game-internals.md 5a): a Vert- 16:9 aspect, the HUD / text / pause map 3/4 wide and the `_WIDE` menu layouts - the
+  PS2's answer to a TV that stretches the picture, which double-squeezes everything next to F2's Hor+ and HUD squeeze -
+  and no cutscene letterbox. Now (`src/game/vcs_display.cpp`, `vcs_frontend.cpp`; DECISIONS.md): the preference kept
+  at 0 (its setter hooked: a save that has it on no longer turns it on), its pause-menu row hidden (the rows below move
+  up, up / down skip it), and Display > **Cutscene black bars** (default On; `VCS_CUTSCENE_BARS`). Checked: mission
+  50's cutscene with bars on / off at 4:3 and 16:9 (16:9 off: the whole 16:9 picture, on: the bars inside it); a save
+  made with the PS2's mode on loads with the preference 0 and the normal view (`VCS_WIDESCREEN=game`: Vert- as before);
+  `menu_check.py` 33 checks, 0 failed (5 new: no Widescreen row, up / down past it, no gap, the mouse on a moved row);
+  regress step "widepref" (passes). Not looked at: the sniper / camera mask at 16:9 (its side bars are 2D the HUD
+  squeeze may pull into the middle 4:3).
 
 - **Trainer** (2026-10-26, docs/TRAINER.md): an RDR2 Native Trainer style menu (F5 / Back + RB) - god mode, never
   wanted, wanted level, money, every weapon and loadouts, unlimited ammo, no reload, spawning all 110 vehicles,
@@ -931,6 +943,9 @@ Python scripts still usable on their own. docs/LAUNCHER.md has the whole of it; 
 | `VCS_HUD_RW=0` | no HUD context at the RenderWare level (the 16:9 weapon icon goes back to the screen edge; no native HUD, no anchoring) |
 | `VCS_HUD=0/2/1` | HUD in widescreen: keep 4:3 in the middle / screen edges / stretch (the menu's Display > HUD) |
 | `VCS_WIDE_CULL=0` | widescreen: entities culled by the game's 4:3 camera planes (models vanish at the screen edges, as before 2026-10-27) |
+| `VCS_CUTSCENE_BARS=0/1` | the cutscene letterbox off / on for one run (Display > Cutscene black bars) |
+| `VCS_WIDESCREEN=1` / `=game` | the game's own (PS2, anamorphic Vert-) widescreen preference forced on / left to the game and its saves (normally kept off); both show its pause-menu row again |
+| `VCS_HIDE_WIDESCREEN=0` | the pause menu's Display page keeps the game's Widescreen row (the preference still kept off) |
 | `VCS_TRACE_VISIBLE=1` | CCamera::IsSphereVisible: visible ratio every 5 s, samples with the camera-space point and the planes |
 | `VCS_HUD_NATIVE=0` | the HUD drawn into the PS2 frame buffer instead of the native layer at the window's size |
 | `PS2X_HW_PIXEL_CENTRE=0` | draws without the GS pixel-centre offset (softer copies, as before 2026-10-23) |

@@ -90,6 +90,16 @@ namespace vcs::frontend
                 std::memcpy(g_rdram + (a & kRamMask), &v, 4);
         }
         uint8_t rd8(uint32_t a) { return inRam(a, 1) ? g_rdram[a & kRamMask] : 0; }
+        void wr8(uint32_t a, uint8_t v)
+        {
+            if (inRam(a, 1))
+                g_rdram[a & kRamMask] = v;
+        }
+        void wr32(uint32_t a, uint32_t v)
+        {
+            if (inRam(a))
+                std::memcpy(g_rdram + (a & kRamMask), &v, 4);
+        }
 
         // a std::vector of pointers (begin, end), sanity-checked
         std::vector<uint32_t> pointers(uint32_t at)
@@ -832,6 +842,100 @@ namespace vcs::frontend
             g.out = static_cast<uint16_t>(hold | tap);
             publish(m);
         }
+
+        // ---- the Display page's Widescreen row, hidden ------------------------------------------------------------
+        // The game's own widescreen (option 14, the item "wide_scr_MI") is the PS2's anamorphic mode, kept off
+        // (vcs_display.cpp); its row goes. DISPLAY_PAGE's rows (built once at boot, game-internals.md 6m): Brightness_MI
+        // y 40, Subtitles_MI 65, wide_scr_MI 89, RADAR_MODE_MI 116, HUD_MODE_MI 141, Trails_MI 166, screen_pos_MI 191 (480x272
+        // units), chained by type-0 actions up (d 2) / down (d 3), the last wrapping to the first. Hidden: its visible
+        // byte cleared; an up / down action that names it trades its string with the hidden row's own action of that
+        // direction (which names the row past it) - a swap of the two std::strings (+4: begin, end, 0, capacity end),
+        // so each buffer keeps one owner; the rows below move up by the gap. Checked each frame kick (a byte read once
+        // done), so a page the game rebuilt is hidden again. VCS_HIDE_WIDESCREEN=0, or VCS_WIDESCREEN set (the PS2's mode
+        // on purpose): the row stays.
+        constexpr const char *kWidescreenRow = "wide_scr_MI";
+        bool g_hideWidescreen = true;
+        uint32_t g_hiddenRow = 0;           // the item once hidden (its visible byte watched)
+        std::vector<std::pair<uint32_t, int32_t>> g_rowsMoved; // item, its y as the game laid it out
+        int32_t g_rowGap = 0;
+
+        bool nameIs(uint32_t item, const char *name)
+        {
+            const uint32_t p = rd32(item);
+            for (uint32_t i = 0;; ++i)
+            {
+                if (!inRam(p + i, 1) || i > 47)
+                    return false;
+                if (rd8(p + i) != static_cast<uint8_t>(name[i]))
+                    return false;
+                if (name[i] == 0)
+                    return true;
+            }
+        }
+
+        int32_t itemY(uint32_t item) { return static_cast<int32_t>(rd32(item + 0x14)); }
+
+        void hideWidescreenRow()
+        {
+            if (!g_hideWidescreen || !g_rdram || !rd8(kManagerBuilt))
+                return;
+            if (g_hiddenRow && rd8(g_hiddenRow + 0x24) == 0 && nameIs(g_hiddenRow, kWidescreenRow))
+                return; // still hidden
+            uint32_t page = 0, row = 0;
+            for (uint32_t p : pointers(kManager + 4))
+                for (uint32_t item : pointers(p + 0x2C))
+                    if (nameIs(item, kWidescreenRow))
+                        page = p, row = item;
+            if (!row)
+                return;
+            const std::vector<uint32_t> items = pointers(page + 0x2C);
+            // the neighbours' focus moves past it
+            int swapped = 0;
+            for (uint32_t item : items)
+            {
+                if (item == row)
+                    continue;
+                for (int d = 2; d <= 3; ++d)
+                    for (uint32_t a : actions(item, d))
+                    {
+                        if (rd32(a) != 0 || !argIs(a, row))
+                            continue;
+                        const std::vector<uint32_t> own = actions(row, d);
+                        if (own.size() != 1 || rd32(own[0]) != 0)
+                            continue;
+                        for (uint32_t w = 4; w < 0x14; w += 4)
+                        {
+                            const uint32_t t = rd32(a + w);
+                            wr32(a + w, rd32(own[0] + w));
+                            wr32(own[0] + w, t);
+                        }
+                        ++swapped;
+                    }
+            }
+            // the rows below it move up by the gap (rows: items with focus / select actions; not the backdrop, the
+            // title or the screen-position frame). Found once, from the game's layout; a second hiding (the page made
+            // anew) puts the same rows at the same places.
+            if (g_hiddenRow != row)
+            {
+                g_rowsMoved.clear();
+                g_rowGap = 0;
+                const int32_t y = itemY(row);
+                int32_t next = INT32_MAX;
+                for (uint32_t item : items)
+                    if (item != row && interactive(item) && itemY(item) > y)
+                    {
+                        g_rowsMoved.emplace_back(item, itemY(item));
+                        next = std::min(next, itemY(item));
+                    }
+                g_rowGap = g_rowsMoved.empty() ? 0 : next - y;
+            }
+            for (const auto &[item, y] : g_rowsMoved)
+                wr32(item + 0x14, static_cast<uint32_t>(y - g_rowGap));
+            wr8(row + 0x24, 0);
+            g_hiddenRow = row;
+            std::fprintf(stderr, "[menu] the Display page's Widescreen row hidden (%d focus moves past it, %zu rows up %d)\n",
+                         swapped, g_rowsMoved.size(), g_rowGap);
+        }
     }
 
     bool open() { return menuUp(); }
@@ -896,6 +1000,7 @@ namespace vcs::frontend
     {
         g_inMenu = false;
         g_item = 0;
+        hideWidescreenRow();
     }
 
     void install(PS2Runtime &runtime)
@@ -903,6 +1008,8 @@ namespace vcs::frontend
         g_rdram = runtime.memory().getRDRAM();
         const char *env = std::getenv("VCS_MENU_MOUSE");
         g_mouseOn = !(env && env[0] == '0');
+        const char *hide = std::getenv("VCS_HIDE_WIDESCREEN"), *wide = std::getenv("VCS_WIDESCREEN");
+        g_hideWidescreen = !(hide && hide[0] == '0') && !(wide && *wide && *wide != '0');
         if (g_mouseOn)
         {
             g_origMenuDraw = runtime.lookupFunction(kMenuDraw); // (the HUD's hook when it is in: chained)

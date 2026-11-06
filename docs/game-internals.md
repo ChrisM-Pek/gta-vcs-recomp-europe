@@ -367,9 +367,9 @@ the globals each frame:
 |---|---|---|
 | FOV global | `0x487484` (float, degrees) | written by `FUN_002653e0` (a `CDraw::SetFOV`); 45 in the frontend, 120 in the flyover, 70 in game |
 | Aspect global | `0x487488` (float) | written only by `FUN_002653f0` (`CDraw::CalculateAspectRatio`) |
-| Aspect choice | `FUN_002653f0` | widescreen preference on: 16/9, or 5/3 when `[0x6f4d14]` is set; off: 4/3, or 1.25 when set. `[0x6f4d14]` is 0 in the frontend and 1 in game (not a PAL flag) |
-| Widescreen preference | `*(int *)(*(0x48F3D0) + 0x30)` | getter `FUN_002af658` (`lw v0, 0x30(a0)`); the object at `[0x48F3D0]` (prefs / menu manager) is created by `FUN_00470fa8` |
-| View window | `FUN_001ab9e0(camera a0, raster rect a1, tan f12, aspect f13)` | x = tan(FOV/2), y = x / aspect, raster 640x448 (null rect), then `FUN_0018f2d8` = RwCameraSetViewWindow. Called at `0x21cdd4` with the aspect global, at `0x21f9c8` with a fixed 16/9 (same camera `[0x51E490]`; probably the letterboxed cutscene view) |
+| Aspect choice | `FUN_002653f0` | widescreen preference on: 16/9, or 5/3 when `[0x6f4d14]` is set; off: 4/3, or 1.25 when set (re3's `CDraw::CalculateAspectRatio`). `[0x6f4d14]` = `TheCamera (0x6F44D0) + 0x844`, m_WideScreenOn: set by cutscenes and SWITCH_WIDESCREEN (5a), not a PAL flag. An earlier note here, "0 in the frontend and 1 in game", was read during the opening cutscene |
+| Widescreen preference | `*(int *)(*(0x48F3D0) + 0x30)` | getter `FUN_002af658` (`lw v0, 0x30(a0)`), setter `FUN_002af660` (`sw a1, 0x30(a0)`); the object at `[0x48F3D0]` (the menu's prefs) is created by `FUN_00470fa8`. Everything it changes: 5a |
+| View window | `FUN_001ab9e0(camera a0, raster rect a1, tan f12, aspect f13)` | x = tan(FOV/2), y = x / aspect, raster 640x448 (null rect), then `FUN_0018f2d8` = RwCameraSetViewWindow. Called each frame at `0x21cdd4` with the aspect global. The call at `0x21f9c8` with a fixed 16/9 is in `FUN_0021f950` (AppEventHandler, case 0 of the table at 0x4AC7A0 = rsCAMERASIZE, from RenderWare's event dispatcher `FUN_002d78e0`): a resize-time default the per-frame call replaces, not a cutscene camera |
 
 - The game's own widescreen is **Vert-**: same horizontal view, vertical view cut, for a TV that
   stretches the anamorphic picture. The HUD does not change with it (the radar keeps its shape); the
@@ -397,6 +397,49 @@ the globals each frame:
   wide: its side planes at 16:9 are (-+0.73095, -0.68243), the same 43.0 degrees as the widened entity planes.
 - `FUN_0039fc48` (3D point to screen for sprites: coronas, light glows) only rejects by near / far; it sizes the
   sprite with the aspect global (`0x39fd2c`: 448 / z x 1.4286 / aspect), which Hor+ leaves at the game's 4:3 value.
+
+### 5a. The game's own widescreen option, all of it (2026-11-06)
+
+Reported by the user: with the pause menu's Display > Widescreen on, cutscenes lose their black bars. Found by reading
+every call of the getter `FUN_002af658` in the generated code (`jal func_2AF658`, encoding `0x0C0ABD96`: ~100 calls in
+35 functions; each one's a0 checked to be the prefs object, loaded with `lw a0, -0xC30(lui 0x49)` = `0x48F3D0`) and the
+setter's callers. Coordinates are the 2D pass's 480x272 units. With the preference on (1):
+
+| Effect | Where | Detail |
+|---|---|---|
+| 3D aspect | `FUN_002653f0` | 16/9 instead of 4/3 (5/3 instead of 1.25 while m_WideScreenOn): Vert-, the FOV global unchanged |
+| **No cutscene letterbox** | `FUN_002804c8(cutscene manager)` | from the 2D pass `FUN_0021f348` at 0x21f404 only. While the manager `*0x48F820` +0x34 != 0 (1 at load `0x427120`, 2 when loaded `0x427600` - HAS_CUTSCENE_LOADED tests 2 -, 0 at CLEAR_CUTSCENE `0x427a8c`) **and the preference is 0** it fills two black rects (`FUN_002bf1d8` rect, `FUN_003287d8` colour 0,0,0,255, `FUN_003e0b10` fill): 0..34 and 238..272 (12.5% each: a 16:9 picture on a 4:3 screen). Fixed size, nothing else drawn |
+| HUD squeezed for a stretching TV | `FUN_0031db20` health, `FUN_0031e3f8` armour, `FUN_0031e168` / `FUN_002af7c8` meters, `FUN_0031eb18` money, `FUN_0031ed10` clock, `FUN_0031ef08` digit glyphs, `FUN_0031fdf0` stars, `FUN_0031f478` weapon icon, `FUN_0031f270` radar width, `FUN_003209d0` / `FUN_00320c08` / `FUN_00320f28` counters and timer, `FUN_00321cf8` help box, `FUN_00322c08` pager, `FUN_00323018` scope / binocular / camera overlays, `FUN_00319058` free-aim circle | widths x0.75 (radar 64 -> 48, help box 220 -> 165, pager 128 -> 96, the overlays about x 240) or about x0.8 (bars 0.85 -> 0.68 of their length, glyphs 11 -> 9 with advance 9 -> 7, stars 13.5 -> 11, weapon icon 54 -> 45.5); the right-side HUD moved 10-15 units right (health / armour 360 -> 375, money / clock 373 -> 386), the weapon icon's right edge 470 -> 465. Heights never change, nothing is hidden |
+| Text | `FUN_00262580` | the font's horizontal scale 0.75 (else 1.0), used by glyph placement `FUN_00261600` and the string widths `FUN_002625f0` / `FUN_00262818`: all text 3/4 wide |
+| Pause map and radar blips | `FUN_00114758` / `FUN_00114978` (map <-> screen, x factor 1 instead of 4/3), `FUN_0026ba60` (map background), `FUN_00118360` (26 calls: the map's markers, offsets 3/4), `FUN_00115788` (blips, also on the HUD radar) | 3/4 wide |
+| Menu layouts | `FUN_003b58d8` (index + 6), `FUN_003b5a48` (name + `"_WIDE"`, string 0x4BC970), `FUN_003b85f8` (the page's layout through `FUN_003b7898`) | the `*W.PSP` / `_WIDE` page layouts (CONTROLS_PAGE_WIDE) |
+| Scope / camera mask | `FUN_0021f348` (0x21f69c) | with the HUD's +0x2C28 (SET_BINOCULARS_MODE 0x049C) or a sniper / camera weapon: side bars 70 units instead of 30 (top / bottom 0..40, 232..272 either way) |
+| Saved | `FUN_003ac9c8` (save, block +0x80; +0x84 music, +0x88 effects, +0x6D subtitles) / `FUN_003acef0` (load: setter at 0x3ad0f8) | a save carries it; boot sets 0 (`FUN_0021c980`, 0x21ca34, with subtitles +0xC) |
+| Dead reads | `FUN_0029c280` / `FUN_0029dab0` / `FUN_0029faf0` (camera modes), `FUN_00371a98` | the result is overwritten at once (re3's `ViewPlaneWidth` with the test compiled away) |
+
+- The pause menu's option is **id 14**: `FUN_002ae958` (value -> text, table 0x4B1FF0) and `FUN_002aef38` (set; table
+  0x4B2040, case 14 at 0x2af068: the setter with value != 0, then `FUN_00471400` -> `FUN_003b85a0` -> `FUN_003b85f8`
+  to lay the page out again), from the menu widgets `FUN_004109d8` (set) / `FUN_00410a40` (get), option id at widget
+  +0x2C. The row is `wide_scr_MI` on DISPLAY_PAGE (6m).
+- **SWITCH_WIDESCREEN is opcode 0x01AE** in VCS (handler `FUN_001e2f88`, table 0x4BEAF0): non-zero -> SetWideScreenOn
+  `FUN_0037c7b8` (`TheCamera+0x844` = 1, the HUD's +0x242C = 0); 0 -> `TheCamera+0xB05` = 1 and SetWideScreenOff
+  `FUN_0037c800` (+0x8BC = +0x844, the HUD's +0x242C = 1). StartCutscene `FUN_00428170` calls SetWideScreenOn, the
+  cutscene's delete `FUN_00427820` SetWideScreenOff (0x427a78). SET_DISPLAY_WIDESCREEN_MODE (0x049D) only sets the
+  HUD's +0x2C30.
+- **The camera's own borders are dead**: DrawBordersForWideScreen `FUN_00376ca0` (from 0x21f3e0 when +0x844 is set)
+  draws 0..pct x 1.36 and 272 - pct x 1.36..272 with pct = `TheCamera+0x824`, but ProcessWideScreenOn `FUN_0037bef0`
+  (camera update, 0x378f08) only ever stores 0 there and nothing else writes it. So scripted SWITCH_WIDESCREEN outside a
+  `.CUT` cutscene shows no bars; the cutscene bars are `FUN_002804c8`'s alone. (Read from the code; in mission 50's
+  opening cutscene, skipping `FUN_002804c8` leaves no black at the top or bottom, so no other bars are drawn there.)
+- Cutscene subtitles (`FUN_0031ca80`, y 217 in 24..456) do not read the preference.
+
+Handling (`src/game/vcs_display.cpp`, the user's decision 2026-11-06, DECISIONS.md): the preference is the PS2's
+answer to a TV that stretches the picture; on a PC each of its effects but the bars fights the Hor+ view and the
+renderer's HUD squeeze, so it is **kept at 0** - the setter is hooked (a save's 1 is dropped: `[display] the game sets
+its widescreen preference 1 (ra=0x3ad100): kept at 0`), the frame kick puts 0 back after a direct write, and the
+pause menu's row is hidden (6m). The bars are the setting Display > **Cutscene black bars** (default On): off, the
+whole of `FUN_002804c8` is skipped. `VCS_WIDESCREEN=1` forces the PS2's mode, `=game` leaves the preference to the game
+(both show the row again). Regression check: `tools/regress.py` step "widepref".
 
 ## 6. Renderer
 
@@ -1335,6 +1378,15 @@ through the rig (`peek`, the item lists below dumped page by page) and `tools/ee
   its window is 640x448. Checked by drawing `menustate`'s boxes over a screenshot (they sit on the text) and by
   `tools/menu_check.py`'s window check. The Save menu a safehouse
   opens (`ACTIVATE_SAVE_MENU`) is this menu on SURE_SAVE_GAME_PAGE, the same layout and no 3D behind.
+- **DISPLAY_PAGE** (2026-11-06, the page's items dumped through the rig; built once at boot, the same addresses each
+  time the menu opens): Background, the title `UnNamed Asset4` (20, 10), then the rows at x ~248, h 40: `Brightness_MI`
+  y 40 (slider, 8 steps), `Subtitles_MI` 65, `wide_scr_MI` 89 (option 14, the game's widescreen, 5a), `RADAR_MODE_MI`
+  116, `HUD_MODE_MI` 141, `Trails_MI` 166, `screen_pos_MI` 191 (full width; its select focuses `screen_pos_MA`, the
+  screen-position frame at 186, 238). Up / down are type-0 actions naming the row above / below, Screen position's down
+  wrapping to Brightness; the page opens on Brightness_MI (+0x1C). An action is 0x24 bytes: +0 the type, +4 a std::string
+  (begin, end, 0, capacity end), +0x14 a second one (empty for focus moves). `vcs_frontend.cpp` hides `wide_scr_MI`
+  (visible byte 0, the two actions that name it trade strings with its own, the four rows below up by 27) - a swap, so
+  each string buffer keeps its one owner.
 - **The map item** (`FUN_0026be00`, its update): +0xE4 / +0xE8 the map's offset in units, +0xF0 the zoom (100..580,
   +0x104 / +0x108; it opens at 400), +0x100 the zoom's step a frame (8; L1 out, R1 in while held), +0xF4 / +0xF8 the
   D-pad's scroll. **The D-pad scrolls the offset only while |offset - (240, 114)| <= zoom - 100** (measured at the
@@ -1618,6 +1670,8 @@ keeps its order in a hidden `.ps2x-order` file (PS2RECOMP_PATCHES.md).
   Successful." before the world loads at the save point.
 - `FUN_003adae0()` (generic load) runs from world init `FUN_00255308` when a load was requested; it
   reads through `FUN_002759e8` (`sceMcRead`).
+- A save carries the menu's prefs (`FUN_003ac9c8` writes them, `FUN_003acef0` reads them back): +0x6D subtitles, +0x80
+  the widescreen preference (5a: kept off, the setter hooked), +0x84 music, +0x88 effects (9c).
 - `VCS_TEST_SAVE=<s>` (`src/game/vcs_overrides.cpp`) runs the save sequence as guest tail calls from
   `scePadRead`. A direct host call of a guest function is not safe: a scheduler checkpoint inside it
   unwinds the call and the rest of the routine never runs.

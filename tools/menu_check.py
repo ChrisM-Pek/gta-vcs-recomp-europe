@@ -15,6 +15,8 @@ wheel are the keys mouseleft / mouseright / wheelup / wheeldown. Checks:
             page and is selected (Game > Delete Game: the slot list), Cancel there
   slider    Audio: a click on a bar sets the level, a drag follows the cursor, the wheel turns it, a click on the label
             only moves the focus; a click on a choice turns it
+  display   the Display page has no Widescreen row (the game's own anamorphic mode, kept off): up / down skip it, the
+            rows below are moved up into its place and the mouse finds them there
   map       a drag moves the map with the cursor, kept in the D-pad's range; the wheel zooms
   buttons   the mouse buttons reach the game as nothing while the menu is up, nor while still held after it closed
   gamepad   Start opens the menu, the D-pad moves, Cross selects, Triangle goes back and closes it - as before
@@ -215,6 +217,29 @@ def main():
 
         c.click(button="mouseright", wait=1.0)
         c.ok("click: the right button goes back", c.where()[1:] == ("1", "AUDIO_PAGE", "Audio_t"), c.where())
+
+        # ---- Display: the game's own Widescreen row is hidden (vcs_frontend.cpp) ----
+        c.click("Display_t", wait=1.5)
+        st = c.state()
+        c.ok("display: the page opens without the Widescreen row",
+             st.get("page") == "DISPLAY_PAGE" and "wide_scr_MI" not in st["items"] and "RADAR_MODE_MI" in st["items"],
+             sorted(st["items"]))
+        c.shot("03b_display")
+        walk = [c.where()[3]]
+        for _ in range(6):
+            c.press("down", 0.6)
+            walk.append(c.where()[3])
+        rows = ["Brightness_MI", "Subtitles_MI", "RADAR_MODE_MI", "HUD_MODE_MI", "Trails_MI", "screen_pos_MI", "Brightness_MI"]
+        c.ok("display: down walks the rows past the hidden one", walk == rows, walk)
+        for _ in range(4):  # Brightness (wrapped) -> Screen position, Trails, HUD mode, Radar mode
+            c.press("up", 0.6)
+        c.press("up", 0.6)
+        c.ok("display: up past it (Radar mode -> Subtitles)", c.where()[3] == "Subtitles_MI", c.where())
+        sub, radar = (c.state()["items"][n][0] for n in ("Subtitles_MI", "RADAR_MODE_MI"))
+        c.ok("display: the rows below it moved up (no gap)", 30 <= radar[1] - sub[1] <= 50, (sub, radar))
+        c.point("RADAR_MODE_MI")
+        c.ok("display: the mouse points at a moved row", c.where()[3] == "RADAR_MODE_MI", c.where())
+        c.click(button="mouseright", wait=1.0)
         c.point("Game_t", 1.0)
         c.click("DeleteGame_MI", wait=2.0)
         c.ok("click: an item of the page under the tab bar opens it and is selected",

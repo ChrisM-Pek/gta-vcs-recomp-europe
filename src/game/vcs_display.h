@@ -23,6 +23,10 @@ namespace vcs
     // At start-up (applyVcs): wraps the view-window setter and the sphere test.
     void installDisplayHooks(PS2Runtime &runtime);
 
-    // Game thread, once per game frame (testing: VCS_WIDESCREEN forces the game's own preference).
+    // Game thread, once per game frame: keeps the game's own (anamorphic) widescreen preference off (VCS_WIDESCREEN=1
+    // forces it on, =game leaves it to the game).
     void applyDisplay(uint8_t *rdram);
+
+    // Display > Cutscene black bars: the letterbox the game draws over cutscenes (FUN_002804C8). Any thread.
+    void setCutsceneBars(bool on);
 }

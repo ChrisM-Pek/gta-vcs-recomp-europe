@@ -16,6 +16,8 @@ Steps (each a tool of its own, run in turn; the game window shows):
             the mission stuck on "Loading...")
   widecull  at 16:9, 16:10, 21:9 and 32:9 the entity culling (CCamera's side planes) reaches the screen edges, not
             the 4:3 ones
+  widepref  the game's own (anamorphic) widescreen preference stays off; mission 50's cutscene has its black bars by
+            default and none with Display > Cutscene black bars off
   menushape every presented frame into and out of the pause menu at 32:9 on a 16:9 screen: a 4:3 shape shows the menu,
             a wide one the game (the shifted frame at the switch)
             (buildings, peds and cars vanishing at the sides in widescreen)
@@ -168,6 +170,45 @@ def step_widecull(out, quick):
     return res
 
 
+def step_widepref(out, quick):
+    """The game's own widescreen preference (*(*0x48F3D0 + 0x30), the PS2's anamorphic mode) stays off, and the cutscene
+    letterbox follows Display > Cutscene black bars (game-internals.md 5a, src/game/vcs_display.cpp, 2026-11-06: the
+    game's option removed the bars). 4:3, so the screenshot is the game's picture alone: mission 50's opening cutscene,
+    the top and bottom twelfth of the picture black with the bars, not without them."""
+    sys.path.insert(0, TOOLS)
+    import rig  # noqa: E402
+    import toolchain as tc  # noqa: E402
+    d = os.path.abspath(os.path.join(out, "widepref"))
+    os.makedirs(d, exist_ok=True)
+    res = {}
+    for bars in ("1", "0"):
+        g = rig.Game.start(save=os.path.join(ROOT, "build", "rig", "saves", "fortbaxter"), name="regress_widepref_" + bars,
+                           env={"VCS_ASPECT": "43", "VCS_CUTSCENE_BARS": bars})
+        try:
+            g.wait_ingame()
+            prefs = g.u32(0x48F3D0)
+            g.cmd("poke 0x%x 01000000" % (prefs + 0x30))  # as a save with the option on would (the setter is hooked too)
+            g.wait_frames(5)
+            pref = g.u32(prefs + 0x30)
+            g.invincible(True)
+            g.prime()
+            g.mission(50)
+            time.sleep(12)
+            shot = os.path.join(d, "cutscene_bars%s.png" % bars)
+            g.cmd("screenshot " + shot.replace(os.sep, "/"))
+            cutscene = g.u32(g.u32(0x48F820) + 0x34)
+        finally:
+            g.quit()
+        w, h, rows = tc.read_png(shot)
+        band = h // 12
+        mean = lambda ys: sum(sum(rows[y][x] for x in range(0, w * 3, 12)) for y in ys) / (len(ys) * w / 4)  # noqa: E731
+        top, bottom = mean(range(2, band - 2)), mean(range(h - band + 2, h - 2))
+        res["bars" + bars] = {"pref": pref, "cutscene": cutscene, "top": round(top, 1), "bottom": round(bottom, 1),
+                              "pass": pref == 0 and cutscene != 0 and ((top < 3 and bottom < 3) if bars == "1" else max(top, bottom) > 8)}
+    res["pass"] = all(r["pass"] for r in res.values())
+    return res
+
+
 def step_meters(out, quick):
     """Mission meters that count per frame on the time step (game-internals.md 11f, src/game/vcs_script_timing.cpp,
     fixed 2026-10-27): every listed instruction found in its mission (not with --quick: a game per mission), and
@@ -287,6 +328,9 @@ def compare(base, new):
         notes.append("controls: failed checks %s (tools/controls_check.py)" % new["controls"].get("failed"))
     if "meters" in new and new["meters"].get("pass") is not True:
         notes.append("meters: per-frame mission meters off the time step %s (PHI_A2's heat at 144 vs 30)" % json.dumps(new["meters"]))
+    wp = new.get("widepref", {})
+    if wp and wp.get("pass") is not True:
+        notes.append("widepref: the game's widescreen preference or the cutscene bars %s (widepref/)" % json.dumps(wp))
     ms = new.get("menushape", {})
     if ms and ms.get("pass") is not True:
         notes.append("menushape: frames whose shape does not fit their picture at the pause menu %s" % json.dumps(ms))
@@ -310,7 +354,8 @@ def main():
     metrics = {"started": time.strftime("%Y-%m-%d %H:%M:%S"), "quick": a.quick}
     for name, fn in (("scenes", step_scenes), ("tour", step_tour), ("missions", step_missions), ("drive", step_drive),
                      ("evening", step_evening), ("saves", step_saves), ("shakedown", step_shakedown),
-                     ("widecull", step_widecull), ("menushape", step_menushape), ("meters", step_meters), ("controls", step_controls)):
+                     ("widecull", step_widecull), ("widepref", step_widepref), ("menushape", step_menushape),
+                     ("meters", step_meters), ("controls", step_controls)):
         print("[regress] %s" % name)
         t0 = time.time()
         try:

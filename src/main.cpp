@@ -303,7 +303,7 @@ namespace
                                 {"display.fps", vcs::kCapRefresh}, {"display.vsync", 0}};
     const Preset kLight[] = {{"display.aspect", 0}, {"display.hud", 2},    {"display.scale", 1},  {"display.msaa", 1},
                              {"display.aniso", 4},  {"display.timing", 1}, {"display.fps", 60}, {"display.vsync", 0}};
-    const char *const kPresetKeys[] = {"display.aspect", "display.hud", "display.scale", "display.msaa",
+    const char *const kPresetKeys[] = {"display.aspect", "display.hud", "display.cutscene_bars", "display.scale", "display.msaa",
                                        "display.aniso",  "display.timing", "display.fps", "display.vsync"};
 
     template <size_t N> void applyPreset(const char *name, const Preset (&values)[N])
@@ -447,6 +447,19 @@ namespace
         s.env = "VCS_HUD";
         s.defaultValue = 0;
         s.onChange = [](int) { applyAspect(); };
+        settings::add(s);
+
+        s = {};
+        s.key = "display.cutscene_bars";
+        s.page = "Display";
+        s.section = "Screen";
+        s.label = "Cutscene black bars";
+        s.help = "The black bars above and below cutscenes, as on the PS2. Off shows the whole picture (the PS2's own "
+                 "widescreen mode had none).";
+        s.type = Type::Toggle;
+        s.defaultValue = 1;
+        s.env = "VCS_CUTSCENE_BARS";
+        s.onChange = [](int v) { vcs::setCutsceneBars(v != 0); };
         settings::add(s);
 
         s = {};

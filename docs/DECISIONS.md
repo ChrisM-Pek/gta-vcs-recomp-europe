@@ -1158,3 +1158,25 @@ the picture is clean, so the panels' jumps stand out.
   behind the camera. Worth trying only if Smooth is not enough.
 - Would change: if players find Smooth too soft compared with the original's crispness, a narrower footprint (a box of
   one texel instead of the tent over two) is the middle ground.
+
+## 2026-11-06 - The game's own widescreen option off for good; the cutscene bars a setting (the user's decision)
+
+The user noticed that the pause menu's Display > Widescreen (the PS2's own option) removes the cutscene black bars,
+and that it "runs counter to" F2's widescreen. They asked for everything it does to be found (game-internals.md 5a),
+and suggested keeping only F2's widescreen, with what is worth keeping as separate options.
+
+- **What it is**: the PS2's mode for a 16:9 TV that stretches the 640-wide picture. Vert- 16:9 3D (the same horizontal
+  view, the vertical cut), the HUD, text, pause map and radar blips 3/4 wide, the `_WIDE` menu layouts, wider scope
+  masks - and no cutscene letterbox. On a PC the picture is not stretched by the screen. F2's Hor+ view and the
+  renderer's HUD squeeze do the same job at any ratio, so with both on, everything is squeezed twice.
+- **Kept off, not offered**: only the bars are a real choice (a 4:3 TV had them, a widescreen TV didn't). The
+  preference is held at 0 at its setter (so a save that has it on can't turn it back on, the way the volume levels
+  are kept, 9c) and at the frame kick. The menu row is hidden rather than left locked: a row that shows Off and
+  ignores the D-pad looks broken (the user's choice between the two).
+- **Cutscene black bars: On / Off, default On** (the user's choice; offered with an Auto that followed the aspect
+  ratio): the PS2's 4:3 look in every ratio. At 16:9, On frames cutscenes at about 2.37:1; Off shows the whole
+  picture, as the PS2's widescreen mode did. It is in the Authentic preset's reset (On); Enhanced and Light leave it.
+- The reference stays reachable (rule 1): `VCS_WIDESCREEN=game` is the game's own handling, `VCS_WIDESCREEN=1` forces
+  the PS2's mode, `VCS_HIDE_WIDESCREEN=0` keeps the row.
+- Would change: if a 4:3-display player wanted the anamorphic HUD for a TV that stretches (unlikely on a PC), the
+  preference could come back as an Advanced setting. The code is a switch away.

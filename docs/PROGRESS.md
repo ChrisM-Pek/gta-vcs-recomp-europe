@@ -926,6 +926,7 @@ Python scripts still usable on their own. docs/LAUNCHER.md has the whole of it; 
 | `PS2X_HLE_CLIPPED=1` | draw world packets that cross the clip planes with GPU clipping (wrong in places, game-internals.md 6h) |
 | `PS2X_HLE_CLIPPER=0` | clipped world packets on the VU1 instead of the C++ clipper |
 | `PS2X_HLE_ENV=0` | the environment-map pass (stage table 0x13) on the VU1 |
+| `PS2X_HLE_ENV_PASS1=native` | the env packets' pass 1 drawn natively as before 2026-11-06 (stripes on car paint: its depth is not pass 2's) |
 | `PS2X_HLE_REDRAW=0` | 0x02c0's re-draws / shine passes and the float-image prelit packets on the VU1 |
 | `VCS_HUD_RW=0` | no HUD context at the RenderWare level (the 16:9 weapon icon goes back to the screen edge; no native HUD, no anchoring) |
 | `VCS_HUD=0/2/1` | HUD in widescreen: keep 4:3 in the middle / screen edges / stretch (the menu's Display > HUD) |

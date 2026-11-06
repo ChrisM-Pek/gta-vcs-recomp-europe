@@ -542,9 +542,11 @@ I = 1/256) . normal + 0.5, times the vertex's Q from the output, written over th
 the same output (colours, XYZF2, Q unchanged) again with tag 50: PRIM 0x25c - strip, Gouraud, textured, blended,
 no fog, **context 2** (the environment texture set by the game's own GS packets). The kick tag's x lane is the
 packet header's .w via ILW + MFIR - sign-extended (0xffff80nn). Reproduced (`envKicks` in vcs_hle_world.cpp) and
-checked against the VU's three kicks: 27,243 packets over the reference scenes, all exact; native drawing: pass 1
-as a rigid lit model on the GPU, the TEXFLUSH and the second pass as the VU's kicks (PATH1). Clipped table-0x13
-packets stay on the VU1.
+checked against the VU's three kicks: 27,243 packets over the reference scenes, all exact; native drawing: all
+three as the reproduction's kicks (PATH1). Until 2026-11-06 pass 1 was a rigid lit model on the GPU
+(`PS2X_HLE_ENV_PASS1=native`): its own transform put vertices a Z unit or 1/16 pixel away from pass 2's, and pass
+2 (GEQUAL) failed in bands - stripes on car paint (6g). Clipped table-0x13 packets go through the C++ clipper, both
+passes as kicks.
 
 **Code images.** The code below 0x2700 is not fixed either: VCS uploads different variants of the transform
 (0x07f0) and clip test (0x0c38) per pass - every reproduction is tied to a hash of the exact code it was read from.
@@ -859,6 +861,16 @@ UV mapping per primitive fitted from the vertices, u = du/dx * x + offset in tex
 
   The reflection's strength (FIX 19), the sun glow and what is reflected are unchanged. Checked: Auto at 1x 16:9 never
   filters (no `[gs-hw] filtered copy` line in the log); Smooth forced at 1x does (footprint 5.00 x 3.50).
+- **Stripes and moiré on car paint: a port bug, fixed 2026-11-06** (a player's screenshot: diagonal hatching and
+  lines over a pickup's hood and door, crawling with the camera). The reflection is a second pass over the paint
+  (stage table 0x13, 6d) with ZTST GEQUAL. On the PS2 both passes are the same VU output, so pass 2's depth equals pass
+  1's everywhere. The port drew pass 1 natively (the GPU's own transform, FTOI4 imitated in float) and pass 2 from the
+  reproduction's VU-exact kick. Some vertices came out a Z unit or 1/16 pixel apart, and pass 2 failed its depth test
+  in bands. Pass 1 now goes out as the reproduction's kick too (`drawNativeEnv`; `PS2X_HLE_ENV_PASS1=native` = the old
+  way). Seen at 1080p Match window, a parked car's door and fender: native pass 1 hatched, 34% of paint pixels more
+  than 4 off from all-VU drawing (`PS2X_HLE_ENV=0`); now no hatching, 17.5% - the rest edges, where the car had
+  settled a fraction of a pixel elsewhere in the other run (two shots of one run: 8.9%). It was there at every
+  resolution and with either reflections setting.
 
 **Pixel centres** (found from the copies above, fixed 2026-10-23): the GS samples a pixel at its integer position,
 D3D at +0.5. Our renderer had drawn without the offset, so the copies (u = x + 0.5) read halfway between two texels:

@@ -73,7 +73,7 @@ python tools/doctor.py [--json]              # folder, compiler, disc, build sta
 python tools/build_dir.py [check|set P|reset] # the build folder elsewhere (.vcs-build-dir, VCS_BUILD_DIR): tc.BUILD follows;
                                              # the test tools keep writing to build\ in the source folder
 python tools/release.py [--ref vX | --worktree]   # the Windows release zip (build/dist); refuses game files. The number is
-                                             # VERSION (root; 0.2.2): bump it before tagging - the tag must match;
+                                             # VERSION (root; 0.2.3): bump it before tagging - the tag must match;
                                              # the notes: docs/releases/<tag>.md (else GitHub generates them)
 python3 tools/release.py --platform linux [--worktree --allow-new-glibc]   # the Linux AppImage (CI builds it on
                                              # Ubuntu 22.04 for glibc 2.35; a v* tag publishes zip + AppImage together)

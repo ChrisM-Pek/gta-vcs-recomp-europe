@@ -79,6 +79,18 @@ namespace vcs
         bool g_textCentred = false;  // the line being printed is centred across the screen; game thread
         int g_traceAnchors = 0;      // VCS_TRACE_HUDANCHOR=<frames>
 
+        // The scope / camera / binocular mask (game-internals.md 6f "Scope mask"): the 2D pass FUN_0021f348 fills black
+        // side bars rect(0, 240 - s1) and rect(240 + s1, 480) (s1 210: 30 units each) through FUN_003e0b10(rect, colour,
+        // 1) - returns 0x21f6f0 / 0x21f728 -, before CHud::Draw draws the scope itself. In widescreen both the bars and the
+        // scope are squeezed into the middle 4:3 and clipped there, so the 3D world showed in the strips beside it. The
+        // bars are made to reach the screen edges: drawn unsqueezed (Stretch) from the edge to where the squeezed bar
+        // ends. VCS_SCOPE_FILL=0: as before.
+        constexpr uint32_t kRectFill = 0x003E0B10u;
+        constexpr uint32_t kMaskLeftReturn = 0x0021F6F0u, kMaskRightReturn = 0x0021F728u;
+        PS2Runtime::RecompiledFunction g_origRectFill = nullptr;
+        std::atomic<float> g_squeeze{1.0f}; // the HUD's squeeze in widescreen ((4:3) / aspect; 1: none)
+        bool g_maskBar = false;             // the next Im2D call is a mask bar (game thread)
+
         // one window for all trace lines: from 30 s after the hooks went in, VCS_TRACE_IM2D lines in total
         auto g_traceStart = ps2x::hostNow();
         int g_traceLeft = 0;
@@ -155,6 +167,7 @@ namespace vcs
             Other,       // anchored by where its element sits
             Radar,       // always the left edge
             CentredText, // a line centred across the screen (subtitles, mission text, stunt results): always the middle
+            MaskBar,     // a scope mask's side bar, widened to the screen edge: unsqueezed (Stretch)
         };
         struct Prim
         {
@@ -179,14 +192,19 @@ namespace vcs
 
         void capture(uint8_t *rdram, R5900Context *ctx)
         {
-            if (!(g_inHud || g_inMenu || g_inLoading) || !g_anchoring.load(std::memory_order_relaxed) || g_prims.size() >= 8192u)
+            const bool maskBar = g_maskBar;
+            g_maskBar = false;
+            if (!(g_inHud || g_inMenu || g_inLoading || maskBar) || !g_anchoring.load(std::memory_order_relaxed) ||
+                g_prims.size() >= 8192u)
                 return;
             const uint32_t verts = GPR_U32(ctx, 5) & 0x01FFFFFFu;
             const uint32_t n = GPR_U32(ctx, 6);
             if (n == 0u || n > 1024u || verts + n * 16u > 0x02000000u)
                 return;
             Prim p{1e9f, 1e9f, -1e9f, -1e9f, static_cast<uint32_t>(g_primKeys.size()), n, g_inMenu || g_inLoading};
-            if (GPR_U32(ctx, 31) == kGlyphBatch)
+            if (maskBar)
+                p.part = Part::MaskBar;
+            else if (GPR_U32(ctx, 31) == kGlyphBatch)
                 p.part = g_textCentred ? Part::CentredText : Part::Other;
             else if (g_inRadar)
                 p.part = Part::Radar;
@@ -259,7 +277,7 @@ namespace vcs
                 const Prim &p = g_prims[i];
                 const Prim &b = boxes[find(i)];
                 const float centre = (b.x0 + b.x1) * 0.5f;
-                const uint8_t anchor = full(p)                                      ? GSHwAnchorStretch
+                const uint8_t anchor = full(p) || p.part == Part::MaskBar           ? GSHwAnchorStretch
                                        : !edges || p.menu                            ? GSHwAnchorCentre
                                        : p.part == Part::Radar                       ? GSHwAnchorLeft
                                        : p.part == Part::CentredText                 ? GSHwAnchorCentre
@@ -427,6 +445,36 @@ namespace vcs
             g_origFontRender(rdram, ctx, runtime);
         }
 
+        // FUN_003e0b10(rect a0: left, bottom, right, top floats in 480x272 units; colour a1; a2): the scope mask's side
+        // bars (see the top) widened. A squeezed element at x lands at 240 + (x - 240) s of the unsqueezed frame, so the
+        // left bar becomes 0 .. 240 + (right - 240) s and the right one 240 + (left - 240) s .. 480, drawn unsqueezed:
+        // black from the screen edge to where the squeezed bar (and the scope next to it) begins.
+        PS2_GUEST_CC void rectFill(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
+        {
+            const uint32_t ra = GPR_U32(ctx, 31);
+            const float s = g_squeeze.load(std::memory_order_relaxed);
+            const uint32_t rect = GPR_U32(ctx, 4) & 0x01FFFFFFu;
+            if ((ra == kMaskLeftReturn || ra == kMaskRightReturn) && s < 0.999f && g_anchoring.load(std::memory_order_relaxed) &&
+                rect + 16u <= 0x02000000u)
+            {
+                float r[4];
+                std::memcpy(r, rdram + rect, 16);
+                if (ra == kMaskLeftReturn)
+                {
+                    r[0] = 0.0f;
+                    r[2] = 240.0f + (r[2] - 240.0f) * s;
+                }
+                else
+                {
+                    r[0] = 240.0f + (r[0] - 240.0f) * s;
+                    r[2] = 480.0f;
+                }
+                std::memcpy(rdram + rect, r, 16); // the caller's rect on its stack, rebuilt before each fill
+                g_maskBar = true;
+            }
+            g_origRectFill(rdram, ctx, runtime);
+        }
+
         PS2_GUEST_CC void menuDraw(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
         {
             if (traceNow())
@@ -464,6 +512,8 @@ namespace vcs
         g_edges.store(on, std::memory_order_relaxed);
         updateClassifier();
     }
+
+    void setHudSqueeze(float factor) { g_squeeze.store(factor, std::memory_order_relaxed); }
 
     void installHudHooks(PS2Runtime &runtime)
     {
@@ -515,6 +565,10 @@ namespace vcs
                 for (int i = 0; i < 3; ++i)
                     runtime.replaceFunction(kAfterRadar[i], after[i]);
             }
+            // the scope mask's side bars to the screen edges (the frontend's hook of the same routine chains onto this)
+            const char *fill = std::getenv("VCS_SCOPE_FILL");
+            if (!(fill && fill[0] == '0') && (g_origRectFill = runtime.lookupFunction(kRectFill)) != nullptr)
+                runtime.replaceFunction(kRectFill, &rectFill);
             const char *native = std::getenv("VCS_HUD_NATIVE");
             g_layer = !(native && native[0] == '0');
             g_hooked = true;

@@ -182,6 +182,9 @@ pause map) are shown at 4:3, pillarboxed.
   its place, up / down skip it), and the bars are Display > Screen > **Cutscene black bars** (`display.cutscene_bars`,
   default On, `VCS_CUTSCENE_BARS`; Off skips the game's letterbox draw `FUN_002804c8`). DECISIONS.md has why;
   `tools/menu_check.py` "display" and `tools/regress.py` "widepref" check it.
+- **Scope / camera mask** (same day): the black mask around the sniper scope, the camera and binoculars was squeezed
+  into the middle 4:3 with the scope, so the world showed at the sides in widescreen; its side bars now reach the
+  screen edges (game-internals.md 6f "Scope mask", regress step "scopemask").
 - Not done from the plan: window mode, pausing,
   control-channel `menu` / `set` commands (environment overrides cover scripted captures:
   `VCS_ASPECT=169 python tools/scenes.py capture ...`).

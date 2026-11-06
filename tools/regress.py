@@ -18,6 +18,7 @@ Steps (each a tool of its own, run in turn; the game window shows):
             the 4:3 ones
   widepref  the game's own (anamorphic) widescreen preference stays off; mission 50's cutscene has its black bars by
             default and none with Display > Cutscene black bars off
+  scopemask the sniper scope and the camera at 16:9: their black mask reaches the screen edges (no world beside it)
   menushape every presented frame into and out of the pause menu at 32:9 on a 16:9 screen: a 4:3 shape shows the menu,
             a wide one the game (the shifted frame at the switch)
             (buildings, peds and cars vanishing at the sides in widescreen)
@@ -209,6 +210,43 @@ def step_widepref(out, quick):
     return res
 
 
+def step_scopemask(out, quick):
+    """The sniper scope and the camera at 16:9 (game-internals.md 6f "Scope mask", src/game/vcs_hud.cpp, 2026-11-06):
+    the mask's side bars reach the screen edges - before, they and the scope were squeezed into the middle 4:3 and the
+    3D world showed in the strips beside it (max 253 there). The hidden window is 4:3, so the 16:9 picture is
+    letterboxed in it: the strips are x 0..1/8 and 7/8..1 of the screenshot inside the picture's rows."""
+    sys.path.insert(0, TOOLS)
+    import rig  # noqa: E402
+    import toolchain as tc  # noqa: E402
+    d = os.path.abspath(os.path.join(out, "scopemask"))
+    os.makedirs(d, exist_ok=True)
+    res = {}
+    g = rig.Game.start(save=os.path.join(ROOT, "build", "rig", "saves", "fortbaxter"), name="regress_scopemask",
+                       env={"VCS_ASPECT": "169", "VCS_HUD": "0"})
+    try:
+        g.wait_ingame()
+        g.invincible(True)
+        g.set_time(12)
+        for weapon in (30, 39):  # the sniper rifle (camera mode 7), the camera (47)
+            g.scm(rig.Scm.op(rig.Scm.GIVE_WEAPON_TO_CHAR, rig.Scm.PLAYER, rig.Scm.i(weapon), rig.Scm.i(50)))
+            time.sleep(1.0)
+            g.cmd("key mouseright down")
+            time.sleep(1.5)
+            shot = os.path.join(d, "weapon%d.png" % weapon)
+            g.cmd("screenshot " + shot.replace(os.sep, "/"))
+            g.cmd("key mouseright up")
+            time.sleep(1.0)
+            w, h, rows = tc.read_png(shot)
+            top, bottom = (h - w * 9 // 16) // 2 + 8, (h + w * 9 // 16) // 2 - 8
+            strip = lambda x0, x1: max(max(rows[y][x * 3:x * 3 + 3]) for y in range(top, bottom, 3) for x in range(x0, x1, 2))  # noqa: E731
+            left, right = strip(2, w // 8 - 5), strip(w - w // 8 + 5, w - 2)
+            res[str(weapon)] = {"left_max": left, "right_max": right, "pass": left <= 8 and right <= 8}
+    finally:
+        g.quit()
+    res["pass"] = all(r["pass"] for r in res.values())
+    return res
+
+
 def step_meters(out, quick):
     """Mission meters that count per frame on the time step (game-internals.md 11f, src/game/vcs_script_timing.cpp,
     fixed 2026-10-27): every listed instruction found in its mission (not with --quick: a game per mission), and
@@ -331,6 +369,9 @@ def compare(base, new):
     wp = new.get("widepref", {})
     if wp and wp.get("pass") is not True:
         notes.append("widepref: the game's widescreen preference or the cutscene bars %s (widepref/)" % json.dumps(wp))
+    sm = new.get("scopemask", {})
+    if sm and sm.get("pass") is not True:
+        notes.append("scopemask: the 3D world shows beside the scope / camera mask at 16:9 %s (scopemask/)" % json.dumps(sm))
     ms = new.get("menushape", {})
     if ms and ms.get("pass") is not True:
         notes.append("menushape: frames whose shape does not fit their picture at the pause menu %s" % json.dumps(ms))
@@ -354,7 +395,8 @@ def main():
     metrics = {"started": time.strftime("%Y-%m-%d %H:%M:%S"), "quick": a.quick}
     for name, fn in (("scenes", step_scenes), ("tour", step_tour), ("missions", step_missions), ("drive", step_drive),
                      ("evening", step_evening), ("saves", step_saves), ("shakedown", step_shakedown),
-                     ("widecull", step_widecull), ("widepref", step_widepref), ("menushape", step_menushape),
+                     ("widecull", step_widecull), ("widepref", step_widepref), ("scopemask", step_scopemask),
+                     ("menushape", step_menushape),
                      ("meters", step_meters), ("controls", step_controls)):
         print("[regress] %s" % name)
         t0 = time.time()

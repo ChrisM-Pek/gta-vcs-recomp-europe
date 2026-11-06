@@ -836,6 +836,20 @@ frame). It is called from many load paths (`0x346BAC`, `0x3C817C`, `0x45F3E4`, `
 is being loaded). **There is no title menu**: with an empty card the game goes from the loading screens straight into
 the opening sequence (the reference scenes' "flyover"), where Start does nothing; the frontend menu is the pause menu.
 
+**Scope mask** (2026-11-06, the user's request to check the sniper scope at 16:9): the 2D pass `FUN_0021F348` draws a
+black mask before `CHud::Draw` (0x21f768) when the HUD's +0x2C28 is set (SET_BINOCULARS_MODE) or the weapon is 0x12,
+0x1E, 0x1F or 0x27 in camera mode 7, 8, 0x27, 0x28, 0x2E or 0x2F (5a's table). Each bar is a rect built by
+`FUN_002BF1D8` (+0 left, +4 bottom, +8 right, +0xC top - stored from f12, f15, f14, f13) and filled by `FUN_003E0B10(rect,
+colour, 1)` (one Im2D call). Top / bottom: 0..40 and 232..272 for the camera (0x27) or binoculars, off screen otherwise.
+Sides: rect(0, 240 - s1) and rect(240 + s1, 480), s1 210 (170 with 5a's preference) - the fills returning to 0x21f6f0 /
+0x21f728. The scope itself (`FUN_00323018`, from CHud::Draw) is four textured quadrant quads around (240, 136), half-width
+280 for the sniper rifle: past the 4:3 screen. In widescreen the side bars and the scope were both squeezed into the
+middle 4:3 and clipped to it, so the 3D world showed in the strips beside them (seen with the sniper rifle and the
+camera at 16:9: those strips reached 253 of 255). `vcs_hud.cpp` widens the two side bars to the screen edges and draws
+them unsqueezed (anchor Stretch): left 0 .. 240 + (right - 240) s, right 240 + (left - 240) s .. 480, s the HUD squeeze
+- the inner edge stays where the squeezed bar's was. 4:3 and HUD Stretch (s = 1) are untouched; `VCS_SCOPE_FILL=0` =
+before. Regression check: `tools/regress.py` step "scopemask" (fails with `VCS_SCOPE_FILL=0`).
+
 ### 6g. How a frame is put together (draw-list dumps, 2026-10-23)
 
 From `PS2X_HW_DUMP` / F12 with `PS2X_HW_DUMP_BATCHES=4` at the hospital (-884, -470), noon and 20:00; the draw

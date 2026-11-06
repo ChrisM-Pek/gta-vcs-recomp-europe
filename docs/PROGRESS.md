@@ -758,8 +758,13 @@ dropped on uploads (lazy render-target patching).
   50's cutscene with bars on / off at 4:3 and 16:9 (16:9 off: the whole 16:9 picture, on: the bars inside it); a save
   made with the PS2's mode on loads with the preference 0 and the normal view (`VCS_WIDESCREEN=game`: Vert- as before);
   `menu_check.py` 33 checks, 0 failed (5 new: no Widescreen row, up / down past it, no gap, the mouse on a moved row);
-  regress step "widepref" (passes). Not looked at: the sniper / camera mask at 16:9 (its side bars are 2D the HUD
-  squeeze may pull into the middle 4:3).
+  regress step "widepref" (passes).
+- **Scope and camera mask at the screen edges** (2026-11-06, checked at the user's request): at 16:9 the sniper rifle's
+  scope, the camera and binoculars had their black mask squeezed into the middle 4:3, the 3D world showing in the strips
+  beside it. The mask's two side bars now reach the screen edges, drawn unsqueezed (game-internals.md 6f "Scope mask",
+  `src/game/vcs_hud.cpp`, `VCS_SCOPE_FILL=0` = before). Checked: screenshots at 4:3 / 16:9 with HUD Keep 4:3 and Screen
+  edges (strips at most 2 of 255, as the PS2's own mask at 4:3); regress step "scopemask" (fails with
+  `VCS_SCOPE_FILL=0`: 253); `menu_check.py` 33 / 0 failed, `hud_check.py` passes.
 
 - **Trainer** (2026-10-26, docs/TRAINER.md): an RDR2 Native Trainer style menu (F5 / Back + RB) - god mode, never
   wanted, wanted level, money, every weapon and loadouts, unlimited ammo, no reload, spawning all 110 vehicles,
@@ -945,6 +950,7 @@ Python scripts still usable on their own. docs/LAUNCHER.md has the whole of it; 
 | `VCS_WIDE_CULL=0` | widescreen: entities culled by the game's 4:3 camera planes (models vanish at the screen edges, as before 2026-10-27) |
 | `VCS_CUTSCENE_BARS=0/1` | the cutscene letterbox off / on for one run (Display > Cutscene black bars) |
 | `VCS_WIDESCREEN=1` / `=game` | the game's own (PS2, anamorphic Vert-) widescreen preference forced on / left to the game and its saves (normally kept off); both show its pause-menu row again |
+| `VCS_SCOPE_FILL=0` | widescreen: the scope / camera mask's side bars squeezed into the middle 4:3 as before 2026-11-06 (the world shows beside the scope) |
 | `VCS_HIDE_WIDESCREEN=0` | the pause menu's Display page keeps the game's Widescreen row (the preference still kept off) |
 | `VCS_TRACE_VISIBLE=1` | CCamera::IsSphereVisible: visible ratio every 5 s, samples with the camera-space point and the planes |
 | `VCS_HUD_NATIVE=0` | the HUD drawn into the PS2 frame buffer instead of the native layer at the window's size |

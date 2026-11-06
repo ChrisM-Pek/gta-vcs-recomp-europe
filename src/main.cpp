@@ -223,6 +223,7 @@ namespace
         gsHwSetAspectWidening(aspect / (4.0f / 3.0f)); // post effects keep their 4:3 proportions
         const int hud = settings::value("display.hud");
         gsHwSetHudSqueeze(hud != 1 ? (4.0f / 3.0f) / aspect : 1.0f);
+        vcs::setHudSqueeze(hud != 1 ? (4.0f / 3.0f) / aspect : 1.0f); // the scope mask's bars (game/vcs_hud.h)
         vcs::setHudAnchoring(hud == 2); // per-element placement (game/vcs_hud.h)
         std::fprintf(stderr, "[settings] display aspect %.3f, HUD %s\n", aspect, hud == 0 ? "4:3" : hud == 2 ? "screen edges" : "stretched");
     }

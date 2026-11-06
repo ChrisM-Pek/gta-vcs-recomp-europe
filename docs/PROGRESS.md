@@ -758,7 +758,11 @@ dropped on uploads (lazy render-target patching).
   50's cutscene with bars on / off at 4:3 and 16:9 (16:9 off: the whole 16:9 picture, on: the bars inside it); a save
   made with the PS2's mode on loads with the preference 0 and the normal view (`VCS_WIDESCREEN=game`: Vert- as before);
   `menu_check.py` 33 checks, 0 failed (5 new: no Widescreen row, up / down past it, no gap, the mouse on a moved row);
-  regress step "widepref" (passes).
+  regress step "widepref" (passes). Later the same day (the user's request): the setting is locked On at 4:3 - greyed
+  out showing On, the saved choice kept for widescreen (`Spec::locked`, settings.h). Checked: the F2 Display page at
+  4:3 (greyed, On), 16:9 (the saved Off, changeable) and Match window in the 960x672 test window (changeable);
+  mission 50's cutscene with the setting Off while the aspect is switched live 16:9 -> 4:3 -> 16:9 (no bars, bars,
+  no bars); "widepref" now runs 16:9 On, 16:9 Off and 4:3 Off (bars) - passes.
 - **Scope and camera mask at the screen edges** (2026-11-06, checked at the user's request): at 16:9 the sniper rifle's
   scope, the camera and binoculars had their black mask squeezed into the middle 4:3, the 3D world showing in the strips
   beside it. The mask's two side bars now reach the screen edges, drawn unsqueezed (game-internals.md 6f "Scope mask",
@@ -948,7 +952,7 @@ Python scripts still usable on their own. docs/LAUNCHER.md has the whole of it; 
 | `VCS_HUD_RW=0` | no HUD context at the RenderWare level (the 16:9 weapon icon goes back to the screen edge; no native HUD, no anchoring) |
 | `VCS_HUD=0/2/1` | HUD in widescreen: keep 4:3 in the middle / screen edges / stretch (the menu's Display > HUD) |
 | `VCS_WIDE_CULL=0` | widescreen: entities culled by the game's 4:3 camera planes (models vanish at the screen edges, as before 2026-10-27) |
-| `VCS_CUTSCENE_BARS=0/1` | the cutscene letterbox off / on for one run (Display > Cutscene black bars) |
+| `VCS_CUTSCENE_BARS=0/1` | the cutscene letterbox off / on for one run (Display > Cutscene black bars; always on at 4:3) |
 | `VCS_WIDESCREEN=1` / `=game` | the game's own (PS2, anamorphic Vert-) widescreen preference forced on / left to the game and its saves (normally kept off); both show its pause-menu row again |
 | `VCS_SCOPE_FILL=0` | widescreen: the scope / camera mask's side bars squeezed into the middle 4:3 as before 2026-11-06 (the world shows beside the scope) |
 | `VCS_HIDE_WIDESCREEN=0` | the pause menu's Display page keeps the game's Widescreen row (the preference still kept off) |

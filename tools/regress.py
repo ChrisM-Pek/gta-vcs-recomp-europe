@@ -174,17 +174,19 @@ def step_widecull(out, quick):
 def step_widepref(out, quick):
     """The game's own widescreen preference (*(*0x48F3D0 + 0x30), the PS2's anamorphic mode) stays off, and the cutscene
     letterbox follows Display > Cutscene black bars (game-internals.md 5a, src/game/vcs_display.cpp, 2026-11-06: the
-    game's option removed the bars). 4:3, so the screenshot is the game's picture alone: mission 50's opening cutscene,
-    the top and bottom twelfth of the picture black with the bars, not without them."""
+    game's option removed the bars). Mission 50's opening cutscene, the top and bottom twelfth of the picture black with
+    the bars, not without them: 16:9 with the setting On and Off, and 4:3 with it Off - the bars stay there (the setting
+    is locked On at 4:3, 2026-11-06). The hidden window is 4:3, so a 16:9 picture is letterboxed inside it."""
     sys.path.insert(0, TOOLS)
     import rig  # noqa: E402
     import toolchain as tc  # noqa: E402
     d = os.path.abspath(os.path.join(out, "widepref"))
     os.makedirs(d, exist_ok=True)
     res = {}
-    for bars in ("1", "0"):
-        g = rig.Game.start(save=rig.default_save(), name="regress_widepref_" + bars,
-                           env={"VCS_ASPECT": "43", "VCS_CUTSCENE_BARS": bars})
+    for aspect, bars, want in (("169", "1", True), ("169", "0", False), ("43", "0", True)):
+        name = "%s_bars%s" % (aspect, bars)
+        g = rig.Game.start(save=rig.default_save(), name="regress_widepref_" + name,
+                           env={"VCS_ASPECT": aspect, "VCS_CUTSCENE_BARS": bars})
         try:
             g.wait_ingame()
             prefs = g.u32(0x48F3D0)
@@ -195,17 +197,19 @@ def step_widepref(out, quick):
             g.prime()
             g.mission(50)
             time.sleep(12)
-            shot = os.path.join(d, "cutscene_bars%s.png" % bars)
+            shot = os.path.join(d, "cutscene_%s.png" % name)
             g.cmd("screenshot " + shot.replace(os.sep, "/"))
             cutscene = g.u32(g.u32(0x48F820) + 0x34)
         finally:
             g.quit()
         w, h, rows = tc.read_png(shot)
-        band = h // 12
+        pic = h if aspect == "43" else min(h, w * 9 // 16)  # the picture's rows inside the hidden 4:3 window
+        y0 = (h - pic) // 2
+        band = pic // 12
         mean = lambda ys: sum(sum(rows[y][x] for x in range(0, w * 3, 12)) for y in ys) / (len(ys) * w / 4)  # noqa: E731
-        top, bottom = mean(range(2, band - 2)), mean(range(h - band + 2, h - 2))
-        res["bars" + bars] = {"pref": pref, "cutscene": cutscene, "top": round(top, 1), "bottom": round(bottom, 1),
-                              "pass": pref == 0 and cutscene != 0 and ((top < 3 and bottom < 3) if bars == "1" else max(top, bottom) > 8)}
+        top, bottom = mean(range(y0 + 2, y0 + band - 2)), mean(range(y0 + pic - band + 2, y0 + pic - 2))
+        res[name] = {"pref": pref, "cutscene": cutscene, "top": round(top, 1), "bottom": round(bottom, 1),
+                     "pass": pref == 0 and cutscene != 0 and ((top < 3 and bottom < 3) if want else max(top, bottom) > 8)}
     res["pass"] = all(r["pass"] for r in res.values())
     return res
 

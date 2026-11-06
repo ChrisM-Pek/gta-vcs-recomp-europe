@@ -180,7 +180,9 @@ pause map) are shown at 4:3, pillarboxed.
   HUD squeeze, plus no cutscene letterbox. It is now kept off (`vcs_display.cpp` hooks its setter, so a save's value
   is not taken), its row on the pause menu's Display page is hidden (`vcs_frontend.cpp`: the rows below move up into
   its place, up / down skip it), and the bars are Display > Screen > **Cutscene black bars** (`display.cutscene_bars`,
-  default On, `VCS_CUTSCENE_BARS`; Off skips the game's letterbox draw `FUN_002804c8`). DECISIONS.md has why;
+  default On, `VCS_CUTSCENE_BARS`; Off skips the game's letterbox draw `FUN_002804c8`). At 4:3 it is locked On - the
+  row greyed out showing On, the saved value kept for widescreen: `Spec::locked` / `lockedValue` / `lockedNote`
+  (settings.h), for any setting another one decides; `main.cpp` `cutsceneBarsLocked()`. DECISIONS.md has why;
   `tools/menu_check.py` "display" and `tools/regress.py` "widepref" check it.
 - **Scope / camera mask** (same day): the black mask around the sniper scope, the camera and binoculars was squeezed
   into the middle 4:3 with the scope, so the world showed at the sides in widescreen; its side bars now reach the

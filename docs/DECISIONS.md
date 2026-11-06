@@ -1176,6 +1176,11 @@ and suggested keeping only F2's widescreen, with what is worth keeping as separa
 - **Cutscene black bars: On / Off, default On** (the user's choice; offered with an Auto that followed the aspect
   ratio): the PS2's 4:3 look in every ratio. At 16:9, On frames cutscenes at about 2.37:1; Off shows the whole
   picture, as the PS2's widescreen mode did. It is in the Authentic preset's reset (On); Enhanced and Light leave it.
+- **Locked On at 4:3** (the user's request, same day): at 4:3 the bars are the original picture and Off has nothing
+  to show beyond it, so the setting is greyed out showing On, with "Always on at 4:3..." in its help. In widescreen
+  (16:10 and up; Match window when the window is wider than 4:3) it is the player's choice again. The saved value is
+  not changed by the lock: a player who chose Off at 16:9, went to 4:3 and back gets Off again. The registry got a
+  general `Spec::locked` / `lockedValue` / `lockedNote` for it (settings.h) - a setting another one decides.
 - The reference stays reachable (rule 1): `VCS_WIDESCREEN=game` is the game's own handling, `VCS_WIDESCREEN=1` forces
   the PS2's mode, `VCS_HIDE_WIDESCREEN=0` keeps the row.
 - Would change: if a 4:3-display player wanted the anamorphic HUD for a TV that stretches (unlikely on a PC), the

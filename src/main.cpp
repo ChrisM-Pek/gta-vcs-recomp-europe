@@ -213,6 +213,14 @@ namespace
         }
     }
 
+    // Display > Cutscene black bars: always on at 4:3 (the PS2's picture; the menu greys the setting out), the player's
+    // choice in widescreen. "Match window" with a 4:3 window counts as 4:3.
+    bool cutsceneBarsLocked() { return g_appliedAspect < 4.0f / 3.0f + 0.01f; }
+    void applyCutsceneBars()
+    {
+        vcs::setCutsceneBars(cutsceneBarsLocked() || settings::value("display.cutscene_bars") != 0);
+    }
+
     // Display aspect: the presenter's ratio, the game camera's Hor+ widening and the HUD squeeze (game/vcs_display.h).
     void applyAspect()
     {
@@ -225,6 +233,7 @@ namespace
         gsHwSetHudSqueeze(hud != 1 ? (4.0f / 3.0f) / aspect : 1.0f);
         vcs::setHudSqueeze(hud != 1 ? (4.0f / 3.0f) / aspect : 1.0f); // the scope mask's bars (game/vcs_hud.h)
         vcs::setHudAnchoring(hud == 2); // per-element placement (game/vcs_hud.h)
+        applyCutsceneBars();
         std::fprintf(stderr, "[settings] display aspect %.3f, HUD %s\n", aspect, hud == 0 ? "4:3" : hud == 2 ? "screen edges" : "stretched");
     }
 
@@ -455,12 +464,15 @@ namespace
         s.page = "Display";
         s.section = "Screen";
         s.label = "Cutscene black bars";
-        s.help = "The black bars above and below cutscenes, as on the PS2. Off shows the whole picture (the PS2's own "
-                 "widescreen mode had none).";
+        s.help = "The black bars above and below cutscenes, as on the PS2. Off shows the whole picture in widescreen "
+                 "(the PS2's own widescreen mode had none).";
         s.type = Type::Toggle;
         s.defaultValue = 1;
         s.env = "VCS_CUTSCENE_BARS";
-        s.onChange = [](int v) { vcs::setCutsceneBars(v != 0); };
+        s.onChange = [](int) { applyCutsceneBars(); };
+        s.locked = [] { return cutsceneBarsLocked(); };
+        s.lockedValue = 1;
+        s.lockedNote = "Always on at 4:3, as on the PS2: choose a widescreen aspect ratio to change it.";
         settings::add(s);
 
         s = {};

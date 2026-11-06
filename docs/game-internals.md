@@ -437,8 +437,8 @@ Handling (`src/game/vcs_display.cpp`, the user's decision 2026-11-06, DECISIONS.
 answer to a TV that stretches the picture; on a PC each of its effects but the bars fights the Hor+ view and the
 renderer's HUD squeeze, so it is **kept at 0** - the setter is hooked (a save's 1 is dropped: `[display] the game sets
 its widescreen preference 1 (ra=0x3ad100): kept at 0`), the frame kick puts 0 back after a direct write, and the
-pause menu's row is hidden (6m). The bars are the setting Display > **Cutscene black bars** (default On): off, the
-whole of `FUN_002804c8` is skipped. `VCS_WIDESCREEN=1` forces the PS2's mode, `=game` leaves the preference to the game
+pause menu's row is hidden (6m). The bars are the setting Display > **Cutscene black bars** (default On; always on
+at 4:3, where they are the original picture): off, the whole of `FUN_002804c8` is skipped. `VCS_WIDESCREEN=1` forces the PS2's mode, `=game` leaves the preference to the game
 (both show the row again). Regression check: `tools/regress.py` step "widepref".
 
 ## 6. Renderer

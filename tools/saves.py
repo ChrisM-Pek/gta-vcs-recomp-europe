@@ -43,7 +43,7 @@ def main():
     data = os.path.join(out, "data")
     folder = os.path.join(data, *FOLDER)
     seed = os.path.join(out, "seed")
-    rig.copy_card(os.path.join(ROOT, "build", "rig", "saves", "fortbaxter", "mc0"), os.path.join(seed, "mc0"))
+    rig.copy_card(os.path.join(rig.default_save(), "mc0"), os.path.join(seed, "mc0"))
     if os.path.isdir(os.path.join(data, "backups")):
         shutil.rmtree(os.path.join(data, "backups"))
     if os.name == "nt":

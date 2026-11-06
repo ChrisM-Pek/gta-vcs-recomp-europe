@@ -126,7 +126,7 @@ def main():
     a = ap.parse_args()
     out = os.path.abspath(a.out)
     os.makedirs(out, exist_ok=True)
-    g = rig.Game.start(save=os.path.join(ROOT, "build", "rig", "saves", "fortbaxter"), name="menu_check",
+    g = rig.Game.start(save=rig.default_save(), name="menu_check",
                        data_dir=os.path.join(out, "data"), port=a.port, env={"VCS_ASPECT": "169"})
     c = Check(g, out)
     try:

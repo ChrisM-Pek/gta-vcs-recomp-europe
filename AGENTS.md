@@ -110,7 +110,8 @@ python tools/eedecomp.py 0x2f7d58 [...] [--out FILE]          # game functions a
 The rig (`src/debug/rig.cpp`, `tools/rig.py`) drives the game through its own script VM: `Game.teleport`,
 `set_time`, `weather`, `invincible`, `mission(n)` and raw `scm(bytes)` (assembler: `rig.Scm`, VCS opcode numbers
 from the Sanny Builder Library, checked against the handler table - game-internals.md 11). `build/rig/saves/` holds
-card copies to start from (never the user's live card).
+card copies to start from (never the user's live card): the test tools take `fortbaxter/`, else `user/` (a copy of the
+player's card; `rig.default_save`).
 
 - Test runs are **hidden** (the user's choice, 2026-10-24): no window, physical input ignored, sound on (the user
   mutes the game in Windows); all launches go through `toolchain.test_window`; the rig passes `run.py --hidden`.

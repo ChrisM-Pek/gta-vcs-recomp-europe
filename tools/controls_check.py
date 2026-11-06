@@ -27,6 +27,7 @@ import argparse
 import math
 import os
 import re
+import shutil
 import sys
 import time
 
@@ -914,7 +915,9 @@ class Check:
                 "active %d attached %#x mode %d" % ended)
 
     def run(self):
-        g = self.g = rig.Game.start(save=os.path.join(ROOT, "build", "rig", "saves", "fortbaxter"), name="controls_check",
+        # the screenshot key's check counts the PNGs here: none left from an earlier run into the same OUT
+        shutil.rmtree(os.path.join(self.out, "screenshot_key"), ignore_errors=True)
+        g = self.g = rig.Game.start(save=rig.default_save(), name="controls_check",
                                     port=self.port, data_dir=os.path.join(ROOT, "build", "controls", "data"),
                                     env={"VCS_FPS": "30", "VCS_TIMING": "",  # timing unlocked: the presets set it
                                          "VCS_SCREENSHOT_DIR": os.path.join(self.out, "screenshot_key")})

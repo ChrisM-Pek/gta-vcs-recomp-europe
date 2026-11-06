@@ -109,7 +109,7 @@ def step_evening(out, quick):
     import tour  # noqa: E402
     d = os.path.join(out, "evening")
     os.makedirs(d, exist_ok=True)
-    g = rig.Game.start(save=os.path.join(ROOT, "build", "rig", "saves", "fortbaxter"), name="regress_evening")
+    g = rig.Game.start(save=rig.default_save(), name="regress_evening")
     lumas = {}
     try:
         g.wait_ingame()
@@ -154,7 +154,7 @@ def step_widecull(out, quick):
     import rig  # noqa: E402
     res = {}
     for aspect in ("169", "329") if quick else ("169", "1610", "219", "329"):
-        g = rig.Game.start(save=os.path.join(ROOT, "build", "rig", "saves", "fortbaxter"), name="regress_widecull_" + aspect,
+        g = rig.Game.start(save=rig.default_save(), name="regress_widecull_" + aspect,
                            env={"VCS_ASPECT": aspect})
         try:
             g.wait_ingame()
@@ -183,7 +183,7 @@ def step_widepref(out, quick):
     os.makedirs(d, exist_ok=True)
     res = {}
     for bars in ("1", "0"):
-        g = rig.Game.start(save=os.path.join(ROOT, "build", "rig", "saves", "fortbaxter"), name="regress_widepref_" + bars,
+        g = rig.Game.start(save=rig.default_save(), name="regress_widepref_" + bars,
                            env={"VCS_ASPECT": "43", "VCS_CUTSCENE_BARS": bars})
         try:
             g.wait_ingame()
@@ -221,7 +221,7 @@ def step_scopemask(out, quick):
     d = os.path.abspath(os.path.join(out, "scopemask"))
     os.makedirs(d, exist_ok=True)
     res = {}
-    g = rig.Game.start(save=os.path.join(ROOT, "build", "rig", "saves", "fortbaxter"), name="regress_scopemask",
+    g = rig.Game.start(save=rig.default_save(), name="regress_scopemask",
                        env={"VCS_ASPECT": "169", "VCS_HUD": "0"})
     try:
         g.wait_ingame()
@@ -290,7 +290,7 @@ def step_menushape(out, quick):
     d = os.path.abspath(os.path.join(out, "menushape"))  # the game writes it (its own working directory)
     env = {"VCS_ASPECT": "329", "VCS_HUD": "2", "PS2X_HW_OUTPUT": "1920x1080", "PS2X_CAPTURE_SIZE": "480x270",
            "VCS_PERF_OVERLAY": "0"}
-    g = rig.Game.start(save=os.path.join(ROOT, "build", "rig", "saves", "fortbaxter"), name="regress_menushape", env=env)
+    g = rig.Game.start(save=rig.default_save(), name="regress_menushape", env=env)
     try:
         g.wait_ingame()
         g.prime()

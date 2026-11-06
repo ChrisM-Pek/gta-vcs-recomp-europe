@@ -175,7 +175,7 @@ class Check:
         self.ok("cutscene ends under the free camera", mode == 4, "camera mode %d, %.0f s after turning it on" % (mode, time.time() - start))
 
     def run(self, vehicles, only_freecam=False):
-        g = self.g = rig.Game.start(save=os.path.join(ROOT, "build", "rig", "saves", "fortbaxter"), name="trainer_check",
+        g = self.g = rig.Game.start(save=rig.default_save(), name="trainer_check",
                                     port=self.port, data_dir=os.path.join(ROOT, "build", "trainer", "data"),
                                     env={"VCS_FPS": "30", "VCS_ASPECT": "43"})
         try:

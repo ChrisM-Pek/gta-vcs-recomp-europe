@@ -74,7 +74,7 @@ class Session:
         env = {"VCS_ASPECT": "43", "VCS_TIMING": "1", "VCS_TIMESTEP": str(step), "VCS_FPS": "0", "PS2X_INPUT": "injected"}
         self.step = step
         self.in_car = False
-        self.g = rig.Game.start(save=os.path.join(ROOT, "build", "rig", "saves", "fortbaxter"), name=name, port=port,
+        self.g = rig.Game.start(save=rig.default_save(), name=name, port=port,
                                 data_dir=os.path.join(ROOT, "build", "audit", "data_%d" % step), env=env)
         g = self.g
         g.wait_ingame()
@@ -664,7 +664,7 @@ def check_sites(port):
         table.setdefault(int(m), set()).add(int(off, 16))
     bad = 0
     for mission in sorted(table):
-        g = rig.Game.start(save=os.path.join(ROOT, "build", "rig", "saves", "fortbaxter"), name="sites_%d" % mission,
+        g = rig.Game.start(save=rig.default_save(), name="sites_%d" % mission,
                            port=port, data_dir=os.path.join(ROOT, "build", "audit", "sites_data"),
                            env={"VCS_SCRIPT_TIMESTEP_CHECK": "1"})
         try:

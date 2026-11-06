@@ -213,7 +213,7 @@ registration order; the vcs.ini keys did not change):
 |---|---|---|
 | Display | Screen | Aspect ratio, HUD |
 | Display | Frame rate | Game timing, Frame rate cap |
-| Graphics | Image quality | Internal resolution, Anti-aliasing (MSAA), Texture filtering, Car reflections |
+| Graphics | Image quality | Internal resolution, Anti-aliasing (MSAA), Texture filtering |
 | Game | Start-up | Skip intro movies (`display.skip_intro`) |
 | Controls | Menu | Settings menu key |
 | Advanced | Diagnostics | Performance overlay (`graphics.perf_overlay`) |
@@ -378,7 +378,6 @@ sync, the menu driven by a real mouse.
 | Display | Frame rate | 30 (original), 60 (needs a fast CPU) | live |
 | Display | Anti-aliasing (MSAA) | Off (original), 2x, 4x, 8x | restart |
 | Display | Texture filtering | Bilinear (original), Anisotropic 2x-16x | restart |
-| Graphics | Car reflections | Auto (Original at 1x, Smooth above), Original, Smooth (`graphics.reflections`, `VCS_REFLECTIONS`) | live |
 | Display | Window | Windowed / Borderless fullscreen | live |
 | Graphics | Native renderer | On / Off (`PS2X_HLE`) | restart |
 | Graphics | Performance overlay | On / Off (F3) | live |

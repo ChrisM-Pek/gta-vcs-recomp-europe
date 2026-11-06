@@ -878,7 +878,7 @@ Python scripts still usable on their own. docs/LAUNCHER.md has the whole of it; 
 | `VCS_FREEAIM=0` | free aim's hooks not installed (CGame::Process, CCamera::Process, the weapons' line test): the game's aiming untouched, the setting does nothing |
 | `VCS_INPUT_MAP=0` | the runtime's fixed built-in key / gamepad mapping instead of the player's bindings (`ps2_pad.cpp`; the reference) |
 | `VCS_VSYNC=0\|1\|2` | Vertical sync for one run: off, on, off with tearing allowed |
-| `VCS_REFLECTIONS=0\|1\|2` | Car reflections for one run: Original, Smooth, Auto (Smooth above 1x; the default) - game-internals.md 6g |
+| `VCS_REFLECTIONS=0\|1\|2` | Car reflections for one run: Original, Smooth, Auto (Smooth above 1x; always used otherwise, no setting) - game-internals.md 6g |
 | `VCS_SCRIPT_TIMESTEP=0` | mission meters that count per frame stay on the frame rate (game-internals.md 11f; the reference) |
 | `VCS_PHYSICS_TIMESTEP=0` | the push of a body under a wheel, the rolling resistance and a bike's brake wobble stay per frame (game-internals.md 4; the reference) |
 | `VCS_TURN_LOG=<model>` | every ApplyTurnForce on vehicles of that model (212 = PCJ-600): caller, its change to the yaw / pitch rate (sum by caller to find a per-frame push) |

@@ -846,8 +846,8 @@ UV mapping per primitive fitted from the vertices, u = du/dx * x + offset in tex
   its 128x128 PS2 texel centres. Match window with and without `PS2X_HW_REFLECTION_SCALE=0`: car paint differs by a
   mean 0.13 / 255 (frame-to-frame noise 0.04). What higher resolutions change is how visible it is: the rest of the
   picture stops shimmering, and the panels' jumps stand out.
-- **Car reflections: Smooth** (2026-11-06, Graphics page; `VCS_REFLECTIONS=0|1|2` = Original / Smooth / Auto, the
-  default Auto = Smooth when the frame is above 1x by its height, so 1x 16:9 (853x448) stays Original). The game's copy
+- **Car reflections: Smooth** (2026-11-06; always Auto, no setting: Smooth when the frame is above 1x by its height, so
+  1x 16:9 (853x448) stays Original; `VCS_REFLECTIONS=0|1|2` = Original / Smooth / Auto for one run). The game's copy
   into FBP 420 / FBW 2 (`gsHwSetTargetFilter`) is marked as a filtered copy (`markFiltered`: axis-aligned, more than
   1.5 source texels per target pixel). With Smooth, the shader (`sampleRtFiltered`) gives each map texel a tent over
   its whole footprint and its neighbours' (±5 x ±3.5 frame pixels, up to 16 taps per axis at the frame's resolution),

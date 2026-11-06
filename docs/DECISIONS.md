@@ -1148,9 +1148,12 @@ the picture is clean, so the panels' jumps stand out.
   make the flashes fainter but no rarer, and the paint duller than the PS2's even when nothing moves. A tent over each
   map texel's footprint keeps the reflection's average colour (the same strength, the same picture in a still frame)
   and takes away the jumps: a texel's swing under sub-pixel motion falls ~2.7x.
-- **Setting "Car reflections": Auto (default) / Original / Smooth.** Auto is Original at 1x internal resolution - the
+- **Always Auto, no setting** (the user's choice, the same day: a first build had "Car reflections: Auto / Original /
+  Smooth" on the Graphics page; the user asked to remove it and keep Auto). Original at 1x internal resolution - the
   authentic picture - and Smooth above it, where the player has already chosen a cleaner picture than the PS2's. "1x"
-  goes by the frame's height: widescreen's 1x is wider, not finer.
+  goes by the frame's height: widescreen's 1x is wider, not finer. The internal resolution is the switch: 1x gives the
+  PS2's reflections. `VCS_REFLECTIONS=0|1|2` (Original / Smooth / Auto) picks for one run, for comparisons; an old
+  `graphics.reflections` line in vcs.ini is left alone and ignored.
 - **Not done:** a blend over time (the PS2 has none: the map is overwritten every frame). It would also lag reflections
   behind the camera. Worth trying only if Smooth is not enough.
 - Would change: if players find Smooth too soft compared with the original's crispness, a narrower footprint (a box of

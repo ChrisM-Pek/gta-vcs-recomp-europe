@@ -636,21 +636,14 @@ namespace
 
         // The reflection on car paint (docs/game-internals.md 6g): the PS2 samples the frame once per spot, so a panel
         // flickers as the camera moves - the same at every resolution, but plainer to see when the rest of the picture is
-        // sharp. Auto keeps the original at 1x (DECISIONS.md 2026-11-06).
-        s = {};
-        s.key = "graphics.reflections";
-        s.page = "Graphics";
-        s.section = "Image quality";
-        s.label = "Car reflections";
-        s.help = "The reflection of the surroundings on car paint. Original samples a few pixels of the screen, as on the "
-                 "PS2, so panels flicker while the camera moves. Smooth averages the area around them instead: the same "
-                 "reflection without the flicker. Auto is Original at 1x internal resolution and Smooth above it.";
-        s.type = Type::Choice;
-        s.choices = {{"Auto", 2}, {"Original", 0}, {"Smooth", 1}};
-        s.defaultValue = 2;
-        s.env = "VCS_REFLECTIONS";
-        s.onChange = [](int v) { vcs::setReflectionFilter(v); };
-        settings::add(s);
+        // sharp. Always Auto: the original at 1x, Smooth above it - no setting (the user's choice, DECISIONS.md
+        // 2026-11-06). VCS_REFLECTIONS=0|1|2 (Original / Smooth / Auto) picks for one run, for comparisons.
+        {
+            int mode = 2;
+            if (const char *e = std::getenv("VCS_REFLECTIONS"); e && *e >= '0' && *e <= '2' && !e[1])
+                mode = *e - '0';
+            vcs::setReflectionFilter(mode);
+        }
 
         // The graphics API, when the build has more than one (Windows with VCS_RHI_VULKAN); VCS_RHI=d3d11|vulkan|null
         // chooses for one run (render/presenter.h).

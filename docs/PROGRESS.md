@@ -804,14 +804,20 @@ dropped on uploads (lazy render-target patching).
 - **Traffic / pedestrian density and draw distance** (2026-11-07, the user's request; DECISIONS.md, game-internals.md
   6o / 12d, `src/game/vcs_world_detail.cpp`): Enhancements > World - **Traffic density**, **Pedestrian density**,
   **Draw distance**, 100% (the original) to 300%. Density scales the spawners' own constants (the scripts' multipliers
-  stay theirs: a mission's 0 still empties the streets), raises the caps (cars 16 -> 28, peds 25 / 30 -> 45) with a
-  pool guard (the original caps while fewer than 16 ped / 8 vehicle slots are free), and scales each spawner's
-  chance per road class. Draw distance writes the game's own unused LOD scale `0x4887F8`, with a guard that steps it
-  back near the packet buffer's limit. Measured: peds at a Little Haiti spot 22-24 -> 34-36, random cars while
+  stay theirs: a mission's 0 still empties the streets), raises the caps (cars 16 -> 28, peds 25 / 30 -> 45) only
+  while 16 slots stay free in each pool (the game deletes the closest car / ped, visible or not, below 8), and
+  scales each spawner's chance per road class. Draw distance writes the game's own unused LOD scale `0x4887F8` as
+  set. Cars in view are not removed while any World setting is above 100% (the user saw them vanish ahead while
+  driving: the game's 160 m on-screen removal, inside the longer draw distance). Measured: peds at a Little Haiti spot 22-24 -> 34-36, random cars while
   driving 7-9 -> 9-10 (the spawn spots limit cars, 12d); draw distance 300%: about +9% draws in an emptied street,
   more with people about, the packet buffer at most 220 KB of 921 KB. The far plane was tried (`VCS_FAR_CLIP`) and
-  kept at 2000. `tools/world_check.py`: 8 checks (original, peds, poolroom, script0, lod, packets, traffic, back),
-  0 failed; scenes with the module on and off (`VCS_WORLD_DETAIL_HOOKS=0`) identical at the defaults.
+  kept at 2000. `tools/world_check.py`: 10 checks (original, inview, peds, poolroom, script0, lod, packets, vanish,
+  back; traffic reported), 0 failed; scenes with the module on and off (`VCS_WORLD_DETAIL_HOOKS=0`) differ only as two
+  captures with it off do (the loading art, the flyover's timing) at the defaults. Cars vanishing in view, 16:9, all
+  three at 300%, 3 min AI drives: with `VCS_WORLD_KEEP=0` 6 at about 175 m (even at 100% traffic, draw distance 300%),
+  with the fix 0 in 30 min (three 10 min drives) and in every world_check since; two earlier fixed runs each lost one
+  car 4-6 m from the camera, not seen again since the log names the caller (`[world] car vanished in view ... removed
+  from 0x...`). Shakedown and Last Stand's credits pass at 300% on all three.
 
 ## Milestone 9 - Linux (started 2026-10-30)
 
@@ -1003,6 +1009,7 @@ Python scripts still usable on their own. docs/LAUNCHER.md has the whole of it; 
 | `VCS_PROMPTS_DUMP=<file.png>` | each glyph atlas made, written over grey (to look at the glyphs) |
 | `VCS_TRAFFIC=100..300`, `VCS_PEDS=100..300`, `VCS_DRAW_DISTANCE=100..300` | Enhancements > World for this run (percent; the menu shows them read-only) |
 | `VCS_WORLD_DETAIL_HOOKS=0` | density and draw distance write nothing (the settings then do nothing; game/vcs_world_detail.h) |
+| `VCS_WORLD_KEEP=0` | density without the pool reserve and cars in view not kept (the first version, to compare); the log still names each car that vanishes in view (`[world] car vanished in view`) |
 | `VCS_FAR_CLIP=<metres>` | a test: the far plane and so the fog end at this distance instead of 2000, outdoors (2000 < m <= 20000; game-internals.md 6o) |
 | `VCS_LOADING_NATIVE=0` | loading screens drawn into the PS2 frame buffer instead of the native layer |
 | `PS2X_HW_PATH2_PACKED=0` | PATH2 draw packets (Im2D, effect strips) through the GS front end vertex by vertex instead of recorded whole |

@@ -1509,9 +1509,13 @@ maths, then checked in the game (`tools/world_check.py`, the free camera).
 - **Moving the far plane** (`VCS_FAR_CLIP`, a test: both 2000s replaced, so the fog end moves too): more of the
   distant city and a bridge show through thinner haze, but the far water and land the PS2 kept in the fog are drawn
   as dark brown-black patches, and the hazy look of the city goes. Not offered in the menu (DECISIONS.md 2026-11-07).
-- `vcs_world_detail.cpp` writes `0x4887F8` (Enhancements > Draw distance) and steps it back while the frame's
-  packets come within 0x20000 bytes of the drop limit. Packet use at the frame kick = (cursor `+0x18` - (half start
-  - 0x10)) + (half end - data `+0x1C`), as `FUN_00476770` computes it.
+- `vcs_world_detail.cpp` writes `0x4887F8` (Enhancements > Draw distance) as set, nothing held back. It reports the
+  packet use at the frame kick = (cursor `+0x18` - (half start - 0x10)) + (half end - data `+0x1C`), as
+  `FUN_00476770` computes it (`worlddetail`: packets / peak).
+- **Cars drawn further than the game keeps them**: PossiblyRemoveVehicle (12d) removes a car on screen beyond 160 m x
+  GenerationDistMultiplier. On the PS2 that is past where cars are drawn; with the LOD scale up they are drawn beyond
+  it, and cars about 175 m ahead vanished while driving (16:9, Draw distance 300%, even at 100% traffic: 6 in 3 min).
+  The module skips that removal for a car in view within 160 m x GenerationDistMultiplier x the draw distance.
 
 ## 7. Textures: `.XTX`
 
@@ -2489,11 +2493,26 @@ probes in the game (rig, `worlddetail`).
   `FUN_0043BE00`; `0x487498` `FUN_00430290` and `FUN_00268048`. None is written by the game (`FUN_003B4588` writes
   `0x72A67C`, another `lui`).
 - Pools: peds 70, vehicles 40 (the vehicle pool's size, not in 12 before). A random car's driver is a ped.
+- **Removal** (2026-11-07, after the user saw cars vanish in front of them with more traffic; decompiled):
+  - `FUN_00433008` = RemoveDistantCars: every vehicle every frame through `FUN_00433378` = PossiblyRemoveVehicle.
+    Not for mission / kept cars (`FUN_0043B4A0`, flag +0x260 bit 43, `FUN_003E69F0` / `FUN_002612E8`); the limit is
+    60 m (2D, from the player) when `FUN_003C4318(car)` is 0 - not on screen - and a set of camera / state conditions
+    hold, else 160 m x GenerationDistMultiplier (`0x6F4CA0`); 70 m when the camera looks straight down
+    (`0x6F44E8` < -0.9); x 1.5 with +0x260 bit 55. Beyond it the car goes unless `FUN_0025D998(pos)` - not a
+    visibility test: inside one of the areas in the 0xD0-byte records from `0x50DF80` (types 0xE..0x10, 0x16..0x1E).
+    Wrecks / abandoned cars (status 2 / 3) go after 5 s beyond 22 m off screen; status 5 after 60 s beyond 6.5 m.
+  - **`FUN_00433188` = RemoveCarsIfThePoolGetsFull**: every 8th frame (`0x4CD124 & 7 == 2`), with fewer than 8 vehicle
+    slots free (`FUN_0047FC30` counts them), the deletable car **closest to the camera** (`0x6F4500`) is deleted -
+    on screen or not. **`FUN_002B0C00` = RemovePedsIfThePoolGetsFull** does the same for peds (`& 7 == 4`,
+    `FUN_004793E8`, deletable = `FUN_001FFA80`); it runs first in `FUN_002AFE80`, the ped step.
+  - Both delete through `FUN_0018FA50(entity, 1)` (CWorld::Remove) and the entity's vtable +0x10 (delete).
 - **Enhancements > World** (`vcs_world_detail.cpp`): Traffic / Pedestrian density scale 0.7 / 0.4 (so a script's 0
   stays 0 and its 10 becomes 10 x the setting), raise the caps (cars at most 28, peds 45), and give each spawner the
   class table with every chance ((v + 1) / 16) times the setting, class 0 unchanged - written before each spawner
-  runs, since both read the one table. While fewer than 16 ped or 8 vehicle slots are free, the original caps
-  apply. Measured (world_check): peds at the Little Haiti spot about 25 -> 40 at 300%; random cars while driving
+  runs, since both read the one table. Each spawner's cap is set right before it runs from the pools as they are:
+  above the original only while 16 slots stay free in each (2 more peds for a car's driver), so the extra traffic
+  never brings the game to its pool-full deletion. And PossiblyRemoveVehicle is skipped for a car in view within the
+  distance cars are drawn at (6o). Measured (world_check): peds at the Little Haiti spot about 25 -> 40 at 300%; random cars while driving
   about 9-10 -> 10-13 - the spawn spots stay the limit. With peds at 300% the random cars standing there fell to 0-5
   in one probe (cause not found; the heap was not it).
 

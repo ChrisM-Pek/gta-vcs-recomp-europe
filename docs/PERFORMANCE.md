@@ -831,7 +831,7 @@ one-second readings). The numbers move with what walks past, so read them as a s
 - **Draw distance**, game / worker / GS stage ms and draws over three runs: 100% 6.0-8.2 / 2.1-4.2 / 1.8-3.3, 530-1330
   draws; 300% 7.2-8.7 / 3.5-5.8 / 2.5-4.5, 1080-1870 draws. Roughly +1 ms game thread, +1.5 ms worker, +1 ms GS stage
   at 300% with people about; in an emptied street +9% draws. The packet buffer's peak while driving stays 170-220 KB
-  of 921 KB (the game drops sectors below 74 KB free), so the guard never stepped in.
+  of 921 KB (the game drops sectors below 74 KB free), so the setting is applied as it is, with no step back.
 - Not measured yet: the cost with the optimised (`lto`) build and at 144 fps (bench.py with `VCS_DRAW_DISTANCE=300`).
 
 ## Next

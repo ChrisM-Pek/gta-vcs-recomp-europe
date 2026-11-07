@@ -1221,15 +1221,21 @@ chose two density sliders and, for draw distance, the LOD scale with the far pla
   distance. 100% writes the game's own values; `VCS_WORLD_DETAIL_HOOKS=0` writes nothing (rule 1).
 - **The scripts' multipliers are left alone**: missions set them to 0 to clear the streets and saves carry them, so
   the setting scales the spawners' own constants (0.7 / 0.4) instead - a mission's 0 stays 0.
-- **The caps grow with headroom**: cars at most 28 (the game stops at 30 random cars itself), peds 45, and the
-  original caps return while fewer than 16 ped / 8 vehicle slots are free, so a mission's CREATE_CHAR / CREATE_CAR
-  never meets a full pool.
+- **The caps grow with headroom**: cars at most 28 (the game stops at 30 random cars itself), peds 45, and only while
+  16 slots stay free in each pool (set right before each spawner runs), so a mission's CREATE_CHAR / CREATE_CAR never
+  meets a full pool and the game never deletes the closest car or ped to make room (it does below 8 free, visible or
+  not - the first version stopped spawning only there, too late).
+- **Cars in view are never removed** (the user's report: cars vanished ahead while driving, 2026-11-07): the game
+  removes on-screen cars 160 m out, which a longer draw distance shows. With any World setting above 100% that
+  removal waits until the car is out of view or beyond the distance cars are drawn at. `VCS_WORLD_KEEP=0` is the
+  behaviour before, to compare; the module counts and logs any car that vanishes in view.
 - **Traffic stays modest**: the density limit rarely binds for cars - the spawn spots 110 m ahead do. The spawn chance
   per road class is scaled too (class 0, next to no traffic, kept), which helps while driving; more would mean
   changing where cars spawn, a deeper change than an option should make. Release notes should call it a modest change.
 - **Draw distance is the LOD scale only**: the game's own unused `0x4887F8` (VC's ms_lodDistScale), so the same
-  mechanism as the PC versions' slider. A guard steps it back near the packet buffer's limit (never reached in the
-  tests: 220 KB of 921 KB at 300%), so the game never drops sectors to make room.
+  mechanism as the PC versions' slider. No automatic step back (the user's call, 2026-11-07: this is a PC, the setting
+  is what it says): the first version lowered it near the packet buffer's limit, where the game drops sectors, but
+  300% used at most 220 KB of the 921 KB, so the setting is applied as it is.
 - **The far plane stays 2000**: moving it (and so the fog) showed the far water and land as dark patches the fog hid
   on the PS2, and thinned Vice City's haze. Kept as a test switch, `VCS_FAR_CLIP=<metres>`; it would need its own
   work on the distant LOD's colours to be an option.

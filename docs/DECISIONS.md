@@ -1210,3 +1210,26 @@ built so that more glyph sets can be added. They asked for the investigation and
   action says R1). Not checked against the pad code; a wrong one shows L1 where the game meant another shoulder.
 - Not yet: the Controls page's controller picture (a keyboard list there would be a page of its own); the loading
   screen's "Press ~X~" shows the on-foot Cross key (Enter only works inside the menu).
+
+## 2026-11-07 - Traffic / pedestrian density and draw distance (the user's request)
+
+The user asked for two enhancements, more cars and peds and objects drawn further away, keeping performance and the
+original game at the defaults, with engine changes allowed. Investigated first (game-internals.md 6o, 12d); the user
+chose two density sliders and, for draw distance, the LOD scale with the far plane tested before it is offered.
+
+- **Three sliders on Enhancements > World**, 100% (the original) to 300%: Traffic density, Pedestrian density, Draw
+  distance. 100% writes the game's own values; `VCS_WORLD_DETAIL_HOOKS=0` writes nothing (rule 1).
+- **The scripts' multipliers are left alone**: missions set them to 0 to clear the streets and saves carry them, so
+  the setting scales the spawners' own constants (0.7 / 0.4) instead - a mission's 0 stays 0.
+- **The caps grow with headroom**: cars at most 28 (the game stops at 30 random cars itself), peds 45, and the
+  original caps return while fewer than 16 ped / 8 vehicle slots are free, so a mission's CREATE_CHAR / CREATE_CAR
+  never meets a full pool.
+- **Traffic stays modest**: the density limit rarely binds for cars - the spawn spots 110 m ahead do. The spawn chance
+  per road class is scaled too (class 0, next to no traffic, kept), which helps while driving; more would mean
+  changing where cars spawn, a deeper change than an option should make. Release notes should call it a modest change.
+- **Draw distance is the LOD scale only**: the game's own unused `0x4887F8` (VC's ms_lodDistScale), so the same
+  mechanism as the PC versions' slider. A guard steps it back near the packet buffer's limit (never reached in the
+  tests: 220 KB of 921 KB at 300%), so the game never drops sectors to make room.
+- **The far plane stays 2000**: moving it (and so the fog) showed the far water and land as dark patches the fog hid
+  on the PS2, and thinned Vice City's haze. Kept as a test switch, `VCS_FAR_CLIP=<metres>`; it would need its own
+  work on the distant LOD's colours to be an option.

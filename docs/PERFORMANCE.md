@@ -820,6 +820,20 @@ are within ~5% while driving (0.15-0.2 ms, the same as the spread between rounds
 (DECISIONS.md 2026-11-03). Left, if it ever matters: the GS stage's remaining few percent (no single symbol stands out
 in its profile any more), and the IOP host's / SIF RPC's `recursive_mutex`es (rare calls with the native IOP).
 
+### 30. Density and draw distance: what they cost (2026-11-07)
+
+`tools/world_check.py` (quick build, hidden, pinned to 30 fps; the spot city_-675_1425 at noon; perf means of 3
+one-second readings). The numbers move with what walks past, so read them as a size, not a figure:
+- **Defaults**: the module reads two pools and writes nothing (values already equal): no measurable cost; scenes with
+  it on and off (`VCS_WORLD_DETAIL_HOOKS=0`) give identical static frames.
+- **Pedestrian density 300%**: about 50% more peds (22-24 -> 34-36); game thread within the spread (7.7 -> 8.0 ms in
+  one run, 8.5 -> 7.9 in another).
+- **Draw distance**, game / worker / GS stage ms and draws over three runs: 100% 6.0-8.2 / 2.1-4.2 / 1.8-3.3, 530-1330
+  draws; 300% 7.2-8.7 / 3.5-5.8 / 2.5-4.5, 1080-1870 draws. Roughly +1 ms game thread, +1.5 ms worker, +1 ms GS stage
+  at 300% with people about; in an emptied street +9% draws. The packet buffer's peak while driving stays 170-220 KB
+  of 921 KB (the game drops sectors below 74 KB free), so the guard never stepped in.
+- Not measured yet: the cost with the optimised (`lto`) build and at 144 fps (bench.py with `VCS_DRAW_DISTANCE=300`).
+
 ## Next
 
 - **The heavy views (~120 fps)**: the game thread's chain submission there (1.4-1.6 ms: the VIF1 chain copy, the walker

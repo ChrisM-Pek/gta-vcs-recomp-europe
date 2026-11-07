@@ -28,6 +28,7 @@
 #include "game/vcs_input.h"
 #include "game/vcs_prompts.h"
 #include "game/vcs_volume.h"
+#include "game/vcs_world_detail.h"
 #include "platform/platform.h"
 #include "render/presenter.h"
 #include "rhi/rhi.h"
@@ -692,6 +693,7 @@ namespace
 
         vcs::input::registerSettings(); // the Keyboard & mouse and Gamepad pages (game/vcs_input.h)
         vcs::prompts::registerSettings(); // the Enhancements page: button prompts by device (game/vcs_prompts.h)
+        vcs::world::registerSettings();   // Enhancements > World: density, draw distance (game/vcs_world_detail.h)
 
         s = {};
         s.key = "graphics.perf_overlay";

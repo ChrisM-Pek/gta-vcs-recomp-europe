@@ -801,6 +801,17 @@ dropped on uploads (lazy render-target patching).
   it. Original runs the game's own code. `tools/prompts_check.py`: 5 checks (expand, sets, automatic, menu, original),
   0 failed; screenshots at 4:3 and 16:9 with the HUD at the screen edges. Not done: the Controls page's controller
   picture, a Nintendo set (a Nintendo pad shows Xbox glyphs for now).
+- **Traffic / pedestrian density and draw distance** (2026-11-07, the user's request; DECISIONS.md, game-internals.md
+  6o / 12d, `src/game/vcs_world_detail.cpp`): Enhancements > World - **Traffic density**, **Pedestrian density**,
+  **Draw distance**, 100% (the original) to 300%. Density scales the spawners' own constants (the scripts' multipliers
+  stay theirs: a mission's 0 still empties the streets), raises the caps (cars 16 -> 28, peds 25 / 30 -> 45) with a
+  pool guard (the original caps while fewer than 16 ped / 8 vehicle slots are free), and scales each spawner's
+  chance per road class. Draw distance writes the game's own unused LOD scale `0x4887F8`, with a guard that steps it
+  back near the packet buffer's limit. Measured: peds at a Little Haiti spot 22-24 -> 34-36, random cars while
+  driving 7-9 -> 9-10 (the spawn spots limit cars, 12d); draw distance 300%: about +9% draws in an emptied street,
+  more with people about, the packet buffer at most 220 KB of 921 KB. The far plane was tried (`VCS_FAR_CLIP`) and
+  kept at 2000. `tools/world_check.py`: 8 checks (original, peds, poolroom, script0, lod, packets, traffic, back),
+  0 failed; scenes with the module on and off (`VCS_WORLD_DETAIL_HOOKS=0`) identical at the defaults.
 
 ## Milestone 9 - Linux (started 2026-10-30)
 
@@ -990,6 +1001,9 @@ Python scripts still usable on their own. docs/LAUNCHER.md has the whole of it; 
 | `VCS_PROMPTS=0..4` | Enhancements > Button prompts for this run: 0 Original, 1 Automatic, 2 PlayStation, 3 Xbox, 4 Keyboard & mouse (the menu shows it read-only) |
 | `VCS_PROMPTS_HOOKS=0` | none of the button prompts' hooks (the setting then does nothing; game/vcs_prompts.h) |
 | `VCS_PROMPTS_DUMP=<file.png>` | each glyph atlas made, written over grey (to look at the glyphs) |
+| `VCS_TRAFFIC=100..300`, `VCS_PEDS=100..300`, `VCS_DRAW_DISTANCE=100..300` | Enhancements > World for this run (percent; the menu shows them read-only) |
+| `VCS_WORLD_DETAIL_HOOKS=0` | density and draw distance write nothing (the settings then do nothing; game/vcs_world_detail.h) |
+| `VCS_FAR_CLIP=<metres>` | a test: the far plane and so the fog end at this distance instead of 2000, outdoors (2000 < m <= 20000; game-internals.md 6o) |
 | `VCS_LOADING_NATIVE=0` | loading screens drawn into the PS2 frame buffer instead of the native layer |
 | `PS2X_HW_PATH2_PACKED=0` | PATH2 draw packets (Im2D, effect strips) through the GS front end vertex by vertex instead of recorded whole |
 | `PS2X_TRACE_PATH2_TAGS=1` | PATH2 (VIF DIRECT) packets by the shape of their first GIFtag, and the register sequence of A+D packets that draw, every 5 s (`[path2]`) |

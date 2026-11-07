@@ -279,6 +279,9 @@ Audio, Game, Keyboard, Gamepad, Advanced.
   vibration stopped, sound muted).
 - **Keyboard** / **Gamepad**: the bindings and stick, mouse and vibration options (docs/CONTROLS.md).
 - **Advanced**: **Reset all settings** (asks for a second click).
+- **Enhancements** (2026-11-07, after this list was written): **Button prompts** (game-internals.md 6n) and, under
+  *World*, **Traffic density**, **Pedestrian density** and **Draw distance** (100% = the original, up to 300%;
+  `VCS_TRAFFIC` / `VCS_PEDS` / `VCS_DRAW_DISTANCE`; game-internals.md 6o / 12d, `src/game/vcs_world_detail.cpp`).
 
 Registry additions (`settings::Spec`): `Type::Action` (a button: `button` text, `confirm` for a second click; no
 value, nothing in vcs.ini, skipped by applyAll and the page reset); Key `optional` (0 = unbound; right-click clears),

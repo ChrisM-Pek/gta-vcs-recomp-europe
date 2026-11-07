@@ -1475,6 +1475,44 @@ btn_triangle_psp, btn_square_psp, btn_up_psp, btn_down_psp, btn_left_psp, btn_ri
 - **The drop shadow** (`FUN_003f3d88` renders twice, the shadow first with t3 = 1) draws button glyphs in white too, the
   same as the text's own pass (`FUN_00261be8` gives them colour 255,255,255 with the text's alpha).
 
+### 6o. Draw distance: the LOD scale and the two far planes (2026-11-07, Enhancements > World)
+
+Found reading the generated code's disassembly for the far plane's setters and readers and the camera update's LOD
+maths, then checked in the game (`tools/world_check.py`, the free camera).
+
+- **RwCamera**: +0x78 near, +0x7C far, +0x80 fog distance; setters `FUN_0018F3B0` / `FUN_0018F400` (far) /
+  `FUN_0018F4A8` (fog), getters `FUN_0018F448` / `FUN_0018F3F8` / `FUN_0018F4B8`. `Scene.camera` = `*0x51E490`
+  (TheCamera keeps it at +0x7F4). Init `FUN_003B99F8` (far 2000, near 0.9); indoors (`currArea` not 0 / 4)
+  `FUN_0029DAB0` sets near 0.3, far 1000.
+- **Far plane, every frame**: `FUN_0021E950` sets 2000 at `0x21EBA4` (`RwCameraSetFarClipPlane`, returns to
+  0x21EBB8), then the fog distance from the timecycle's fog start (`*(*0x486838 + 0x3310)`). `CCamera::Process`
+  (`FUN_00378DD8`, `0x37B044` / `0x37B058`) copies near / far into `0x4CD130` / `0x4CD12C`, which
+  `CCamera::IsSphereVisible` and the sprite projection `FUN_0039FC48` read - so world sectors (6b) and entities are
+  cut at the RwCamera's far.
+- **The VU projection's far is a second, separate 2000**: `RwCameraBeginUpdate` (`FUN_0018EE48`) calls
+  `FUN_002F57A0(tan f12, aspect f13, near f14 = cam+0x78, far f15 = the constant 2000)` at 0x18F088, which writes
+  `0x742AC0` (the view window of 5) and the clip-plane qwords 59-64 (the VU clipper's w < 2000, 6h). The fog end is
+  the RwCamera's far: `FUN_002F6008(fog start, cam+0x7C)` at 0x18F0E8 sets VU qword 53 (fog = clamp(53.w * w + 53.z)).
+- **The timecycle's far clip** (`*0x486838 + 0x330C`, interpolated per hour by `FUN_001CCF20` as VC does) is
+  computed and never read: VCS's far plane does not change with the hour or the weather, only the fog start does.
+- **LOD scale**: `CCamera::Process` computes LODDistMultiplier (`TheCamera+0x7DC` = `0x6F4CAC`): 70 / FOV
+  (0x37AEE4), times 1 + (z - 55) / 60 above z 55, at most 2.0 (0x37B01C); copies it to GenerationDistMultiplier
+  (+0x7D0, which the spawners use: cars appear at 110 x it, 12d) at 0x37B068; then **multiplies it by `0x4887F8`**
+  (0x37B06C). `0x4887F8` is 1.0 in the executable, read there only and written nowhere - the counterpart of VC's
+  `CRenderer::ms_lodDistScale`. Every model's LOD distances (CSimpleModelInfo +0x2C, three floats; `FUN_003A52F8`
+  GetAtomicFromDistance, `FUN_003A5380`, `FUN_003A53E0`) and the entity visibility test (`FUN_0035EFD8`, VC's
+  SetupEntityVisibility, constants 330 / 300 / 30 / 20 / 50) scale with LODDistMultiplier.
+- **In the game** (world_check, Little Haiti street at noon, 30 fps): scale 3 doubles the frame's draws (530 -> about
+  1,000: peds, cars and props further down the street), game thread +1 ms, render worker +1.5 ms, GS stage +0.7 ms;
+  the packet buffer stayed at 70-220 KB of 921 KB driving (VCS_TRACE_PACKETS agrees), far from the 0x12BFF-free limit
+  where the game drops sectors. Seen from 250 m up the scale changes little: the height factor already raised it.
+- **Moving the far plane** (`VCS_FAR_CLIP`, a test: both 2000s replaced, so the fog end moves too): more of the
+  distant city and a bridge show through thinner haze, but the far water and land the PS2 kept in the fog are drawn
+  as dark brown-black patches, and the hazy look of the city goes. Not offered in the menu (DECISIONS.md 2026-11-07).
+- `vcs_world_detail.cpp` writes `0x4887F8` (Enhancements > Draw distance) and steps it back while the frame's
+  packets come within 0x20000 bytes of the drop limit. Packet use at the frame kick = (cursor `+0x18` - (half start
+  - 0x10)) + (half end - data `+0x1C`), as `FUN_00476770` computes it.
+
 ## 7. Textures: `.XTX`
 
 Confirmed from `LOADSC*.XTX` (263,372 bytes each, 512x512 8-bit):
@@ -2134,7 +2172,8 @@ mission's runtime IP is 0x3CAE3 + (IP - its start)) and reproduced with the rig.
   bRemoveFromWorld go to FUN_00198408, which removes and deletes them); FUN_00210780 =
   CPed::FlagToDestroyWhenNextProcessed (sets bRemoveFromWorld, gets the ped out of a vehicle); FUN_001f4bf0 =
   CPed::ProcessControl (at 0x1f4cfc: if bFadeOut, alpha -= 8 and FlagToDestroy below 0); FUN_00430148 =
-  CPopulation::Update (FUN_00430290 adds peds); FUN_00433008 / FUN_00433378 = CCarCtrl::RemoveDistantCars /
+  the random-car step (CCarCtrl::GenerateRandomCars; FUN_00430290 adds one car - not peds, as this line said until
+  2026-11-07; peds: FUN_002B17A8, 12d); FUN_00433008 / FUN_00433378 = CCarCtrl::RemoveDistantCars /
   PossiblyRemoveVehicle (a removed car deletes its occupants); FUN_0014ca80 = CAutomobile::ProcessControlInputs (with
   the player's controls disabled it brakes and calls FUN_00237c30, which destroys the player's off-screen random near
   peds and makes the others flee). The script command at 0x2b0b9c (FUN_002b0200) sets bFadeOut on many peds at once
@@ -2415,6 +2454,48 @@ hidden run (rig `peek` / `poke`, snapshots diffed).
   line as they are (a man under the circle hit, one 2 m beside him not: controls_check `mounted_gun`). The same
   attachment to a car (model 211) gives the same state and camera - how the check sets it up. JER_A1 attaches Vic to a
   car too (`0 0 0 0 360 0`: no weapon, not seen in its camera).
+
+### 12d. Population: density, caps, spawn chance (2026-11-07, Enhancements > World)
+
+Found from the density opcodes' handlers (0125 SET_CAR_DENSITY_MULTIPLIER -> `0x3D20F8`, 0264
+SET_PED_DENSITY_MULTIPLIER -> `0x417848`; the VCS numbers, not GTA III's), the spawners' decompile
+(`tools/eedecomp.py 0x430290 0x2b17a8 0x430148`), a grep of the generated code for every access to each global, and
+probes in the game (rig, `worlddetail`).
+
+- **Script multipliers**: CarDensityMultiplier `0x48A968`, PedDensityMultiplier `0x487FF8` (floats, 1.0). Scripts set
+  them about 280 times (MAIN.SCM and 49 missions: 0 to clear the streets, 10 in the credits, 0.1..100 elsewhere);
+  `FUN_00253F98` / `FUN_002AFCE8` / `FUN_004379E0` / `FUN_00437AE8` / `FUN_0024C428` put them back to 1.0, and
+  `FUN_00426220` / `FUN_00427820` copy both into and out of a block (+0x90 / +0x94; a save or replay).
+- **Cars**: `FUN_00430148` (CGame::Process, 0x3BAC88) calls the spawner `FUN_00430290` six times a frame while
+  NumRandomCars (`0x48A96C`) < 30. The spawner returns when:
+  - zone cars (`0x4E4A54`, u16 = zone value x the zone factor at `0x4E4A58`) x CarDensityMultiplier x **`0x48A680`
+    (0.7)** <= NumRandomCars;
+  - the counters `0x48A96C + 970 + 974 + 978 + 980 + 984` reach **`0x48A9A8` (16)** (`0x48A97C` is not in the sum;
+    6 in the city - parked cars?);
+  - the heap at `0x51D6A0` (free = +0x10 - +0xC - +0x14, `FUN_002BC1A8`) has less than 0x19000 bytes (it had
+    650-900 KB in every probe; a ped takes about 6 KB of it);
+  - no road spot is found at 110 m x GenerationDistMultiplier ahead (`FUN_00268880`, `FUN_00267928`) or the spot is
+    taken (`FUN_0043C938`);
+  - **a random 0..15 is above the road's class in `0x487498` = {0, 4, 7, 15}** (the smaller of the segment's two
+    nodes, node flags >> 12 & 3): most tries end here.
+  Standing in Little Haiti at noon, 6 random cars live at once while the zone allows 12.6: the spawn spots, not the
+  density, set the number.
+- **Peds**: `FUN_002B17A8` (from `FUN_002AFE80`, 0x3BAB44): allowed = min(zone peds x zone factor x
+  PedDensityMultiplier x **`0x48A67C` (0.4)** (min(2 x it, 1) in a zone type `FUN_002AFC20(pos, 1)` marks) x (1 -
+  0.8 sqrt(`0x4CD144`, the rain)), cap **`0x488004` (25)** outdoors / **`0x488008` (30)** elsewhere); it spawns while
+  the ped count `0x4CD550` is below. Its spot search `FUN_00268048` uses the same class table (path nodes).
+- **Who reads what** (grep of the generated code for each address's `lui` / offset pair): `0x48A680` only
+  `FUN_00430290`; `0x48A67C` and `0x488004` / `0x488008` only `FUN_002B17A8`; `0x48A9A8` the two spawners and
+  `FUN_0043BE00`; `0x487498` `FUN_00430290` and `FUN_00268048`. None is written by the game (`FUN_003B4588` writes
+  `0x72A67C`, another `lui`).
+- Pools: peds 70, vehicles 40 (the vehicle pool's size, not in 12 before). A random car's driver is a ped.
+- **Enhancements > World** (`vcs_world_detail.cpp`): Traffic / Pedestrian density scale 0.7 / 0.4 (so a script's 0
+  stays 0 and its 10 becomes 10 x the setting), raise the caps (cars at most 28, peds 45), and give each spawner the
+  class table with every chance ((v + 1) / 16) times the setting, class 0 unchanged - written before each spawner
+  runs, since both read the one table. While fewer than 16 ped or 8 vehicle slots are free, the original caps
+  apply. Measured (world_check): peds at the Little Haiti spot about 25 -> 40 at 300%; random cars while driving
+  about 9-10 -> 10-13 - the spawn spots stay the limit. With peds at 300% the random cars standing there fell to 0-5
+  in one probe (cause not found; the heap was not it).
 
 ## 13. Open questions / next research targets
 

@@ -1015,7 +1015,7 @@ class Check:
                     "%s, %s, pad %s" % (saved.group(0) if saved else "no [screenshot] line", pngs, p))
 
             # the settings menu's pages
-            for page in ("Display", "Graphics", "Audio", "Game", "Keyboard", "Gamepad", "Advanced"):
+            for page in ("Display", "Graphics", "Audio", "Game", "Keyboard", "Gamepad", "Enhancements", "Advanced"):
                 g.cmd("menu " + page)
                 g.wait_frames(4)
                 self.shot("menu_" + page.lower())

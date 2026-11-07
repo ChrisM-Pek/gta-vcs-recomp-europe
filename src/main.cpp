@@ -26,6 +26,7 @@
 #include "game/vcs_movie.h"
 #include "game/vcs_hud.h"
 #include "game/vcs_input.h"
+#include "game/vcs_prompts.h"
 #include "game/vcs_volume.h"
 #include "platform/platform.h"
 #include "render/presenter.h"
@@ -690,6 +691,7 @@ namespace
             settings::add(s);
 
         vcs::input::registerSettings(); // the Keyboard & mouse and Gamepad pages (game/vcs_input.h)
+        vcs::prompts::registerSettings(); // the Enhancements page: button prompts by device (game/vcs_prompts.h)
 
         s = {};
         s.key = "graphics.perf_overlay";
@@ -885,6 +887,7 @@ int main(int argc, char *argv[])
                                         ps2control::setGameInputBlocked(ui::settingsMenuBlocksInput() || ui::trainerMenuBlocksInput());
                                         vcs::input::onHostFrame(ui::settingsMenuOpen() || ui::trainerMenuBlocksInput());
                                         vcs::volume::onHostFrame();
+                                        vcs::prompts::onHostFrame();
                                         drawFrameRateCounter();
                                     },
                                     nullptr, nullptr);

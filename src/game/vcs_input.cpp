@@ -186,6 +186,7 @@ namespace vcs::input
         std::atomic<bool> g_backgroundPause{false}; // game.background = Pause and the window is behind others
         std::atomic<uint64_t> g_lastReport{0};       // buttons | rx << 16 | ry << 24 | lx << 32 | ly << 40 ("padstate")
         std::atomic<uint32_t> g_reads{0};            // pad reads so far ("padstate")
+        std::atomic<int> g_lastDevice{static_cast<int>(Device::Keyboard)}; // lastDevice()
 
         std::string keyId(const Control &c, int slot) { return std::string("keys.") + c.id + (slot ? "2" : ""); }
         std::string padId(const Control &c) { return std::string("pad.") + c.id; }
@@ -348,8 +349,14 @@ namespace vcs::input
 
             bool padR1 = false, keyR1 = false, keyCircle = false; // the target / fire buttons, by device (free aim)
             float padRx = 0.0f, padRy = 0.0f;
+            bool padUsed = false, keysUsed = false; // the player's device this read (lastDevice)
             if (padConnected(physical) && !freeCamera)
             {
+                // a button, or a stick / trigger past half way: the gamepad is in use (a resting stick's drift is not)
+                for (int b = 0; b < GAMEPAD_BUTTON_COUNT && !padUsed; ++b)
+                    padUsed = padButton(static_cast<GamepadButton>(b));
+                for (int a = 0; a < AXIS_COUNT && !padUsed; ++a)
+                    padUsed = std::fabs(padAxis(static_cast<GamepadAxis>(a))) > 0.5f;
                 for (size_t i = 0; i < kControlCount; ++i)
                     if (kControls[i].target == Target::Button && padSource(m.pad[i], m.trigger))
                     {
@@ -395,6 +402,7 @@ namespace vcs::input
                 auto active = [&](int key) { return bound(key, alt) && !(game.driving && !c.driving && drivingKey(key)); };
                 if (!active(m.keys[i][0]) && !active(m.keys[i][1]))
                     continue;
+                keysUsed = true;
                 if (c.target == Target::Button)
                 {
                     buttons |= c.mask;
@@ -444,6 +452,8 @@ namespace vcs::input
                     dy += g_injectedY;
                     g_injectedX = g_injectedY = 0.0f;
                 }
+                // a hand on the mouse moves it more than a nudge of the desk does
+                keysUsed = keysUsed || std::fabs(dx) + std::fabs(dy) > 12.0f;
                 const bool on = m.mouseCamera && !blocked;
                 // up (+) for a mouse moved forward (SDL: y grows downwards); the game looks up for a stick pulled
                 // back (y > 0)
@@ -634,6 +644,13 @@ namespace vcs::input
                 if (g_mouse.aim.padR1Fires && padR1)
                     buttons = static_cast<uint16_t>((buttons & ~(keyR1 ? 0 : kR1)) | kCircle);
             }
+
+            // the menu's keys and mouse buttons count too (Enter, Escape, clicks)
+            if (!blocked)
+                for (int k : {KEY_ENTER, KEY_KP_ENTER, KEY_ESCAPE, KEY_MOUSE_LEFT, KEY_MOUSE_RIGHT})
+                    keysUsed = keysUsed || ps2control::keyDown(k);
+            if (padUsed != keysUsed) // both at once: as it was
+                g_lastDevice.store(static_cast<int>(padUsed ? Device::Gamepad : Device::Keyboard), std::memory_order_relaxed);
 
             const uint16_t word = static_cast<uint16_t>(~buttons);
             data[2] = static_cast<uint8_t>(word & 0xFF);
@@ -1090,6 +1107,8 @@ namespace vcs::input
     }
 
     void stopVibration() { gamepadRumble(0.0f, 0.0f); }
+
+    Device lastDevice() { return static_cast<Device>(g_lastDevice.load(std::memory_order_relaxed)); }
 
     FreeCamInput takeFreeCameraInput()
     {

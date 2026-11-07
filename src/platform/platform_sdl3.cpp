@@ -38,6 +38,7 @@ namespace platform
         std::array<std::atomic<bool>, GAMEPAD_BUTTON_COUNT> g_padButtons{};
         std::array<std::atomic<float>, AXIS_COUNT> g_padAxes{};
         std::atomic<bool> g_padConnected{false};
+        std::atomic<int> g_padFamily{0}; // GamepadFamily
         SDL_Gamepad *g_gamepad = nullptr;
 
         SDL_AudioStream *g_audio = nullptr;
@@ -131,6 +132,27 @@ namespace platform
             return keys;
         }
 
+        GamepadFamily familyOf(SDL_GamepadType type)
+        {
+            switch (type)
+            {
+            case SDL_GAMEPAD_TYPE_XBOX360:
+            case SDL_GAMEPAD_TYPE_XBOXONE:
+                return GamepadFamily::Xbox;
+            case SDL_GAMEPAD_TYPE_PS3:
+            case SDL_GAMEPAD_TYPE_PS4:
+            case SDL_GAMEPAD_TYPE_PS5:
+                return GamepadFamily::PlayStation;
+            case SDL_GAMEPAD_TYPE_NINTENDO_SWITCH_PRO:
+            case SDL_GAMEPAD_TYPE_NINTENDO_SWITCH_JOYCON_LEFT:
+            case SDL_GAMEPAD_TYPE_NINTENDO_SWITCH_JOYCON_RIGHT:
+            case SDL_GAMEPAD_TYPE_NINTENDO_SWITCH_JOYCON_PAIR:
+                return GamepadFamily::Nintendo;
+            default:
+                return GamepadFamily::Other;
+            }
+        }
+
         void openGamepad(SDL_JoystickID id)
         {
             if (g_gamepad)
@@ -153,6 +175,8 @@ namespace platform
                 SDL_GAMEPAD_AXIS_LEFT_TRIGGER, SDL_GAMEPAD_AXIS_RIGHT_TRIGGER,
             };
             g_padConnected.store(g_gamepad != nullptr, std::memory_order_relaxed);
+            g_padFamily.store(static_cast<int>(g_gamepad ? familyOf(SDL_GetGamepadType(g_gamepad)) : GamepadFamily::None),
+                              std::memory_order_relaxed);
             for (int b = 0; b < GAMEPAD_BUTTON_COUNT; ++b)
                 g_padButtons[b].store(g_gamepad && SDL_GetGamepadButton(g_gamepad, kButtons[b]), std::memory_order_relaxed);
             for (int a = 0; a < AXIS_COUNT; ++a)
@@ -730,6 +754,8 @@ namespace platform
     bool gamepadConnected() { return g_padConnected.load(std::memory_order_relaxed); }
     bool gamepadButton(GamepadButton button) { return g_padButtons[button].load(std::memory_order_relaxed); }
     float gamepadAxis(GamepadAxis axis) { return g_padAxes[axis].load(std::memory_order_relaxed); }
+
+    GamepadFamily gamepadFamily() { return static_cast<GamepadFamily>(g_padFamily.load(std::memory_order_relaxed)); }
 
     const char *gamepadName()
     {

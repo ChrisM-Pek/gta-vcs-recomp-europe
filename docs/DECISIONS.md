@@ -1185,3 +1185,28 @@ and suggested keeping only F2's widescreen, with what is worth keeping as separa
   the PS2's mode, `VCS_HIDE_WIDESCREEN=0` keeps the row.
 - Would change: if a 4:3-display player wanted the anamorphic HUD for a TV that stretches (unlikely on a PC), the
   preference could come back as an Advanced setting. The code is a switch away.
+
+## 2026-11-07 - Button prompts by device; an Enhancements page (the user's request)
+
+The user asked for a new F2 page, **Enhancements**, for settings that change how the game works rather than how it
+looks or is controlled, starting with button prompts for keyboard / mouse and Xbox pads that follow the device in use,
+built so that more glyph sets can be added. They asked for the investigation and a proposal first (game-internals.md
+6n), then approved it as proposed.
+
+- **Default Original** (authentic by default): the PS2's text, the game's own code; the hooks stay in but pass
+  through. Automatic is one choice away; PlayStation / Xbox / Keyboard & mouse fix a set.
+- **Glyphs follow the bindings, not fixed pictures**: the keyboard set shows the keys bound (the mouse button where one
+  is bound - attack, target -, the Driving keys for a vehicle's actions, Enter / Escape in the pause menu, the mouse
+  for the right stick while the mouse camera is on); the pad sets show the physical button the Gamepad page maps the
+  PS2 button to. A Nintendo or unknown pad shows Xbox glyphs until a set of its own is made (one glyph table in
+  vcs_glyph_art.cpp, one case in `specFor`).
+- **Drawn by code, no image files** (as the launcher's icons): no Sony / Microsoft artwork is shipped; the shapes are
+  generic (a dark disc with a coloured symbol or letter, pills for shoulders and triggers, keycaps, a mouse). The atlas
+  is made at the window's size, so glyphs stay sharp.
+- **The game lays them out**: the font's own glyph table is extended (tokens per control), so centring and line breaks
+  are the game's; only what the renderer samples changes. The tokens name a control, not a device, so a help box that
+  is already up changes with the device.
+- **The PSP's "L button" / "R button"** in the PS2's text are taken as L1 / R1 (where another configuration of the same
+  action says R1). Not checked against the pad code; a wrong one shows L1 where the game meant another shoulder.
+- Not yet: the Controls page's controller picture (a keyboard list there would be a page of its own); the loading
+  screen's "Press ~X~" shows the on-foot Cross key (Enter only works inside the menu).

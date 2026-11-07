@@ -149,6 +149,13 @@ game-internals.md 6m; before 2026-11-05 Start was Enter and the menu took the pa
   switches pages as on the PS2. `VCS_MENU_MOUSE=0` leaves the mouse out (Enter / Escape stay).
   `python tools/menu_check.py` checks all of it.
 
+## Button prompts
+
+F2 > Enhancements > **Button prompts** (default Original): the controls the game's help text and pause menu show.
+Automatic follows the device used last - the keys and mouse buttons bound on the Keyboard page, or the gamepad's own
+buttons (PlayStation or Xbox glyphs, from the pad's maker) as mapped on the Gamepad page. PlayStation, Xbox and
+Keyboard & mouse fix a set; Original is the PS2's text. game-internals.md 6n, DECISIONS.md 2026-11-07.
+
 ## Menus
 
 F2 (or Back + Start on a gamepad) opens the settings, F5 (or Back + RB) the trainer (docs/TRAINER.md), F6 (or Back + LB)

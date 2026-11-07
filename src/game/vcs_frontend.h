@@ -34,4 +34,8 @@ namespace vcs::frontend
     bool ownsKey(int key);
 
     void onFrameKick(); // the frame's display list goes out: the menu's drawing is over (game thread)
+
+    // Game thread, inside a 2D draw: the menu item being drawn (its draw entered at a higher stack pointer than `sp`, the
+    // caller's), 0 outside one or with the menu's mouse off (VCS_MENU_MOUSE=0). The button prompts' help-bar buttons.
+    uint32_t drawingItem(uint32_t sp);
 }

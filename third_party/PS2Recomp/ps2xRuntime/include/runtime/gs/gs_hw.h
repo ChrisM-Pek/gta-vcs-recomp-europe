@@ -14,6 +14,7 @@
 
 #include <cstdint>
 #include <memory>
+#include <vector>
 
 namespace rhi
 {
@@ -78,6 +79,25 @@ enum : uint8_t
 };
 using GSHwAnchorFn = uint8_t (*)(const float *xy, uint32_t count);
 void gsHwSetHudClassifier(GSHwAnchorFn fn);
+
+// [gta-recomp] Button prompt glyphs (src/game/vcs_prompts.cpp): a 2D primitive the game drew as a button glyph is drawn
+// from a host-made glyph atlas instead of the game's texture. The classifier gets the primitive's vertices (x, y pairs in
+// pixels, XYOFFSET removed, as for the HUD classifier) and, for a glyph, fills `hit`: per vertex the atlas coordinates
+// (0..1) and an x offset in pixels (a glyph wider than the game's box grows to the left), and whether it is the text's
+// drop shadow (drawn as a dark silhouette). Called on the thread that processes GS packets; nullptr = off.
+struct GSHwGlyphHit
+{
+    float u[8], v[8], dx[8];
+    bool shadow;
+};
+using GSHwGlyphFn = bool (*)(const float *xy, uint32_t count, GSHwGlyphHit &hit);
+void gsHwSetGlyphClassifier(GSHwGlyphFn fn);
+// [gta-recomp] The glyph atlas (RGBA8, alpha in the PS2's 0..128 scale, w and h powers of two), taken by the next glyph
+// draw. Call it on the thread that processes GS packets (through ps2_render_worker::runOnGsStage), so the frames
+// recorded after it - whose classifier answers name its cells - draw from it.
+void gsHwSetGlyphAtlas(uint32_t width, uint32_t height, std::shared_ptr<const std::vector<uint32_t>> pixels);
+// [gta-recomp] Glyph draws recorded so far (the prompts check).
+uint64_t gsHwGlyphDraws();
 
 // [gta-recomp] Native HUD layer: the primitives the classifier names are kept out of the PS2 frame buffer and drawn over
 // the displayed picture at the output size (gsHwSetOutputSize) - sharp at any window size, in its aspect. The displayed

@@ -1407,6 +1407,74 @@ through the rig (`peek`, the item lists below dumped page by page) and `tools/ee
   smallest zoom, 392 and 576: x -236.6..715.9 and y -362.6..589.9 at 576); written past that, the map's tiles are drawn
   wrong (the 3D world shows through). Cross toggles the legend, Square the target (the crosshair).
 
+### 6n. Button prompts: control tokens, the font's button glyphs, the menu's button pictures (2026-11-07)
+
+Found for button prompts by input device (keyboard / Xbox glyphs): `tools/eedecomp.py` of the routines named here, a
+search of the generated code for a function comparing with both `~` (0x7E) and `k` (0x6B), the GXT text, and RAM read
+through the rig (font objects, the menu's help-bar items, and every `C<n><ACTION>` text out of the running game's table:
+`vcs.exe`'s `prompts text <KEY>` command). **`build/analysis/text/american.txt` is not the PS2's text**: 26 of the 244
+control texts differ from the game's table in RAM (C*VEWE2 is "~S~ + ~X~" there and "R1 button" in the game, C*DOARM
+"L1 and R1" / "L2 and R2", C*FLUP "left analog stick up" / "up directional button" ...) - read text from the game. A
+prompt reaches the screen by one of three paths:
+
+**1. Text: `~k~ ~ACTION~` -> the controller configuration's text.** GXT strings name a control by action, never by
+button: `Press~h~ ~k~ ~TGSUB~ ~w~to ...` (149 uses). **`FUN_003aff20`** (re3's InsertPlayerControlKeysInString; a
+256-character UTF-16 buffer rewritten in place) finds each `~k~`, and **`FUN_003afd78`** reads the action's name up to
+the next `~` and looks up the GXT key **`C<n><ACTION>`** with n = **CPad 0 +0x92** (`FUN_002852a8(0)` = 0x5147A8 + pad x
+0xD4; the Controls page's configuration, 0..3). 61 actions x 4 configurations (C0..C3); the text is either one face
+button token (`~X~`, `~O~`, `~S~`, `~T~`; never two) or words ("R1 button", "L2 and R2 buttons", "L2 button + R2
+button", "left analog stick", "up directional button", "SELECT button", "left analog stick, or directional buttons" -
+about 45 phrases). "left button" / "right button" / "up button" / "down button" are the D-pad's (C0AMLEF "left button",
+C1AMLEF "analog stick left"). PSP leftovers remain: "L button" (C*ANS, C*PDLO1, C*SNSLO) and "R button" (C2 / C3VEHB,
+where C0 / C1 say "R1 button" - so taken as L1 / R1), and the Memory Stick texts. The full list, per configuration, as
+the game has it: `prompts text C0<ACTION>` (2026-11-07 dump in the change that added the button prompts). Strings with a face button token of
+their own: `LDWAIT` "Press ~X~ to continue.", `MAP_OMM` "Hold ~X~ to display the map options.", the PSP-only SS_* and
+MP_*. Callers of the expander:
+- `FUN_0031c180` (CHud's set-help-message): **once**, into the HUD's own buffer (+0x2470) - the help box keeps the
+  expanded text while it is up.
+- `FUN_003aee80` (big / small messages, from the 2D pass): **every frame**, into a stack buffer.
+- `FUN_001574e0` (the Brief page's list): when the line is built (0x4FF5C8).
+
+**2. The font: `~c~` tokens and the button glyphs.** Text is drawn by `FUN_00261be8` (render, 6f). `FUN_00262370`
+returns c for a `~c~` (three UTF-16 units; any 16-bit value) and the renderer switches on it: `Y b g h l p r t w y` are
+colours (`FUN_00262398`: h and t cyan 1E,FF,FF, w white, y / Y pink-ish ED,82,B4, r red AE,0,0 or the y colour when
+`*0x487480`, g green, b blue, p purple, l black), `n` a new line; **any other c is looked up in the font's button-glyph
+table** (`FUN_003e5e58`) and, when found, drawn by `FUN_00261af8` in white with the text's alpha, scale **1.33**
+(`0x3FAA3D71`) for X / O / T / S and 1.0 for others, through the same glyph routine as letters (`FUN_00261600` ->
+`FUN_003b8ea0` -> an Im2D quad, `FUN_003dfce8`). The string width (`FUN_002625f0`, `FUN_00262818`, used for centring and
+wrapping) looks the glyph up the same way, so a glyph's width in the table is its width in the layout.
+- **Font object** (`*(*0x48A1D8 + style x 4)`): +0 u16 letters, **+2 u16 button glyphs**, +4 / +6 u16 line heights,
+  +8 the letters' table, **+0xC the button glyphs' table**, +0x10 u8 encoding, +0x18 / +0x1A u16 the atlas size, +0x2C
+  the name. A table entry is 14 bytes: s16 left, s16 width, s16 right, u16 height, **u16 the character**, u16 u, u16 v
+  (texels; the quad samples (u + 0.5 .. u - 0.5 + (left + width + right) / scale) / atlas width).
+- Read at Fort Baxter: style 0 "Fanc" (144 letters), **style 1 "Game" - the only font with button glyphs: 4, all 29 x
+  23 texels in its 256 x 256 atlas: T at (213, 207), S (0, 230), X (22, 230), O (44, 230)**, style 2 "BigT" (74), style
+  3 "Page" (173). So L1 / R1 / sticks have no glyph: the text says them in words.
+
+**3. The pause menu's help bars: pictures.** The help-bar pages (manager +0x14 / +0x18, 6m: MASTER_BUTTONS,
+UPDOWN_BUTTONS(_WIDE), SELECT_BUTTONS, MAP_BUTTONS, AUDIOCTRL_BUTTONS(_WIDE)) hold image items (class `0x48FE10`, the
+same as a page's backdrop; 12 x 12 units) named ButtonCross, ButtonTriangle, ButtonSquare, ButtonUp / Down / Left /
+Right, ButtonL1, ButtonR1, beside text items ("back", "select", "move", "Zoom", "Legend"). An image item's **+0xDC is
+its RwTexture** (name at +0x10) and +0xE0 the dictionary's name, `frontend1`: textures **btn_cross_psp,
+btn_triangle_psp, btn_square_psp, btn_up_psp, btn_down_psp, btn_left_psp, btn_right_psp, btn_l_psp, btn_r_psp**.
+- The Controls page's controller picture (class `0x491F68`, with labels such as FEC_EXV "Exit vehicle") is a fourth,
+  not yet read.
+
+**What the button prompts do with it** (`src/game/vcs_prompts.cpp`, 2026-11-07; checked by `tools/prompts_check.py`):
+- `FUN_003afd78` replaced: the same GXT text, each phrase turned into a token per control - `~` U+E000 + context x
+  0x40 + control `~` (context: on foot, in a vehicle - actions VE*, FL*, HE*, TAXJU, CVEIW, FIREH -, the menu). The font
+  takes any 16-bit character for a token (`FUN_00262370`) and looks it up in the glyph table as a 16-bit compare
+  (`FUN_003e5e58`); `FUN_00261af8` tests only the low byte for X / O / T / S (a 1.33 texel scale - harmless here).
+- The glyph table moved: font +0xC pointed at a copy in the EE kernel's area (0x61000; free aim uses 0x60000) with the
+  four originals and 99 token entries (height 23, u = 2 x index, v = 255 - no glyph of the 256x256 atlas starts in that
+  row), font +2 its count. Widths are written per glyph set at the frame kick; the game lays out with them.
+- **A glyph in the font's batch** (`FUN_003dfce8` appends 4 vertices and 6 indices a glyph to 0x709650 / 0x70C650,
+  `FUN_003dfdd8` draws them with `FUN_002fbe68(3, ...)` at the end of each render call, return 0x3DFE24): the vertex u /
+  v are `(int)(f x 32768 + 0.5)` (`FUN_003e0888`: 1.0 = 32768), u starting half a texel in (`(u + 0.5) / 256`), v not
+  (`v / 256`). So the quad's smallest u / 128 - 0.5 and v / 128 name its table entry.
+- **The drop shadow** (`FUN_003f3d88` renders twice, the shadow first with t3 = 1) draws button glyphs in white too, the
+  same as the text's own pass (`FUN_00261be8` gives them colour 255,255,255 with the text's alpha).
+
 ## 7. Textures: `.XTX`
 
 Confirmed from `LOADSC*.XTX` (263,372 bytes each, 512x512 8-bit):

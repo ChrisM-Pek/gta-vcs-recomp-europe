@@ -201,6 +201,16 @@ namespace platform
     bool gamepadButton(GamepadButton button);
     float gamepadAxis(GamepadAxis axis);
     const char *gamepadName(); // "" without a gamepad (main thread)
+    // What kind of gamepad it is, from its maker's layout (any thread; None without one): the button prompts' glyphs.
+    enum class GamepadFamily : int
+    {
+        None,
+        Xbox,
+        PlayStation,
+        Nintendo,
+        Other,
+    };
+    GamepadFamily gamepadFamily();
     // Vibration, motors 0..1 (low = the large, slow motor; high = the small, fast one). Any thread; applied at the next
     // pumpEvents and held until changed (0, 0 stops).
     void gamepadRumble(float low, float high);

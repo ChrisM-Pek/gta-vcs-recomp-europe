@@ -996,6 +996,8 @@ namespace vcs::frontend
         return false;
     }
 
+    uint32_t drawingItem(uint32_t sp) { return g_inMenu && g_item && sp < g_itemSp ? g_item : 0u; }
+
     void onFrameKick()
     {
         g_inMenu = false;

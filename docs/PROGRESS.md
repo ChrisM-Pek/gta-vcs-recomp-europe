@@ -790,6 +790,17 @@ dropped on uploads (lazy render-target patching).
   sliders follow the cursor, the wheel turns choices / scrolls / zooms the map, the map drags, the right button goes
   back - all as pad input, the gamepad unchanged. `tools/menu_check.py`: 27 checks, 0 failed; `saves.py` (Escape now
   opens the menu) passes.
+- **Button prompts by device** (2026-11-07, the user's request; the new F2 page **Enhancements**, DECISIONS.md,
+  game-internals.md 6n, `src/game/vcs_prompts.cpp`, `vcs_glyph_art.cpp`): Enhancements > Button prompts - Original (PS2,
+  the default), Automatic, PlayStation, Xbox, Keyboard & mouse. The help text's controls (`~k~ ~ACTION~`, words such as
+  "R3 button" and the cross / circle / triangle / square glyphs) and the pause menu's help-bar buttons become glyphs of
+  the set: the keys / mouse buttons the player bound (on foot, or the Driving keys in a vehicle; Enter / Escape in the
+  menu), or the physical pad button bound on the Gamepad page, drawn by code into an atlas at the window's size (97
+  glyphs, 512x512 at 640x448, 13 ms on a helper thread). Automatic follows the device used last (a key, a click or the
+  mouse moved past a nudge vs a pad button or a stick / trigger past half way), and a help box already up switches with
+  it. Original runs the game's own code. `tools/prompts_check.py`: 5 checks (expand, sets, automatic, menu, original),
+  0 failed; screenshots at 4:3 and 16:9 with the HUD at the screen edges. Not done: the Controls page's controller
+  picture, a Nintendo set (a Nintendo pad shows Xbox glyphs for now).
 
 ## Milestone 9 - Linux (started 2026-10-30)
 
@@ -976,6 +987,9 @@ Python scripts still usable on their own. docs/LAUNCHER.md has the whole of it; 
 | `PS2X_HW_DUMP_ALLVERTS=1` | the F12 draw log prints every vertex of every draw |
 | `VCS_MENU_NATIVE=0` | menus drawn into the PS2 frame buffer instead of the native layer |
 | `VCS_MENU_MOUSE=0` | the game's pause menu without the mouse (Enter / Escape as Cross / Triangle stay; game/vcs_frontend.h) |
+| `VCS_PROMPTS=0..4` | Enhancements > Button prompts for this run: 0 Original, 1 Automatic, 2 PlayStation, 3 Xbox, 4 Keyboard & mouse (the menu shows it read-only) |
+| `VCS_PROMPTS_HOOKS=0` | none of the button prompts' hooks (the setting then does nothing; game/vcs_prompts.h) |
+| `VCS_PROMPTS_DUMP=<file.png>` | each glyph atlas made, written over grey (to look at the glyphs) |
 | `VCS_LOADING_NATIVE=0` | loading screens drawn into the PS2 frame buffer instead of the native layer |
 | `PS2X_HW_PATH2_PACKED=0` | PATH2 draw packets (Im2D, effect strips) through the GS front end vertex by vertex instead of recorded whole |
 | `PS2X_TRACE_PATH2_TAGS=1` | PATH2 (VIF DIRECT) packets by the shape of their first GIFtag, and the register sequence of A+D packets that draw, every 5 s (`[path2]`) |

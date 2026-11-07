@@ -38,6 +38,17 @@ namespace
     std::atomic<float> g_hudSqueeze{1.0f}; // [gta-recomp] gsHwSetHudSqueeze
     std::atomic<GSHwAnchorFn> g_hudClassifier{nullptr}; // [gta-recomp] gsHwSetHudClassifier
     std::atomic<bool> g_hudLayer{false};                // [gta-recomp] gsHwSetHudLayer
+    std::atomic<GSHwGlyphFn> g_glyphClassifier{nullptr}; // [gta-recomp] gsHwSetGlyphClassifier
+    // [gta-recomp] gsHwSetGlyphAtlas: the atlas the GS stage was handed last (that thread only) and its number
+    struct GlyphAtlas
+    {
+        uint32_t w = 0, h = 0;
+        std::shared_ptr<const std::vector<uint32_t>> pixels;
+        uint64_t generation = 0;
+    };
+    GlyphAtlas g_glyphAtlas;
+    std::atomic<uint64_t> g_glyphDraws{0};
+    constexpr uint64_t kGlyphAtlasKey = 0xF1F1F1F100000000ull; // its texture key: no GS texture key has these high bits
     std::atomic<uint32_t> g_outputW{0}, g_outputH{0};   // [gta-recomp] gsHwSetOutputSize
     std::atomic<float> g_aspectWidening{1.0f};          // [gta-recomp] gsHwSetAspectWidening
     std::atomic<uint32_t> g_frameW{0}, g_frameH{0};     // [gta-recomp] gsHwSetFrameSize
@@ -217,6 +228,15 @@ namespace
 void gsHwSetHudSqueeze(float factor) { g_hudSqueeze.store(factor, std::memory_order_relaxed); }
 void gsHwSetHudClassifier(GSHwAnchorFn fn) { g_hudClassifier.store(fn, std::memory_order_relaxed); }
 void gsHwSetHudLayer(bool on) { g_hudLayer.store(on, std::memory_order_relaxed); }
+void gsHwSetGlyphClassifier(GSHwGlyphFn fn) { g_glyphClassifier.store(fn, std::memory_order_relaxed); }
+void gsHwSetGlyphAtlas(uint32_t width, uint32_t height, std::shared_ptr<const std::vector<uint32_t>> pixels)
+{
+    g_glyphAtlas.w = width;
+    g_glyphAtlas.h = height;
+    g_glyphAtlas.pixels = std::move(pixels);
+    ++g_glyphAtlas.generation;
+}
+uint64_t gsHwGlyphDraws() { return g_glyphDraws.load(std::memory_order_relaxed); }
 void gsHwSetOutputSize(uint32_t width, uint32_t height)
 {
     g_outputW.store(width, std::memory_order_relaxed);
@@ -2915,6 +2935,49 @@ namespace
         // One primitive's vertices (out, n) into the frame: flat colour, render-target sampling, the widescreen HUD
         // squeeze / native HUD layer (batch: the GS vertices for the HUD classifier; nullptr = not asked), then merged
         // into the current draw. bookkeeping: depth buffer and target size here (SubmitPacked does them per packet).
+        // [gta-recomp] A glyph primitive (recordPrimitive): its texture is the glyph atlas - handed to the executor first
+        // when it is new (a TexCreate under its own key, never evicted) -, its texture coordinates the glyph's cell,
+        // bilinear and clamped; the colour white (the texture's own) or, for the text's drop shadow, black. The game's
+        // blending, depth, scissor, alpha (fades) and the HUD layer stay as they were.
+        void glyphDraw(HwState &s, HwVertex *out, uint32_t n, const GSHwGlyphHit &hit)
+        {
+            if (m_glyphGeneration != g_glyphAtlas.generation)
+            {
+                m_glyphGeneration = g_glyphAtlas.generation;
+                TexCreate tc;
+                tc.key = kGlyphAtlasKey;
+                tc.w = g_glyphAtlas.w;
+                tc.h = g_glyphAtlas.h;
+                tc.pixels = *g_glyphAtlas.pixels;
+                if (m_anisotropy > 1u) // the executor makes these textures with a mip chain (TexCreate)
+                    buildMipChain(tc.pixels, tc.w, tc.h, tc.mips);
+                Frame &f = *m_frame;
+                f.cmds.push_back({CmdType::TexCreate, static_cast<uint32_t>(f.textures.size())});
+                f.textures.push_back(std::move(tc));
+            }
+            s.texKey = kGlyphAtlasKey;
+            s.tw = static_cast<uint16_t>(g_glyphAtlas.w);
+            s.th = static_cast<uint16_t>(g_glyphAtlas.h);
+            s.fst = 0;
+            s.tfx = 0; // modulate
+            s.tcc = 1;
+            s.linear = 1;
+            s.wms = s.wmt = 1; // clamp
+            s.minu = s.minv = 0;
+            s.maxu = static_cast<uint16_t>(g_glyphAtlas.w - 1u);
+            s.maxv = static_cast<uint16_t>(g_glyphAtlas.h - 1u);
+            for (uint32_t i = 0; i < n; ++i)
+            {
+                out[i].s = hit.u[i];
+                out[i].t = hit.v[i];
+                out[i].q = 1.0f;
+                out[i].x += hit.dx[i];
+                const uint8_t c = hit.shadow ? 0u : 128u;
+                out[i].r = out[i].g = out[i].b = c;
+            }
+            g_glyphDraws.fetch_add(1, std::memory_order_relaxed);
+        }
+
         void recordPrimitive(HwState s, HwVertex *out, uint32_t n, const GSPrimitiveBatch *batch, float ofx, float ofy,
                              uint32_t source, bool bookkeeping)
         {
@@ -2925,6 +2988,20 @@ namespace
                     out[i].g = out[n - 1].g;
                     out[i].b = out[n - 1].b;
                     out[i].a = out[n - 1].a;
+                }
+            // [gta-recomp] a button prompt glyph (gsHwSetGlyphClassifier): the same primitive, drawn from the glyph atlas
+            if (batch && s.tme && !s.texIsRt && batch->vertexCount == n && n <= 8u && gsDrawSourcePath(source) == 2u)
+                if (const GSHwGlyphFn glyph = g_glyphClassifier.load(std::memory_order_relaxed); glyph && g_glyphAtlas.pixels)
+                {
+                    float xy[2 * 8];
+                    for (uint32_t i = 0; i < n; ++i)
+                    {
+                        xy[2 * i] = batch->vertices[i].x - ofx;
+                        xy[2 * i + 1] = batch->vertices[i].y - ofy;
+                    }
+                    GSHwGlyphHit hit{};
+                    if (glyph(xy, n, hit))
+                        glyphDraw(s, out, n, hit);
                 }
             if (s.texIsRt && rtFullScale())
                 s.rtFull = isOneToOne(s, out, n) ? 1u : 0u;
@@ -5141,6 +5218,7 @@ namespace
         uint32_t m_scale;
         bool m_nativeFrame = false; // [gta-recomp] GSHwOptions::nativeFrame
         uint32_t m_msaa = 1, m_anisotropy = 0; // [gta-recomp] GSHwOptions
+        uint64_t m_glyphGeneration = 0;        // [gta-recomp] the glyph atlas the executor has (gsHwSetGlyphAtlas)
         std::atomic<rhi::Device *> m_earlyDevice{nullptr}; // [gta-recomp] makeTextureEarly: set by the main thread
         std::mutex m_makeMutex;                             // [gta-recomp] makeTextureEarly's helper threads
         std::condition_variable m_makeCv;

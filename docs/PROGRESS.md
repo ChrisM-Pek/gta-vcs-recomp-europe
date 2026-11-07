@@ -816,8 +816,9 @@ dropped on uploads (lazy render-target patching).
   captures with it off do (the loading art, the flyover's timing) at the defaults. Cars vanishing in view, 16:9, all
   three at 300%, 3 min AI drives: with `VCS_WORLD_KEEP=0` 6 at about 175 m (even at 100% traffic, draw distance 300%),
   with the fix 0 in 30 min (three 10 min drives) and in every world_check since; two earlier fixed runs each lost one
-  car 4-6 m from the camera, not seen again since the log names the caller (`[world] car vanished in view ... removed
-  from 0x...`). Shakedown and Last Stand's credits pass at 300% on all three.
+  car 4-6 m from the camera: the test drive's own CREATE_CAR clearing its spot (ClearSpaceForMissionEntity, the game's
+  behaviour at every setting; reproduced, game-internals.md 12d). Another 20 min of fixed driving: 0; with the fix off
+  13 cars lost at ~175 m in one 10 min drive. Shakedown and Last Stand's credits pass at 300% on all three.
 
 ## Milestone 9 - Linux (started 2026-10-30)
 

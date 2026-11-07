@@ -2506,6 +2506,11 @@ probes in the game (rig, `worlddetail`).
     on screen or not. **`FUN_002B0C00` = RemovePedsIfThePoolGetsFull** does the same for peds (`& 7 == 4`,
     `FUN_004793E8`, deletable = `FUN_001FFA80`); it runs first in `FUN_002AFE80`, the ped step.
   - Both delete through `FUN_0018FA50(entity, 1)` (CWorld::Remove) and the entity's vtable +0x10 (delete).
+  - **`FUN_0025A428` = CTheScripts::ClearSpaceForMissionEntity**, called by CREATE_CAR (`0x3D03B0`): the entities
+    overlapping the new car's collision (`FUN_00195380`) are removed (CWorld::Remove from 0x25A780) - a random car
+    right in front of the camera vanishes when a script makes a car on its spot. The game's own behaviour, at every
+    setting; the rig's `autodrive` does it too (found 2026-11-07: the two cars that vanished 4-6 m from the camera in
+    the first seconds of test drives; reproduced by making a car on a released one's spot, the log naming 0x25A788).
 - **Enhancements > World** (`vcs_world_detail.cpp`): Traffic / Pedestrian density scale 0.7 / 0.4 (so a script's 0
   stays 0 and its 10 becomes 10 x the setting), raise the caps (cars at most 28, peds 45), and give each spawner the
   class table with every chance ((v + 1) / 16) times the setting, class 0 unchanged - written before each spawner

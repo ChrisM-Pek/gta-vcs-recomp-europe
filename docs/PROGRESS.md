@@ -819,6 +819,15 @@ dropped on uploads (lazy render-target patching).
   car 4-6 m from the camera: the test drive's own CREATE_CAR clearing its spot (ClearSpaceForMissionEntity, the game's
   behaviour at every setting; reproduced, game-internals.md 12d). Another 20 min of fixed driving: 0; with the fix off
   13 cars lost at ~175 m in one 10 min drive. Shakedown and Last Stand's credits pass at 300% on all three.
+- **Drive-by fire rate** (2026-11-08, the user's report and request; DECISIONS.md, game-internals.md 12c,
+  `src/game/vcs_driveby.cpp`): NPCs in vehicles fired their SMGs once a frame - 30 shots/s on the PS2 (the SMG's own
+  rate is 11), 144/s at 144 fps. Enhancements > Combat - **Drive-by fire rate**: *As on the PS2* (default) / *The
+  gun's own rate*, through a hook on CWeapon::Fire for the NPC drive-by's two calls. Measured (a passenger with an
+  SMG in a parked car, threat on the player, 20 game seconds a run, per-frame trace of his clip), shots a second
+  within a burst / averaged with pauses and reloads: PS2 30.0 / 13.2 at 30 fps (identical to the original: nothing held
+  back), 30.0 / 13.4 at 60, 29.9 / 12.8 at 144; the gun's rate 10.8 / 6.3, 11.0 / 6.2, 11.1 / 6.5 (gap 90 ms at 144
+  fps); the original (`VCS_DRIVEBY_HOOKS=0`) 144 / 29.4 at 144. The setting changes live (rig `setting`, `driveby`).
+  No tool of its own yet: the measurement was a scratch script (`trace` of the weapon slot).
 
 ## Milestone 9 - Linux (started 2026-10-30)
 
@@ -1012,6 +1021,8 @@ Python scripts still usable on their own. docs/LAUNCHER.md has the whole of it; 
 | `VCS_WORLD_DETAIL_HOOKS=0` | density and draw distance write nothing (the settings then do nothing; game/vcs_world_detail.h) |
 | `VCS_WORLD_KEEP=0` | density without the pool reserve and cars in view not kept (the first version, to compare); the log still names each car that vanishes in view (`[world] car vanished in view`) |
 | `VCS_FAR_CLIP=<metres>` | a test: the far plane and so the fog end at this distance instead of 2000, outdoors (2000 < m <= 20000; game-internals.md 6o) |
+| `VCS_DRIVEBY_RATE=0\|1` | Enhancements > Combat > Drive-by fire rate for this run: 0 as on the PS2, 1 the gun's own rate (the menu shows it read-only) |
+| `VCS_DRIVEBY_HOOKS=0` | the NPC drive-by's fire rate left alone: a shot every frame, as the original game (the setting then does nothing; game/vcs_driveby.h) |
 | `VCS_LOADING_NATIVE=0` | loading screens drawn into the PS2 frame buffer instead of the native layer |
 | `PS2X_HW_PATH2_PACKED=0` | PATH2 draw packets (Im2D, effect strips) through the GS front end vertex by vertex instead of recorded whole |
 | `PS2X_TRACE_PATH2_TAGS=1` | PATH2 (VIF DIRECT) packets by the shape of their first GIFtag, and the register sequence of A+D packets that draw, every 5 s (`[path2]`) |

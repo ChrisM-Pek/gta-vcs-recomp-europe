@@ -282,6 +282,8 @@ Audio, Game, Keyboard, Gamepad, Advanced.
 - **Enhancements** (2026-11-07, after this list was written): **Button prompts** (game-internals.md 6n) and, under
   *World*, **Traffic density**, **Pedestrian density** and **Draw distance** (100% = the original, up to 300%;
   `VCS_TRAFFIC` / `VCS_PEDS` / `VCS_DRAW_DISTANCE`; game-internals.md 6o / 12d, `src/game/vcs_world_detail.cpp`).
+  Under *Combat* (2026-11-08): **Drive-by fire rate** - As on the PS2 (default) / The gun's own rate
+  (`VCS_DRIVEBY_RATE=0/1`; game-internals.md 12c, `src/game/vcs_driveby.cpp`).
 
 Registry additions (`settings::Spec`): `Type::Action` (a button: `button` text, `confirm` for a second click; no
 value, nothing in vcs.ini, skipped by applyAll and the page reset); Key `optional` (0 = unbound; right-click clears),

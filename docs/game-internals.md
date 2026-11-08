@@ -2458,6 +2458,48 @@ hidden run (rig `peek` / `poke`, snapshots diffed).
   line as they are (a man under the circle hit, one 2 m beside him not: controls_check `mounted_gun`). The same
   attachment to a car (model 211) gives the same state and camera - how the check sets it up. JER_A1 attaches Vic to a
   car too (`0 0 0 0 360 0`: no weapon, not seen in its camera).
+- **NPC drive-bys fire one shot every frame** (2026-11-08; the user saw NPCs in cars fire SMGs far too fast, faster
+  at high frame rates). Found by following the drive-by shot (FUN_002CB7C0) and CWeapon::Fire's callers in the
+  generated code, the decompiles (`build/analysis/decomp/weapon_fire_core.c`, `ped_carfire.c`, `ped_driveby.c`,
+  `ped_burst_helpers.c`, `ped_cartarget.c`), then a per-frame trace of the shooter's weapon (rig `trace`).
+  - The weapon in a ped's slot (ped + 0x574 + slot x 0x1C): +4 type, +8 state (0 ready, 1 firing, 2 reloading), +0xC
+    clip, +0x10 ammo (not counted down at 25000 or more), +0x14 timer (CTimer ms). Weapon info
+    (`*(*(0x712770) + 4) + type * 0x70`): **+0xC the firing rate in ms**, +0x10 the reload time, +0x14 the clip size.
+    Read in the game: pistol (19) 209 / 450 / 17; Micro SMG (24) 120 / 500 / 50; Scorpion (25), Mac 10 (26), SMG (27)
+    90 / 500 / 30; rifle (28) 89 / 1000 / 30.
+  - **FUN_002C0F98 = CWeapon::Fire(weapon, shooter, source)** fires whenever the state is 0 or 1 - it never checks
+    the timer. Afterwards it sets the timer to now + firing rate for the other types (shotguns, thrown, ...); for the instant-hit
+    guns (types 19, 20, 24-29, 34, 35, 37: FireInstantHit) it sets **timer = now**, no delay: on foot the firing
+    animation paces those guns.
+  - **The NPC drive-by**: FUN_002163B8 (a ped in a vehicle, every frame) runs it when ped + 0x1D8 bit 3 is set
+    (`SET_CHAR_DRIVEBY_MODE` 0442 sets it), the gun is one of types 24-27 (the SMGs: the only guns NPCs drive-by
+    with) and **ped + 0x468, the threat** (set by the threat scan FUN_001EFFB0 through FUN_002186E8 for the ped types in
+    the shooter's threat mask + 0x2AC - `SET_CHAR_THREAT_SEARCH`) is set. It plays the drive-by animation and
+    **FUN_00216768** fires: when **FUN_00216690**, a burst gate, says so, it calls CWeapon::Fire - with no timer check
+    of its own. The gate: ped + 0x6D4 the burst's end, + 0x6D0 the pause's end; a burst lasts 500-999 ms
+    (FUN_00203BA0; + 0x4F0 / ×1.5 per ped when set), a pause 500 ms (FUN_00203A98; + 0x4F4). During a burst it
+    answers "fire" **every frame**. So the passenger fires once a frame until the clip is empty, then reloads.
+  - Measured (a parked car, a passenger with an SMG, `SET_CHAR_DRIVEBY_MODE` and `SET_CHAR_THREAT_SEARCH` player 1,
+    `VCS_TIMESTEP`, 20 game seconds each; scratch script, not a tool): exactly one shot a frame while firing - **30
+    shots/s at 30 fps** (the PS2), 60 at 60, 144 at 144 (a 30-round clip gone in 0.2 s). Averaged with pauses and
+    reloads: 12.9 / 22.0 / 31.7 shots a game second at 30 / 60 / 144 fps. The gun's own rate is 90 ms: 11.1 shots/s.
+  - **On the PS2 this is already the game's bug, not a choice**: 2.7x the SMG's rate at 30 fps. The player's own
+    drive-bys check the timer and set a delay - FUN_002CEBE0 (driver, looking left / right) `now + rate`, FUN_002CF078
+    / FUN_002CF4A8 (passenger / bike) a fixed `now + 70` ms - before FUN_002C1BB0 (CWeapon::FireFromCar, which, like
+    Fire, does not check it). The NPC path was left with Fire's on-foot "no delay" and no animation to pace it, and
+    its burst lengths are in milliseconds, so at the PS2's fixed 30 fps the number of shots in a burst came out as
+    "a frame each". Above 30 fps it gets worse with the frame rate.
+  - **Fixed as an option** (Enhancements > Combat: **Drive-by fire rate**; `src/game/vcs_driveby.cpp`): a hook on
+    CWeapon::Fire for the two NPC calls (return addresses **0x2168B4** in FUN_00216768, **0x2169D4** in FUN_002168E8)
+    lets a call through only when the shooter's next shot is due and otherwise returns 0, so the burst gate and the
+    animation run every frame as before. "As on the PS2" (default): one shot per 1/30 s at any frame rate (every frame
+    at 30 fps: the original). "The gun's own rate": weapon info +0xC. `VCS_DRIVEBY_HOOKS=0`: the original. A shot is
+    told by the weapon's timer equalling the time of the call let through - not by the state: the weapon's own update
+    puts state 1 back to 0 once the timer has passed, so after Fire's "timer = now" the gun reads ready again the very
+    next frame (the first version waited for state 1 and never held a shot back). Measured within bursts: PS2 30.0 /
+    30.0 / 29.9 shots/s at 30 / 60 / 144 fps, the gun's rate 10.8 / 11.0 / 11.1 (PROGRESS.md).
+  - Setting up a drive-by in a test: `SET_CHAR_OBJ_KILL_CHAR_ANY_MEANS` makes the passenger of a standing car get
+    out and fire on foot (animation-paced: a few shots a second); the threat search keeps him seated.
 
 ### 12d. Population: density, caps, spawn chance (2026-11-07, Enhancements > World)
 

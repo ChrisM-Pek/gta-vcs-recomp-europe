@@ -1239,3 +1239,19 @@ chose two density sliders and, for draw distance, the LOD scale with the far pla
 - **The far plane stays 2000**: moving it (and so the fog) showed the far water and land as dark patches the fog hid
   on the PS2, and thinned Vice City's haze. Kept as a test switch, `VCS_FAR_CLIP=<metres>`; it would need its own
   work on the distant LOD's colours to be an option.
+
+## 2026-11-08 - The NPC drive-by's fire rate (the user's request)
+
+The user saw NPCs in cars fire SMGs far too fast, faster at high frame rates, and asked whether it was frame timing or
+the original game. Both (game-internals.md 12c): the NPC drive-by fires a shot every frame - 30 a second on the PS2,
+2.7x the SMG's own 90 ms, and 144 a second at 144 fps. The user chose a PS2-rate fix and the gun's rate as an option,
+on the Enhancements page.
+
+- **One setting, Enhancements > Combat: Drive-by fire rate.** *As on the PS2* (default) is the original game as it
+  played on the PS2, at any frame rate: a shot per 1/30 s. *The gun's own rate* fixes the original bug: the weapon's
+  firing rate, as the player's own drive-bys use. No choice keeps "a shot every frame" - that is a frame-rate bug of
+  this port, like the others fixed without an option; `VCS_DRIVEBY_HOOKS=0` brings it back for comparison (rule 1).
+- **Hooked at CWeapon::Fire, only for the two NPC drive-by calls** (by return address), not at the drive-by update:
+  skipping the whole update would also hold back its burst gate and animation, so bursts would end late.
+- **The next shot is due one interval after the last was due**, not after it came, with 2 ms tolerance: the rate is
+  exact whatever the frame length, and at 30 fps every frame (33 / 34 ms) still fires - identical to the original.

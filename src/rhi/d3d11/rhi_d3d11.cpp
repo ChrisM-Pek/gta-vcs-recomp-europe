@@ -9,7 +9,7 @@
 #endif
 #include <windows.h>
 #include <d3d11_1.h>
-#include <dxgi1_5.h>
+#include <dxgi1_6.h>
 #include <wrl/client.h>
 
 #include "imgui.h"
@@ -77,6 +77,38 @@ namespace rhi
             if (n > 1)
                 WideCharToMultiByte(CP_UTF8, 0, w, -1, s.data(), n, nullptr, nullptr);
             return s;
+        }
+
+        // The graphics card for the player's choice (Graphics > Graphics card, GitHub issue 112): the first hardware
+        // adapter in DXGI's ranking for it (IDXGIFactory6, Windows 10 1803+) - on a laptop the dedicated card rather
+        // than the integrated chip Windows hands out by default. Null: no choice to make (SystemDefault, an older
+        // Windows) - D3D11CreateDevice then takes Windows' default adapter, as before. The log names every card.
+        ComPtr<IDXGIAdapter1> pickAdapter(GpuPreference want)
+        {
+            ComPtr<IDXGIFactory6> factory;
+            if (FAILED(CreateDXGIFactory1(IID_PPV_ARGS(&factory))))
+                return nullptr;
+            const DXGI_GPU_PREFERENCE preference = want == GpuPreference::PowerSaving ? DXGI_GPU_PREFERENCE_MINIMUM_POWER
+                                                                                    : DXGI_GPU_PREFERENCE_HIGH_PERFORMANCE;
+            ComPtr<IDXGIAdapter1> chosen, adapter;
+            std::string names;
+            for (UINT i = 0; SUCCEEDED(factory->EnumAdapterByGpuPreference(i, preference, IID_PPV_ARGS(&adapter))); ++i)
+            {
+                DXGI_ADAPTER_DESC1 d{};
+                adapter->GetDesc1(&d);
+                if (d.Flags & DXGI_ADAPTER_FLAG_SOFTWARE) // Microsoft Basic Render Driver
+                    continue;
+                names += (names.empty() ? "" : ", ") + narrow(d.Description);
+                if (!chosen)
+                    chosen = adapter;
+            }
+            const char *mode = want == GpuPreference::PowerSaving     ? "power saving"
+                               : want == GpuPreference::SystemDefault ? "Windows' choice"
+                                                                      : "fastest";
+            std::fprintf(stderr, "[rhi] graphics cards, %s first: %s (choice: %s)\n",
+                         preference == DXGI_GPU_PREFERENCE_MINIMUM_POWER ? "most frugal" : "fastest",
+                         names.empty() ? "none" : names.c_str(), mode);
+            return want == GpuPreference::SystemDefault ? nullptr : chosen;
         }
 
         D3D11_BLEND blendFactor(BlendFactor f)
@@ -203,19 +235,30 @@ namespace rhi
                 // picture against when it differs between GPU vendors (slow: a few frames a second)
                 const char *warp = std::getenv("PS2X_RHI_WARP");
                 const D3D_DRIVER_TYPE driver = warp && *warp && *warp != '0' ? D3D_DRIVER_TYPE_WARP : D3D_DRIVER_TYPE_HARDWARE;
+                // the graphics card for desc.gpu (pickAdapter); a card that can't make the device (no feature level
+                // 11_0) leaves it to Windows' default one, as it was before the choice
+                ComPtr<IDXGIAdapter1> chosen = driver == D3D_DRIVER_TYPE_HARDWARE ? pickAdapter(desc.gpu) : nullptr;
                 HRESULT hr = E_FAIL;
-                for (int attempt = 0; attempt < 3 && FAILED(hr); ++attempt)
+                for (int pass = chosen ? 0 : 1; pass < 2 && FAILED(hr); ++pass)
                 {
-                    // retry without the debug layer (not installed) and without 11_1 (old runtimes reject it)
-                    const D3D_FEATURE_LEVEL *first = attempt == 2 ? levels + 1 : levels;
-                    const UINT count = attempt == 2 ? 1u : 2u;
-                    hr = D3D11CreateDevice(nullptr, driver, nullptr, flags, first, count, D3D11_SDK_VERSION, &m_device, nullptr,
-                                           &m_context);
-                    if (FAILED(hr) && (flags & D3D11_CREATE_DEVICE_DEBUG))
+                    IDXGIAdapter *adapter = pass == 0 ? chosen.Get() : nullptr;
+                    for (int attempt = 0; attempt < 3 && FAILED(hr); ++attempt)
                     {
-                        std::fprintf(stderr, "[rhi] D3D11 debug layer not available\n");
-                        flags &= ~D3D11_CREATE_DEVICE_DEBUG;
+                        // retry without the debug layer (not installed) and without 11_1 (old runtimes reject it)
+                        const D3D_FEATURE_LEVEL *first = attempt == 2 ? levels + 1 : levels;
+                        const UINT count = attempt == 2 ? 1u : 2u;
+                        // a given adapter takes D3D_DRIVER_TYPE_UNKNOWN only
+                        hr = D3D11CreateDevice(adapter, adapter ? D3D_DRIVER_TYPE_UNKNOWN : driver, nullptr, flags, first, count,
+                                               D3D11_SDK_VERSION, &m_device, nullptr, &m_context);
+                        if (FAILED(hr) && (flags & D3D11_CREATE_DEVICE_DEBUG))
+                        {
+                            std::fprintf(stderr, "[rhi] D3D11 debug layer not available\n");
+                            flags &= ~D3D11_CREATE_DEVICE_DEBUG;
+                        }
                     }
+                    if (FAILED(hr) && pass == 0)
+                        std::fprintf(stderr, "[rhi] D3D11: no device on the chosen graphics card (%s): Windows' default one\n",
+                                     hex(hr).c_str());
                 }
                 if (FAILED(hr))
                 {

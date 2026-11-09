@@ -241,9 +241,19 @@ namespace rhi
         bool (*createSurface)(void *instance, uint64_t *surface) = nullptr;  // VkInstance -> VkSurfaceKHR
     };
 
+    // Which graphics card, on a PC with more than one (a laptop's integrated chip and its dedicated one; GitHub
+    // issue 112: the game started on the integrated one). D3D11: DXGI's ranking; Vulkan: the device type.
+    enum class GpuPreference : uint8_t
+    {
+        HighPerformance, // the dedicated card (the default)
+        PowerSaving,     // the integrated one
+        SystemDefault,   // D3D11: the adapter Windows hands out (its Graphics settings, the driver's panel) - as before
+    };
+
     struct DeviceDesc
     {
         Backend backend = defaultBackend();
+        GpuPreference gpu = GpuPreference::HighPerformance;
         void *nativeWindow = nullptr; // D3D11: the HWND
         VulkanWindow vulkan;          // Vulkan
         uint32_t width = 0;

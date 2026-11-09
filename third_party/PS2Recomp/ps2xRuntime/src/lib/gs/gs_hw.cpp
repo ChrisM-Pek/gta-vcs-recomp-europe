@@ -4427,9 +4427,15 @@ namespace
             const int64_t takenNs = steadyNs();
             if (!frames.empty())
             {
-                // [gta-recomp] F12 (or PS2X_HW_DUMP=<frame>): list the next frame's draws and dump its targets
+                // [gta-recomp] F12 (or PS2X_HW_DUMP=<frame>): list the next frame's draws and dump its targets. The key
+                // only with PS2X_HW_DUMP_KEY=1: F12 is the screenshot / record key of Steam, Bandicam and others, and
+                // a player pressing it got hundreds of [draw] lines and the targets as files (GitHub issue 89)
                 static const long dumpAt = std::getenv("PS2X_HW_DUMP") ? std::atol(std::getenv("PS2X_HW_DUMP")) : -1;
-                const bool f12 = ps2control::keyDown(301 /* KEY_F12 */);
+                static const bool dumpKey = [] {
+                    const char *e = std::getenv("PS2X_HW_DUMP_KEY");
+                    return e && *e && *e != '0';
+                }();
+                const bool f12 = dumpKey && ps2control::keyDown(301 /* KEY_F12 */);
                 if (f12 && !m_f12Down)
                     m_dumpPending = true;
                 m_f12Down = f12;

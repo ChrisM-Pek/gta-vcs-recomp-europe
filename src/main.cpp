@@ -692,6 +692,29 @@ namespace
         if (s.choices.size() > 1)
             settings::add(s);
 
+        // The graphics card, on a PC with more than one (GitHub issue 112: a laptop started the game on its integrated
+        // chip). The log's "[rhi] graphics cards" line names them, "[present] ... on ..." the one in use.
+        s = {};
+        s.key = "display.gpu";
+        s.page = "Graphics";
+        s.section = "Renderer";
+        s.label = "Graphics card";
+        s.help = "On a PC with two graphics cards (most gaming laptops): Fastest uses the dedicated card, Power saving the "
+                 "integrated one (slower, cooler, longer on battery).";
+        s.type = Type::Choice;
+        s.choices = {{"Fastest", 0}, {"Power saving", 1}};
+        if (rhi::backendBuilt(rhi::Backend::D3D11))
+        {
+            s.help += " System default leaves it to Windows' Graphics settings and the driver's control panel.";
+            s.choices.push_back({"System default", 2});
+        }
+        s.help += " With one card they are all the same.";
+        s.defaultValue = 0;
+        s.apply = Apply::Restart;
+        s.env = "VCS_GPU";
+        s.onChange = [](int v) { present::setGpuPreference(v); };
+        settings::add(s);
+
         vcs::input::registerSettings(); // the Keyboard & mouse and Gamepad pages (game/vcs_input.h)
         vcs::prompts::registerSettings(); // the Enhancements page: button prompts by device (game/vcs_prompts.h)
         vcs::world::registerSettings();   // Enhancements > World: density, draw distance (game/vcs_world_detail.h)

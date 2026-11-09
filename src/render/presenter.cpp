@@ -45,6 +45,7 @@ namespace present
 
         std::atomic<float> g_displayAspect{4.0f / 3.0f};
         int g_backendSetting = -1; // rhi::Backend; -1: the default
+        int g_gpuSetting = 0;      // rhi::GpuPreference
 
         rhi::Backend chooseBackend()
         {
@@ -92,6 +93,8 @@ namespace present
 
     void setBackend(int backend) { g_backendSetting = backend; }
 
+    void setGpuPreference(int preference) { g_gpuSetting = std::clamp(preference, 0, 2); }
+
     int backend() { return static_cast<int>(g_device ? g_device->backend() : chooseBackend()); }
 
     bool backendNeedsVulkanWindow() { return chooseBackend() == rhi::Backend::Vulkan; }
@@ -100,6 +103,7 @@ namespace present
     {
         rhi::DeviceDesc desc;
         desc.backend = chooseBackend();
+        desc.gpu = static_cast<rhi::GpuPreference>(g_gpuSetting);
         desc.nativeWindow = platform::nativeWindow();
         desc.vulkan.instanceExtensions = platform::vulkanInstanceExtensions;
         desc.vulkan.createSurface = platform::vulkanCreateSurface;

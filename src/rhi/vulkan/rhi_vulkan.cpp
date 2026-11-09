@@ -1293,14 +1293,16 @@ namespace rhi
                 return true;
             }
 
-            bool pickDevice(const DeviceDesc &, std::string &error)
+            bool pickDevice(const DeviceDesc &desc, std::string &error)
             {
                 uint32_t count = 0;
                 vkEnumeratePhysicalDevices(m_core->instance, &count, nullptr);
                 std::vector<VkPhysicalDevice> devices(count);
                 vkEnumeratePhysicalDevices(m_core->instance, &count, devices.data());
-                // VCS_VK_DEVICE=<number or part of the name>: that one; else the best kind (discrete > integrated > ...)
+                // VCS_VK_DEVICE=<number or part of the name>: that one; else the best kind (discrete > integrated > ...;
+                // integrated first for Graphics > Graphics card: Power saving)
                 const char *wanted = std::getenv("VCS_VK_DEVICE");
+                const bool frugal = desc.gpu == GpuPreference::PowerSaving;
                 int best = -1, bestScore = -1;
                 std::string why;
                 for (uint32_t i = 0; i < count; ++i)
@@ -1314,8 +1316,8 @@ namespace rhi
                         why += std::string("; ") + props.deviceName + ": " + missing;
                         continue;
                     }
-                    int score = props.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU     ? 4
-                                : props.deviceType == VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU ? 3
+                    int score = props.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU     ? (frugal ? 3 : 4)
+                                : props.deviceType == VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU ? (frugal ? 4 : 3)
                                 : props.deviceType == VK_PHYSICAL_DEVICE_TYPE_VIRTUAL_GPU    ? 2
                                 : props.deviceType == VK_PHYSICAL_DEVICE_TYPE_CPU            ? 0
                                                                                              : 1;

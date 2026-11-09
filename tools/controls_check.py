@@ -317,6 +317,26 @@ class Check:
                 abs(back) < 0.05, "heading %+.3f, 0.8 s %+.3f, 1.8 s %+.3f, 4.8 s %+.3f from behind" %
                 (angle(h0, h1), angle(h0, h2), angle(h0, h3), back))
 
+        # the mouse wheel on the radio (game-internals.md 12a "The radio"): a notch down is the next station, a notch up
+        # the one before (the vehicle's +0x2BA: 0..8 the stations, 9 off). The game drops L1 while the radio plays an
+        # announcement (15 - 40 s after getting in, in this save), so a step is waited for.
+        station = lambda: g.peek(car + 0x2BA, 1)[0]
+        s0, t0, took = station(), time.time(), False
+        while time.time() - t0 < 80 and not took:
+            g.cmd("press wheeldown 100")
+            time.sleep(2.0)
+            took = station() == (s0 + 1) % 10
+            if not took:
+                time.sleep(4.0)
+        g.cmd("press wheelup 100")
+        time.sleep(2.0)
+        s1 = station()
+        g.cmd("press wheelup 100")
+        time.sleep(2.0)
+        s2 = station()
+        self.ok("wheel: radio stations", took and s1 == s0 and s2 == (s0 + 9) % 10,
+                "from %d: down %s, up %d, up %d" % (s0, "took" if took else "not taken in 80 s", s1, s2))
+
         # out of the car: the on-foot keys and the mouse look again
         g.cmd("key space down")
         time.sleep(1.0)

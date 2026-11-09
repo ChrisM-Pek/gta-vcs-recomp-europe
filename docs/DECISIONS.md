@@ -1255,3 +1255,37 @@ on the Enhancements page.
   skipping the whole update would also hold back its burst gate and animation, so bursts would end late.
 - **The next shot is due one interval after the last was due**, not after it came, with 2 ms tolerance: the rate is
   exact whatever the frame length, and at 30 fps every frame (33 / 34 ms) still fires - identical to the original.
+
+## 2026-11-10 - A round of GitHub issues: 41, 89, 90, 91, 93, 112 (the user's request; the choices below are Claude's)
+
+The user asked for the most common GitHub issues to be gathered and the first two steps of the plan done: a triage
+sweep and the small fixes with clear causes. No choice below was put to the user first; they are for review.
+
+- **Purple Haze (41): the softlock is fixed at every frame rate, the cutscene only above 30 fps.** The main script's
+  wait for an audio line that never ends once the line's slot is freed is a hang on a PS2 too, whenever a speaker dies
+  between "load" and "loaded"; ending it changes nothing else, so it has no option and applies at 30 fps as well
+  (`VCS_SCRIPT_FIXES=0` is the reference, rule 1). The truck is parked early only while the frame is not the PS2's:
+  at 30 fps the original plays as it always did. Parking it - with the mission's own commands, behind the fade, half a
+  second before the mission does - was chosen over making the thugs unhurtable (they would still be knocked down and
+  the scene would fade in on a man getting up) and over chasing the collision itself (the hit differs with the step
+  inside the engine's collision response; noted as open in game-internals.md 13).
+- **The haze (93) is a screen effect in every HUD mode**: stretched across the picture with the HUD at Keep 4:3 too,
+  as fades and the scope's mask are. `VCS_HAZE_FILL=0` is the old behaviour.
+- **The radio on the mouse wheel (90) is part of Keyboard > Mouse wheel**, not a setting of its own: the wheel did
+  nothing in a vehicle, the option is on by default and a wheel bound to a control still wins. Down is next, as for
+  weapons. The step back goes through the game's own retune (its click, the station's name, its 30-frame wait) rather
+  than a stream switched behind its back: one byte written, and written back when the game did not take the press.
+  Nine quick presses of L1 would also land one station back, but click nine times.
+- **F12 (89) needs `PS2X_HW_DUMP_KEY=1`** rather than a setting or another key: the frame dump is a developer's tool
+  (hundreds of lines on stderr, the render targets as files next to the game), and every free F key is somebody's
+  screenshot key. `PS2X_HW_DUMP=<frame>` works as before.
+- **The graphics card (112): Fastest by default, a setting to change it.** A game should start on the dedicated card;
+  Graphics > Graphics card offers Power saving (the integrated one) and System default (what it was: Windows' default
+  adapter, which follows Windows' own Graphics settings and the driver's panel). Chosen through DXGI
+  (`EnumAdapterByGpuPreference`, Windows 10 1803+) with the default adapter as the fall-back, not through the
+  `NvOptimusEnablement` / `AmdPowerXpressRequestHighPerformance` exports: those cannot be turned off by a setting. The
+  launcher stays on the default adapter (it idles; no reason to wake the big card). Not checked on a PC with two cards -
+  the dev machine has one; the log's `[rhi] graphics cards` line is there for the reporter's answer.
+- **vcs.exe's icon and details (91)** are the launcher's icon and the release's VERSION. The version reaches the
+  resource file through a generated header, not compile definitions: a definition on the target would be on every
+  generated file's command line and rebuild the whole game at each release.

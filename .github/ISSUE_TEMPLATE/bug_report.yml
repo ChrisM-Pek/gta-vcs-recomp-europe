@@ -1,0 +1,63 @@
+name: Bug report
+description: Something in the game, the build or the launcher doesn't work
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time. Two things make a report quick to act on: the version, and the report zip.
+        Please search the open issues first - your problem may already be listed.
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: The launcher shows it under Settings → Updates (for example 0.2.4).
+      placeholder: "0.2.4"
+    validations:
+      required: true
+  - type: dropdown
+    id: system
+    attributes:
+      label: System
+      options:
+        - Windows 10
+        - Windows 11
+        - Linux
+        - Steam Deck
+        - Other
+    validations:
+      required: true
+  - type: dropdown
+    id: where
+    attributes:
+      label: Where does it go wrong?
+      options:
+        - Building the game (the launcher's steps)
+        - Starting the game
+        - In the game
+        - The launcher itself
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happens, and what did you expect?
+      description: For a problem in the game, name the mission or the place, and say how to get there.
+    validations:
+      required: true
+  - type: input
+    id: settings
+    attributes:
+      label: Frame rate and game timing
+      description: "From the game's settings (F2) → Display: the frame rate cap and Game timing. Many problems only show above 30 fps."
+      placeholder: "144, frame-rate independent"
+  - type: textarea
+    id: report
+    attributes:
+      label: Report zip
+      description: "In the launcher: Help → Make a report, then drag the zip in here. It holds the logs and the names of your CPU and graphics card - never the disc or your saves."
+  - type: textarea
+    id: media
+    attributes:
+      label: Screenshots or a video
+      description: Optional. F8 in the game saves a screenshot.

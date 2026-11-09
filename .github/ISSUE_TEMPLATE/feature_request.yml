@@ -1,0 +1,20 @@
+name: Feature request
+description: An option or an improvement you would like
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        The port is authentic by default: every enhancement is an option you turn on in the game's settings (F2).
+        Please search the open issues first, and add a thumbs-up to an existing request rather than opening a second one.
+  - type: textarea
+    id: what
+    attributes:
+      label: What would you like?
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: What is it for?
+      description: What you do today instead, or how another GTA on PC does it.

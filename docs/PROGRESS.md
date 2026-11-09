@@ -459,6 +459,16 @@ dropped on uploads (lazy render-target patching).
       Then the same `max(step, 0.5)` in vehicles and bikes in water and a boat's rudder, patched: at 144 fps a car kept
       1.6 m/s one second into the sea (0.6 at 30), a bike sank to the bottom; after, 0.76 m/s and the bike settles 2.95 m
       deep (2.75 at 30). `framerate_audit.py` carwater, bikewater. Left: the ped ones (CPed::ProcessControl).
+- [x] **Purple Haze stuck on "Loading..." above 30 fps** (2026-11-10, GitHub issue 41; game-internals.md 11h): at 60
+      fps the truck that rams the van in GON_C3's cutscene turns the van instead of pushing it, rolls on and runs over
+      the first thug as he is created behind the faded-out screen; the audio monitor script frees his line's slot and the
+      mission waits for the line to load for ever. Reproduced every time with original timing at 60 fps (independent
+      timing got through by luck: the thug knocked down, health 64). Two fixes in `src/game/vcs_script_fixes.cpp`
+      (`VCS_SCRIPT_FIXES=0` off): the main script's wait for a line to load also ends when the slot was freed (the
+      loop that held Shakedown too), and Purple Haze's truck is parked by the mission's own commands before the thugs
+      are created (frames other than the PS2's only). `tools/haze_check.py`: state 60 reached, both thugs at health
+      100, the truck parked; the whole mission passes at original 60 and independent 144 fps; with the fixes off it
+      sticks as before. Open: why the hit differs with the step (game-internals.md 13).
 - [ ] Fixes for what changes at the shorter step (physics, animations, script waits, particles, camera), each behind
       the switch; frame pacing. Left from the script survey (game-internals.md 11f): per-frame object / camera /
       text animations in missions (looks only).
@@ -769,6 +779,13 @@ dropped on uploads (lazy render-target patching).
   `src/game/vcs_hud.cpp`, `VCS_SCOPE_FILL=0` = before). Checked: screenshots at 4:3 / 16:9 with HUD Keep 4:3 and Screen
   edges (strips at most 2 of 255, as the PS2's own mask at 4:3); regress step "scopemask" (fails with
   `VCS_SCOPE_FILL=0`: 253); `menu_check.py` 33 / 0 failed, `hud_check.py` passes.
+- **Purple Haze's haze across the whole picture** (2026-11-10, GitHub issue 93): the tunnel vision
+  (SET_TUNNEL_VISION_INTENSITY) is eight quarter-screen sprites drawn by CHud::Draw; in widescreen they were grouped
+  with the HUD into one element kept at 4:3 in the middle, so the sides of the picture stayed clear and the clock /
+  weapon moved in from the right edge. They are now a screen effect: unsqueezed, never grouped (game-internals.md 6f
+  "Tunnel vision", `src/game/vcs_hud.cpp`, `VCS_HAZE_FILL=0` = before). Checked: screenshots at 16:9 with HUD Keep 4:3
+  and Screen edges, 21:9, 4:3 (unchanged); `tools/haze_check.py` (every piece anchored "stretch" in 376 frames, the
+  HUD's right cluster at the right edge in all of them).
 
 - **Trainer** (2026-10-26, docs/TRAINER.md): an RDR2 Native Trainer style menu (F5 / Back + RB) - god mode, never
   wanted, wanted level, money, every weapon and loadouts, unlimited ammo, no reload, spawning all 110 vehicles,
@@ -828,6 +845,19 @@ dropped on uploads (lazy render-target patching).
   back), 30.0 / 13.4 at 60, 29.9 / 12.8 at 144; the gun's rate 10.8 / 6.3, 11.0 / 6.2, 11.1 / 6.5 (gap 90 ms at 144
   fps); the original (`VCS_DRIVEBY_HOOKS=0`) 144 / 29.4 at 144. The setting changes live (rig `setting`, `driveby`).
   No tool of its own yet: the measurement was a scratch script (`trace` of the weapon slot).
+- **The mouse wheel on the radio** (2026-11-10, GitHub issue 90; game-internals.md 12a "The radio",
+  `src/game/vcs_input.cpp`): while driving a notch down is the next station and a notch up the one before. The game has
+  one station button, L1, forwards only; a step back writes the vehicle's station two back and presses L1, and takes
+  the write back when the game did not take the press (an announcement on the radio, a vehicle without one). Part of
+  Keyboard > **Mouse wheel** (on by default). Checked with a scratch script (`press wheelup / wheeldown`, the vehicle's
+  station and `VCS_MUSIC_LOG`'s stream opens): down 1 -> 2 -> 3, up 3 -> 2 -> 1 -> 0, three notches up 0 -> 7, two
+  down 7 -> 9 (off), and no change while the announcement plays.
+- **GitHub issues round, 2026-11-10** (DECISIONS.md): the graphics card on a PC with two (issue 112: Graphics >
+  **Graphics card**, Fastest by default - D3D11 through DXGI's ranking, Vulkan by device type; `[rhi] graphics cards` in
+  the log; only one card here, so the choice between two is not checked); F12's frame dump only with
+  `PS2X_HW_DUMP_KEY=1` (issue 89: Bandicam's and Steam's key; checked: 0 `[draw]` lines without, 893 with); vcs.exe's
+  icon and version information (issue 91: the launcher's icon, VERSION through a header only the resource file sees;
+  checked: Explorer's details read 0.2.4, "GTA: Vice City Stories PC port").
 
 ## Milestone 9 - Linux (started 2026-10-30)
 
@@ -939,6 +969,7 @@ Python scripts still usable on their own. docs/LAUNCHER.md has the whole of it; 
 | `VCS_VSYNC=0\|1\|2` | Vertical sync for one run: off, on, off with tearing allowed |
 | `VCS_REFLECTIONS=0\|1\|2` | Car reflections for one run: Original, Smooth, Auto (Smooth above 1x; always used otherwise, no setting) - game-internals.md 6g |
 | `VCS_SCRIPT_TIMESTEP=0` | mission meters that count per frame stay on the frame rate (game-internals.md 11f; the reference) |
+| `VCS_SCRIPT_FIXES=0` | the mission script fixes off: the wait for an audio line never ends when its slot is freed, Purple Haze's truck is not parked early (game-internals.md 11h; the reference: sticks on "Loading..." at 60 fps) |
 | `VCS_PHYSICS_TIMESTEP=0` | the push of a body under a wheel, the rolling resistance and a bike's brake wobble stay per frame (game-internals.md 4; the reference) |
 | `VCS_TURN_LOG=<model>` | every ApplyTurnForce on vehicles of that model (212 = PCJ-600): caller, its change to the yaw / pitch rate (sum by caller to find a per-frame push) |
 | `VCS_WHEEL_LOG=1` | each bike wheel's ProcessWheel inputs per frame: brake, grip, the contact's forward / sideways speed, wheel state |
@@ -993,6 +1024,7 @@ Python scripts still usable on their own. docs/LAUNCHER.md has the whole of it; 
 | `VCS_CUTSCENE_BARS=0/1` | the cutscene letterbox off / on for one run (Display > Cutscene black bars; always on at 4:3) |
 | `VCS_WIDESCREEN=1` / `=game` | the game's own (PS2, anamorphic Vert-) widescreen preference forced on / left to the game and its saves (normally kept off); both show its pause-menu row again |
 | `VCS_SCOPE_FILL=0` | widescreen: the scope / camera mask's side bars squeezed into the middle 4:3 as before 2026-11-06 (the world shows beside the scope) |
+| `VCS_HAZE_FILL=0` | widescreen: the tunnel vision's quarters grouped with the HUD and kept at 4:3 in the middle as before 2026-11-10 (Purple Haze's haze leaves the sides clear) |
 | `VCS_HIDE_WIDESCREEN=0` | the pause menu's Display page keeps the game's Widescreen row (the preference still kept off) |
 | `VCS_TRACE_VISIBLE=1` | CCamera::IsSphereVisible: visible ratio every 5 s, samples with the camera-space point and the planes |
 | `VCS_HUD_NATIVE=0` | the HUD drawn into the PS2 frame buffer instead of the native layer at the window's size |
@@ -1096,6 +1128,7 @@ Python scripts still usable on their own. docs/LAUNCHER.md has the whole of it; 
 | `VCS_COUNT_CALLS=addr,...` | calls per 5 s of guest functions |
 | `VCS_RWATCH=lo,hi` | which code reads a guest range |
 | `PS2X_HW_DUMP=<frame>` | dump HW render targets + display as PPM |
+| `PS2X_HW_DUMP_KEY=1` | F12 does the same for the next frame with draws (the draw log on stderr). Off by default since 2026-11-10: F12 is the screenshot / record key of Steam, Bandicam and others (GitHub issue 89) |
 | `python tools/run.py N name --hidden` + `python tools/gamectl.py ...` | hidden test run driven over the control channel |
 | `python tools/gamectl.py gameinfo` | the F3 game-state panel's lines: player (position, heading, state, health), vehicle, camera, clock / area / pauses, pools, scripts |
 | `python tools/scenes.py capture OUT` / `compare REF NEW` | reference scenes (screenshots + perf) from an empty card; diff two captures |
@@ -1119,6 +1152,7 @@ Python scripts still usable on their own. docs/LAUNCHER.md has the whole of it; 
 | `PS2X_HW_SPECIALISE=0` | the GS pixel shader's full version for every draw (not one per texture read; PERFORMANCE.md 18) |
 | `PS2X_HW_QUEUE=<n>`, `PS2X_HW_BATCH_MAX=<n>` | frames the game may queue ahead / frames rendered per host frame (0: all); defaults 1 / 1 with frame-rate independent timing, 3 / all with the original (PERFORMANCE.md 17) |
 | `VCS_VK_DEVICE=<n or name>` | Vulkan: which GPU |
+| `VCS_GPU=0\|1\|2` | Graphics > Graphics card for one run: 0 the fastest card (the default), 1 power saving, 2 the system's default adapter (D3D11; as before 2026-11-10). The log's `[rhi] graphics cards` line names them |
 | `PS2X_HLE=0` | draw the world through the VU1 program instead of natively (src/game/vcs_hle_world.cpp) |
 | `PS2X_HLE_VERIFY=1` | compare the C++ world pipeline with the VU1's output (bit-exact expected) |
 | `PS2X_HLE_SURVEY=1`, `PS2X_HLE_SURVEY_DUMP=n`, `PS2X_HLE_SURVEY_DUMP_EVERY=n` | VU1 program / layout survey, sample dumps |

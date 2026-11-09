@@ -459,6 +459,13 @@ dropped on uploads (lazy render-target patching).
       Then the same `max(step, 0.5)` in vehicles and bikes in water and a boat's rudder, patched: at 144 fps a car kept
       1.6 m/s one second into the sea (0.6 at 30), a bike sank to the bottom; after, 0.76 m/s and the bike settles 2.95 m
       deep (2.75 at 30). `framerate_audit.py` carwater, bikewater. Left: the ped ones (CPed::ProcessControl).
+- [x] **Rotor blades against walls at high frame rates** (2026-11-10, GitHub issue 102; game-internals.md 4): the
+      blade test sets a damage impulse on every frame a blade touches something and the helicopter loses the same
+      health for it each frame - 12.75 for a Maverick: 375 a second at 30 fps, 1840 at 144, on fire within a second.
+      The blades now count once per 1/30 s (`src/game/vcs_physics_timing.cpp` 4., `VCS_PHYSICS_TIMESTEP=0` off).
+      `framerate_audit.py --only rotor` (new: a Maverick in an alley narrower than its rotor): 375 / 391 / 377 / 389 /
+      395 a second at 1/30 / 60 / 100 / 144 / 240. Seen on the way: the health that falls is the vehicle's +0x27C, not
+      the +0x278 the trainer's vehicle invincibility / repair and the F3 panel use - to look at.
 - [x] **Purple Haze stuck on "Loading..." above 30 fps** (2026-11-10, GitHub issue 41; game-internals.md 11h): at 60
       fps the truck that rams the van in GON_C3's cutscene turns the van instead of pushing it, rolls on and runs over
       the first thug as he is created behind the faded-out screen; the audio monitor script frees his line's slot and the

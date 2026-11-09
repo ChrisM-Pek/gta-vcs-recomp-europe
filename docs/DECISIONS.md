@@ -1256,7 +1256,7 @@ on the Enhancements page.
 - **The next shot is due one interval after the last was due**, not after it came, with 2 ms tolerance: the rate is
   exact whatever the frame length, and at 30 fps every frame (33 / 34 ms) still fires - identical to the original.
 
-## 2026-11-10 - A round of GitHub issues: 41, 89, 90, 91, 93, 112 (the user's request; the choices below are Claude's)
+## 2026-11-10 - A round of GitHub issues: 41, 89, 90, 91, 93, 102, 112 (the user's request; the choices below are Claude's)
 
 The user asked for the most common GitHub issues to be gathered and the first two steps of the plan done: a triage
 sweep and the small fixes with clear causes. No choice below was put to the user first; they are for review.
@@ -1269,6 +1269,11 @@ sweep and the small fixes with clear causes. No choice below was put to the user
   second before the mission does - was chosen over making the thugs unhurtable (they would still be knocked down and
   the scene would fade in on a man getting up) and over chasing the collision itself (the hit differs with the step
   inside the engine's collision response; noted as open in game-internals.md 13).
+- **Rotor blades (102) count once per 1/30 s rather than being scaled.** The blade test hands a damage impulse to
+  VehicleDamage, which has a threshold: an impulse scaled by the step would fall under it at high frame rates and do
+  nothing at all. Letting it through on one frame per PS2 frame keeps each hit what it was and the rate what it was on
+  the PS2; the sparks and the push off the wall stay every frame. Under `VCS_PHYSICS_TIMESTEP`, with the other
+  per-frame vehicle physics.
 - **The haze (93) is a screen effect in every HUD mode**: stretched across the picture with the HUD at Keep 4:3 too,
   as fades and the scope's mask are. `VCS_HAZE_FILL=0` is the old behaviour.
 - **The radio on the mouse wheel (90) is part of Keyboard > Mouse wheel**, not a setting of its own: the wheel did

@@ -25,14 +25,23 @@
 //    turned the bike's yaw 3.7 times as fast, it fishtailed (heading swinging -21 to +68 degrees, sideways at 19 m/s;
 //    3 degrees at 30 fps), and at 240 it went down on its side. The hook scales that call's force (f12-f14, return
 //    address 0x33BE5C).
+// 4. A rotor blade against the world (GitHub issue 102). CVehicle's blade test (FUN_003EE308: radius f12, damage
+//    multiplier f13, the vehicle a0; called for each rotor while it turns) sets the vehicle's damage impulse (+0x10C)
+//    to max(the contact's impulse, a constant x mass / 3000) x the multiplier whenever a blade touches something, and
+//    CAutomobile::ProcessControl's VehicleDamage(0) turns that into health (+0x27C) the same frame: a Maverick standing
+//    with its rotor in a wall lost 12.75 a frame - 382 a second at 30 fps, 1590 at 144, on fire within a second. The
+//    damage has a threshold, so the impulse cannot simply be scaled; instead the blades count on one frame in every
+//    1/30 s, as on the PS2: a per-vehicle sum of the frames' steps lets the multiplier through when it reaches a PS2
+//    frame and zeroes it otherwise (the sparks and the push stay every frame).
 //
-// VCS_PHYSICS_TIMESTEP=0 keeps all three at the game's per-frame amounts.
+// VCS_PHYSICS_TIMESTEP=0 keeps all four at the game's per-frame amounts.
 #include "game/vcs_physics_timing.h"
 
 #include "game/vcs_framerate.h"
 #include "ps2_runtime.h"
 #include "ps2_runtime_macros.h"
 
+#include <algorithm>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -44,6 +53,7 @@ namespace vcs
         constexpr uint32_t kApplyTurnForce = 0x00347E78u;  // CPhysical::ApplyTurnForce(f12-f14 force, f15-f17 point, a0)
         constexpr uint32_t kBodyPushReturn = 0x003F36D4u;  // FUN_003F34F0's call: the push from a body under a wheel
         constexpr uint32_t kBrakeWobbleReturn = 0x0033BE5Cu; // CBike::ProcessControl's call: the brake wobble (3.)
+        constexpr uint32_t kBladeCollision = 0x003EE308u;  // CVehicle's rotor blade test (4.): f13 the damage multiplier
         constexpr uint32_t kProcessWheelCar = 0x003E6C18u; // CVehicle::ProcessWheel
         constexpr uint32_t kProcessWheelBike = 0x003E7618u;
         constexpr uint32_t kBrakeSlots = 0x0007FF00u;      // the patched ProcessWheels' rolling-resistance constants
@@ -52,7 +62,8 @@ namespace vcs
         constexpr uint32_t kFrameCounter = 0x004CD124u;    // CTimer::m_FrameCounter
         constexpr float kPs2Step = 50.0f / 30.0f;          // a 30 fps frame
 
-        PS2Runtime::RecompiledFunction g_origTurnForce = nullptr, g_origWheelCar = nullptr, g_origWheelBike = nullptr;
+        PS2Runtime::RecompiledFunction g_origTurnForce = nullptr, g_origWheelCar = nullptr, g_origWheelBike = nullptr,
+                                       g_origBlade = nullptr;
 
         bool enabled()
         {
@@ -137,6 +148,54 @@ namespace vcs
             g_origTurnForce(rdram, ctx, runtime);
         }
 
+        // 4.: which vehicles' blades count this frame. A handful of helicopters at most turn their rotors at once; the
+        // slot not used for longest is taken for a new one. Game thread only.
+        struct BladeClock
+        {
+            uint32_t vehicle = 0, frame = 0;
+            float sum = 0.0f;  // the steps since the blades last counted
+            bool counts = true;
+        };
+        BladeClock g_blades[8];
+
+        PS2_GUEST_CC void bladeCollision(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
+        {
+            if (active())
+            {
+                const uint32_t vehicle = GPR_U32(ctx, 4), frame = rdU(rdram, kFrameCounter);
+                BladeClock *slot = nullptr, *oldest = &g_blades[0];
+                for (BladeClock &b : g_blades)
+                {
+                    if (b.vehicle == vehicle)
+                        slot = &b;
+                    if (frame - b.frame > frame - oldest->frame)
+                        oldest = &b;
+                }
+                if (!slot)
+                {
+                    slot = oldest;
+                    *slot = {vehicle, frame - 1u, 0.0f, true};
+                }
+                if (slot->frame != frame) // once a frame, whatever the number of rotors
+                {
+                    const float step = rdF(rdram, kTimeStep);
+                    // a gap (the rotor stood still, the game was elsewhere) starts the count again
+                    slot->sum = frame - slot->frame > 8u ? 0.0f : slot->sum + (step > 0.0f ? step : 0.0f);
+                    slot->frame = frame;
+                    // a frame about as long as the PS2's counts on its own (independent timing at 30 fps steps 33 /
+                    // 34 ms: 1.65 / 1.70); what is over - or the little that was short - is carried, so the blades
+                    // count once per 1/30 s on average at any frame length; a longer frame counts once, as on a PS2
+                    // that dropped frames
+                    slot->counts = slot->sum >= kPs2Step * 0.9f;
+                    if (slot->counts)
+                        slot->sum = std::clamp(slot->sum - kPs2Step, -0.1f * kPs2Step, kPs2Step);
+                }
+                if (!slot->counts)
+                    ctx->f[13] = 0.0f;
+            }
+            g_origBlade(rdram, ctx, runtime);
+        }
+
         void writeBrakeConstants(uint8_t *rdram)
         {
             const float scale = frameScale(rdram);
@@ -177,6 +236,11 @@ namespace vcs
         else
             std::fprintf(stderr, "[physics-timing] ApplyTurnForce 0x%x not found: the push from bodies under wheels and the bike's brake wobble stay on the frame rate\n",
                          kApplyTurnForce);
+        g_origBlade = runtime.lookupFunction(kBladeCollision);
+        if (g_origBlade)
+            runtime.replaceFunction(kBladeCollision, &bladeCollision);
+        else
+            std::fprintf(stderr, "[physics-timing] the blade test 0x%x not found: rotor damage stays on the frame rate\n", kBladeCollision);
         // The patched ProcessWheels read their constants from kBrakeSlots, so these hooks are not optional.
         if (g_origWheelCar)
             runtime.replaceFunction(kProcessWheelCar, &processWheel<&g_origWheelCar>);

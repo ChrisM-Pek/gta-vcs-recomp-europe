@@ -261,6 +261,27 @@ disassembly with names from `game/vcs/functions.csv`), `tools/vudis.py` (VU micr
     30's, so the full-cancel sideways demand tipped a wheel into skidding (state 2) within 10 frames and it lost its
     traction (handling +0x6C). Scaling that sideways demand by the step instead was tried and made it worse (the bike
     spun 180 degrees at 240): the slip was the symptom, the wobble the cause.
+  - **A rotor blade against the world** (found 2026-11-10 from GitHub issue 102: helicopters explode much faster at
+    high frame rates when their blades touch something). **`FUN_003EE308` is CVehicle's blade test** (reVC's
+    DoBladeCollision; radius f12, damage multiplier f13, the vehicle a0, the rotor's matrix a1; decompiled): for every
+    collision point of the rotor's sphere it makes sparks (FUN_001E9040), once pushes the vehicle off (ApplyTurnForce,
+    the rotor's speed +0x700 cut to 0.15) and sets the vehicle's **damage impulse +0x10C** to `max(the contact's impulse
+    (FUN_0034AC70), *0x48A1C0 * mass / 3000) * multiplier` when that is more than it holds (+0x132 the damaged piece 0,
+    +0x150 the entity hit, +0x120.. the normal). CAutomobile::ProcessControl's `VehicleDamage(0, 0)` (FUN_00136C10,
+    the virtual call at 0x13C3C0: impulse 0 = "take +0x10C / +0x132") turns it into health the same frame, and
+    CPhysical::ProcessControl clears +0x10C (0x348A4C). So a blade in a wall costs the same health every frame: a
+    Maverick (model 213) standing in an alley narrower than its rotor lost **12.75 a frame** - 375 a second at 30
+    fps, 1840 at 144 (`framerate_audit.py --only rotor` with `VCS_PHYSICS_TIMESTEP=0`): on fire in under a second.
+    **The health VehicleDamage takes from is the vehicle's +0x27C**; +0x278, which section 12 calls the health and
+    the trainer / F3 panel read, stayed 1000 while the helicopter burned and blew up - what +0x278 is, is open.
+    VehicleDamage has a threshold and several factors, so the impulse cannot simply be scaled by the step; the fix
+    (vcs_physics_timing.cpp, 4.) makes the blades count on one frame per 1/30 s, as on the PS2: a per-vehicle sum of
+    the frames' steps lets the multiplier f13 through when it reaches a PS2 frame (within 10%; the rest is carried)
+    and zeroes it otherwise - sparks and push stay every frame. After: 375 / 391 / 377 / 389 / 395 a second at 1/30 /
+    60 / 100 / 144 / 240. Found with a diff of the vehicle's floats over time (the one that fell), a write watch on it
+    with `VCS_WATCH_STACK=1` (pc 0x137918, the caller at VehicleDamage's saved ra, sp + 0xB8), then the stores to
+    +0x10C in the generated code (23 functions; the one in CVehicle's range) and `tools/eedecomp.py`. A rig `watch` on
+    +0x10C itself only showed the clears.
   - **Braking audit** (`framerate_audit.py --only bikebrake,brake`, the airport runway: RUNWAY_SPOT, a PCJ-600 from 36
     m/s, a Sentinel from 24; before = `VCS_PHYSICS_TIMESTEP=0`):
 

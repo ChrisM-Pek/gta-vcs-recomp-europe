@@ -850,6 +850,22 @@ them unsqueezed (anchor Stretch): left 0 .. 240 + (right - 240) s, right 240 + (
 - the inner edge stays where the squeezed bar's was. 4:3 and HUD Stretch (s = 1) are untouched; `VCS_SCOPE_FILL=0` =
 before. Regression check: `tools/regress.py` step "scopemask" (fails with `VCS_SCOPE_FILL=0`).
 
+**Tunnel vision** (2026-11-10, GitHub issue 93: GON_C3 "Purple Haze"'s haze left the sides of a 16:9 picture clear):
+`SET_TUNNEL_VISION_INTENSITY` (0x0488, one int, 0 off .. 255; the mission's values are in `$G15B2[12]`) turns on a dark
+haze that closes in from the edges. It is drawn by **`FUN_00323FE8(hud)`**, the first call of CHud::Draw (return
+0x31C6D4; decompiled): the sprite at hud + 0x2BFC as **eight quarter-screen quads**, two layers of four - rects
+(0, 136, 240, 0), (240, 136, 480, 0), (0, 272, 240, 136), (240, 272, 480, 136) in 480x272 units from `FUN_002BF1D8` -
+through the sprite routine `FUN_003DFF80` (rect, colour and four UV pairs; its Im2D call returns to 0x3DFFC0, its own
+return address is at sp + 8 there), colour (255, 255, 255, 200), the texture mirrored per quarter and shifted by
+`0x481CE0` / `0x481CE4` x 1/3 (the second layer 0.05 further): the slow drift of the haze. Seen in the draw list as
+6-vertex textured draws in the HUD layer. Quarter screens are not full-width draws, so the HUD's widescreen grouping
+(resolveAnchors) merged them - and every HUD element they touch, i.e. all but the radar - into one element as wide as
+the screen and kept it at 4:3 in the middle: the haze covered the middle 720 of 960 pixels and the clock / weapon
+cluster moved in from the right edge with it (`[hud-anchor] x 0..640 ... prims 31 -> centre`). `vcs_hud.cpp` names the
+Im2D calls whose sprite routine was called from FUN_00323FE8 (the saved return address) as a screen effect
+(`Part::Screen`): never grouped, anchor Stretch. `VCS_HAZE_FILL=0` = before. Found with `VCS_TRACE_HUDANCHOR`,
+`VCS_TRACE_IM2D` + `VCS_TRACE_IM2D_STACK`, then `tools/eedecomp.py 0x324100`. Check: `tools/haze_check.py`.
+
 ### 6g. How a frame is put together (draw-list dumps, 2026-10-23)
 
 From `PS2X_HW_DUMP` / F12 with `PS2X_HW_DUMP_BATCHES=4` at the hospital (-884, -470), noon and 20:00; the draw
@@ -2103,6 +2119,68 @@ mission's runtime IP is 0x3CAE3 + (IP - its start)) and reproduced with the rig.
   end (no credits script), the main script's references to `START_CREDITS`, the raw label search, the LoadingScreen /
   menu hooks traced (not called), and the F12 draw log.
 
+### 11h. Purple Haze stuck on "Loading..." above 30 fps (2026-11-10, GitHub issue 41)
+
+The report: in GON_C3 "Purple Haze" (mission 94) the game stays on "Loading..." after the van reaches the meeting place
+and the cutscene starts - at 60 fps, not at 30. Reproduced with the rig (`tools/haze_check.py`): every run with original
+timing at 60 fps; independent timing at 60 / 144 fps got through, by luck (below).
+
+- **The mission**: its state is `$G1504`, one GOSUB per state from the loop at 0x19D199 (IPs as the disassembler prints
+  them; mission start 0x199CF6): 10 set-up, 15 go to the lock-up (`$G159D $G15A0 $G15A3`, the garage opens under a fixed
+  camera), 20 get into the van `$G1513`, 40 drive it to the meeting place (`$G159B $G159E $G15A1`), **50 the cutscene
+  there** (0x19DBF0), 60 on foot to the phone (`$G159C $G159F $G15A2`; Vic has come to in the haze), 70 the call, 74 /
+  78 / 80 the bikers, 90 the van back to the lock-up, 300 the end, 320 failed, 330 over. All its cutscenes are
+  scripted (fixed cameras, `CALL 35033 / 35064 <ms>` = fade out / in and wait - main script 0x88D9 / 0x88F8 -,
+  `CALL 35126 <ms>` = wait, true when skipped).
+- **State 50**: fade out, models; the truck `$G151E` (model 216) is created 60 m up the street, the van put on the
+  marker, fade in; `SET_CAR_FORWARD_SPEED truck 25`, `SET_CAR_RAM_CAR truck van`, 0.8 s, two camera cuts, a line
+  (`CALL -7834 50`); **fade out 500 ms** (0x19DE87); the two thugs `$G1602` / `$G1603` (model 22) are created at
+  (301.8, -652.9) and (304.1, -653.2) (0x19DE98, +0x41A2); `WAIT 500`; only then (0x19DF14 .. 0x19DF57, +0x4229) the truck
+  is parked - ground height, `SET_CAR_COORDINATES truck $G15AB $G15AC $G15AD` (296.2, -673.6), heading 177.7, status 3,
+  no mission, speed 0, frozen - and the van put at (302.4, -657.5); Vic is warped out and lies on the ground; `CALL
+  -7479 402` loads the next lines; `WAIT 600`; fade in; the thugs talk and drive off.
+- **What differs with the frame's length** (rig `trace` of both vehicles every frame; time from the truck's start):
+  at 2.74 s the truck (14.9 m/s) hits the van. **At 30 fps** one frame takes the truck to 8.7 m/s and the van to 8.9,
+  the van's heading turns 9 degrees one way over the next 0.7 s, and the two slow down together to a stop by 3.5 s,
+  the truck at (308.0, -643.9) behind the van. **At 60 fps** (either timing) the hit takes two frames (14.9 -> 11.0 ->
+  9.1; the van 6.5 -> 8.0), the van turns 18 degrees *the other way* and stops within 0.4 s, and the truck, its heading
+  knocked 9 degrees aside, rolls on past the van at 8 - 9 m/s: at 3.5 s, when the thugs are created, it is 8 m from the
+  first thug and heading for him, and 0.4 s later its nose is on him. With original timing at 60 he died every time
+  (health 0, state 0x39 / 0x3A); with independent timing at 60 he was knocked down (health 64, state 0x2D) and got up.
+  The contact itself differs with how far the truck gets into the van in one step (0.5 m at 30 fps, 0.25 m at 60) -
+  the engine's collision response, not a constant to patch; **open** (section 13).
+- **Why a dead thug stops the mission**: mission audio goes through five slots of the main script, `$G606[5]` (1 free,
+  2 loading, 4 loaded, 8 playing, +32 locked, +64 cancel; the line's name in `$G60B[]`, its text in `$G610[]`, the
+  speaker's handle in `$G615[]`), kept by the script **AUDIMON** (0xAF7F; its loop 0xAF9C .. 0xB0A6): loading ->
+  loaded when `HAS_MISSION_AUDIO_LOADED`, playing -> loaded / free when finished, and **any slot whose speaker
+  `IS_CHAR_DEAD` -> free** (0xB065 .. 0xB08F). A mission asks for a line with 0xAA14 (43540) and, when it wants to wait,
+  calls **0xA9E1 (43489): find the line's slot, then `while (NOT IS_ANY_BIT_SET 4 $G606[slot]) WAIT 0`** (0xA9F9 ..
+  0xAA0B) - the slot is looked up once. `CALL -7479 402` loads the thugs' lines this way with the first thug as the
+  speaker; he is dead, AUDIMON frees the slot, and the loop waits for "loaded" on a free slot for ever. The screen was
+  faded out before the thugs were created, and a faded-out screen is the game's "Loading..." (11g). The same loop held
+  MAR_A1 "Shakedown" when its shopkeeper was deleted (section 12).
+- **Fixed** (`src/game/vcs_script_fixes.cpp`, `VCS_SCRIPT_FIXES=0` off), two hooks on script handlers (opcode table
+  0x4BEAF0: 0x048F IS_ANY_BIT_SET -> **0x100908**, 0x003E CREATE_CHAR -> **0x4120D8**; read with rig `peek`):
+  - the wait loop's mask becomes 5 (the byte at IP 0xA9FC, patched when the handler meets the instruction: loaded, or
+    free again). Checked in a stuck game by poking that byte: the mission went on to state 60 in 8 s - the script then
+    plays the scene without the dead man's lines, as it does when a speaker dies after his line has loaded (the play /
+    wait helpers 0xAAC4 / 0xAC65 find no slot and return). At every frame rate: it changes nothing unless a slot is
+    freed under a waiting script, which on a PS2 is this hang.
+  - Purple Haze's truck is parked before the thugs are created: when the mission reaches the first CREATE_CHAR
+    (+0x41A2, its bytes and the park block's checked), a script of our own (rig `startCodeScript`, from the next frame)
+    runs the park block's commands - with `SET_CAR_COORDINATES x y -100` (the command finds the ground) in place of
+    `GET_GROUND_Z_FOR_3D_COORD`, which writes the height into `$G15AD`: run twice, the mission's own block found the
+    next surface down and parked the truck under the street (z 1.7 for 10.7; seen in the first try). The screen is
+    black then and the mission parks the truck again 0.5 s later, so nothing else changes. Only while the frame is not
+    the PS2's (independent timing, or a cap other than 30): at 30 fps the truck stands behind the van by then.
+- Checked: `tools/haze_check.py` (original timing, 60 fps, 16:9): state 60 reached, both thugs at health 100, the truck
+  at (296.2, -673.6, 10.7) from their creation on; the same at independent 60 and 144 fps and at original 30 (no
+  truck fix there); with `VCS_SCRIPT_FIXES=0` it sticks as before. The whole mission then passes (state 330, +$1000) at
+  60 and 144 fps.
+- How it was found: the mission's state and the scripts' IPs polled from the rig (stuck at 0xAA0B: the audio wait),
+  the slots read (all free), the thugs' peds from their handles (one dead), a poll of both vehicles and both thugs
+  through the cutscene at 30 and 60 fps, then the per-frame trace; MAIN.SCM's listings for the mission and AUDIMON.
+
 ## 12. Player, areas and the world
 
 - **Player ped**: `*(0x4E4910)` = `CWorld::Players[0].m_pPed` (`FUN_00237fb0(ped)` returns `&Players[0]` for the
@@ -2226,6 +2304,19 @@ mission's runtime IP is 0x3CAE3 + (IP - its start)) and reproduced with the rig.
 - **Driving buttons**, measured with a car on a straight street (575, 175): Cross accelerates (forward speed 0.28 after
   2 s), R1 is the handbrake (0.12 to 0 in 0.7 s; coasting 0.28 to 0.20), Square brakes, then reverses. Vehicle +0x140
   is its velocity (units per 1/50 s), +0x10 its forward vector.
+- **The radio** (2026-11-10, GitHub issue 90; the injected gamepad, `VCS_MUSIC_LOG=1` for the streams the game opens,
+  and a diff of the vehicle's bytes around a station change): **L1 is the only station button** - the game's own help
+  says so ("You can change the radio station you're tuned in to with L1") - and it only steps forwards; the D-pad does
+  nothing in a car. The station is the vehicle's **+0x2BA** (u8): 0..8 the nine stations (music streams 0..8), 9 off
+  (stream 9, the one that plays on foot), then 0 again. Each L1 clicks and is counted; **30 frames after the last
+  press** the count is added to the vehicle's station and the radio retunes (the name, then the stream within 2 s; the
+  byte still read the old station right after the press and the new one 0.7 s later). Writing the byte alone changes
+  nothing that is heard (8 kept playing with 7 written) until the next retune, which starts from the written value:
+  7 -> 5 written, then L1, gave 6. While stream 0x21 plays (an announcement about 15 s after getting into a car in the
+  test save, 20 - 25 s long) L1 is ignored and the presses are dropped; afterwards the vehicle's station resumes.
+  `vcs_input.cpp` puts the mouse wheel on this while driving: a notch down is L1, a notch up writes the station two
+  back and presses L1 (one forward from there); when the station is still where it was put 40 frames after the last
+  press the presses were not taken and the old station is written back.
 
 ### 12b. The camera and the mouse (2026-10-29)
 
@@ -2572,6 +2663,10 @@ probes in the game (rig, `worlddetail`).
 - Mission-passed flags (storyline globals) - for reaching late-game states.
 - Cheat handlers (weapons, health, vehicles, weather) - the script commands cover these for now.
 - Collision: VU0 program 0 (section 6c), collision streaming - the fall-through bug.
+- Vehicle against vehicle at shorter frames (11h): the same hit pushes a parked van at 30 fps and turns it at 60 (the
+  impulse spread over two frames, the torque's sign reversed), and the ramming truck's AI brakes to a stop at 30 but
+  rolls on at 60. Not found where: the contact point's depth per step, or the car AI's "have I hit my target" test.
+  Players also report cars taking damage faster above 30 fps (GitHub issue 17's comments).
 - HUD / font / sprite call sites (CHud, CFont, CSprite2d, CSprite) - milestone 3 (2D at the RW level).
 - Sound driver command protocol in full (section 9) - milestone 6.
 - Threads and their priorities.

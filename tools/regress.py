@@ -14,6 +14,8 @@ Steps (each a tool of its own, run in turn; the game window shows):
   saves     tools/saves.py: save to slot 2, Load Game slot 1, Delete Game slot 2 through the game's menus
   shakedown tools/shakedown.py: mission 50's shop entry at 144 fps (the shopkeeper deleted by the 32-bit branch bug,
             the mission stuck on "Loading...")
+  haze      tools/haze_check.py: mission 94's cutscene with original timing at 60 fps (a thug run over behind the
+            fade, his audio line waited for for ever) and the haze across a 16:9 picture
   widecull  at 16:9, 16:10, 21:9 and 32:9 the entity culling (CCamera's side planes) reaches the screen edges, not
             the 4:3 ones
   widepref  the game's own (anamorphic) widescreen preference stays off; mission 50's cutscene has its black bars by
@@ -144,6 +146,12 @@ def step_shakedown(out, quick):
     sys.path.insert(0, TOOLS)
     import shakedown  # noqa: E402
     return shakedown.check(os.path.join(out, "shakedown"))
+
+
+def step_haze(out, quick):
+    sys.path.insert(0, TOOLS)
+    import haze_check  # noqa: E402
+    return haze_check.check(os.path.join(out, "haze"))
 
 
 def step_widecull(out, quick):
@@ -366,6 +374,8 @@ def compare(base, new):
             notes.append("saves: %s failed (see saves.log and the screenshots)" % k)
     if "shakedown" in new and new["shakedown"].get("pass") is not True:
         notes.append("shakedown: the shop entry failed %s (see shakedown/)" % json.dumps(new["shakedown"]))
+    if "haze" in new and new["haze"].get("pass") is not True:
+        notes.append("haze: Purple Haze's cutscene or its haze at 16:9 failed %s (see haze/)" % json.dumps(new["haze"]))
     if "controls" in new and new["controls"].get("pass") is not True:
         notes.append("controls: failed checks %s (tools/controls_check.py)" % new["controls"].get("failed"))
     if "meters" in new and new["meters"].get("pass") is not True:
@@ -399,6 +409,7 @@ def main():
     metrics = {"started": time.strftime("%Y-%m-%d %H:%M:%S"), "quick": a.quick}
     for name, fn in (("scenes", step_scenes), ("tour", step_tour), ("missions", step_missions), ("drive", step_drive),
                      ("evening", step_evening), ("saves", step_saves), ("shakedown", step_shakedown),
+                     ("haze", step_haze),
                      ("widecull", step_widecull), ("widepref", step_widepref), ("scopemask", step_scopemask),
                      ("menushape", step_menushape),
                      ("meters", step_meters), ("controls", step_controls)):

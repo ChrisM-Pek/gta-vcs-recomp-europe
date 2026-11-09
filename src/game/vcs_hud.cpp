@@ -91,6 +91,17 @@ namespace vcs
         std::atomic<float> g_squeeze{1.0f}; // the HUD's squeeze in widescreen ((4:3) / aspect; 1: none)
         bool g_maskBar = false;             // the next Im2D call is a mask bar (game thread)
 
+        // The tunnel vision of GON_C3 "Purple Haze" (SET_TUNNEL_VISION_INTENSITY; game-internals.md 6f "Tunnel vision"):
+        // CHud::Draw's first call, FUN_00323fe8, lays the haze over the picture as eight quarter-screen sprites (two
+        // layers of four, through the sprite routine FUN_003dff80, whose Im2D call returns to 0x3dffc0 with its own
+        // return address at sp + 8). Quarter screens are not full-width draws, so in widescreen they were grouped into
+        // one HUD element - with every HUD element they touch - and kept at 4:3 in the middle: the haze left the sides
+        // of the picture clear and pulled the clock and the weapon in from the screen edge (GitHub issue 93). They are a
+        // screen effect: drawn unsqueezed and never grouped. VCS_HAZE_FILL=0: as before.
+        constexpr uint32_t kSpriteUvReturn = 0x003DFFC0u;
+        constexpr uint32_t kTunnelVision = 0x00323FE8u, kTunnelVisionEnd = 0x0032437Cu;
+        bool g_hazeFill = true;
+
         // one window for all trace lines: from 30 s after the hooks went in, VCS_TRACE_IM2D lines in total
         auto g_traceStart = ps2x::hostNow();
         int g_traceLeft = 0;
@@ -168,6 +179,7 @@ namespace vcs
             Radar,       // always the left edge
             CentredText, // a line centred across the screen (subtitles, mission text, stunt results): always the middle
             MaskBar,     // a scope mask's side bar, widened to the screen edge: unsqueezed (Stretch)
+            Screen,      // a piece of a screen effect (the tunnel vision's quarters): unsqueezed (Stretch)
         };
         struct Prim
         {
@@ -204,6 +216,16 @@ namespace vcs
             Prim p{1e9f, 1e9f, -1e9f, -1e9f, static_cast<uint32_t>(g_primKeys.size()), n, g_inMenu || g_inLoading};
             if (maskBar)
                 p.part = Part::MaskBar;
+            else if (g_hazeFill && GPR_U32(ctx, 31) == kSpriteUvReturn)
+            {
+                // the sprite routine's caller (its saved return address): the tunnel vision's draw
+                const uint32_t sp = GPR_U32(ctx, 29) & 0x01FFFFFFu;
+                uint32_t caller = 0;
+                if (sp + 12u <= 0x02000000u)
+                    std::memcpy(&caller, rdram + sp + 8u, 4);
+                if (caller >= kTunnelVision && caller < kTunnelVisionEnd)
+                    p.part = Part::Screen;
+            }
             else if (GPR_U32(ctx, 31) == kGlyphBatch)
                 p.part = g_textCentred ? Part::CentredText : Part::Other;
             else if (g_inRadar)
@@ -277,7 +299,7 @@ namespace vcs
                 const Prim &p = g_prims[i];
                 const Prim &b = boxes[find(i)];
                 const float centre = (b.x0 + b.x1) * 0.5f;
-                const uint8_t anchor = full(p) || p.part == Part::MaskBar           ? GSHwAnchorStretch
+                const uint8_t anchor = full(p) || p.part == Part::MaskBar || p.part == Part::Screen ? GSHwAnchorStretch
                                        : !edges || p.menu                            ? GSHwAnchorCentre
                                        : p.part == Part::Radar                       ? GSHwAnchorLeft
                                        : p.part == Part::CentredText                 ? GSHwAnchorCentre
@@ -569,6 +591,8 @@ namespace vcs
             const char *fill = std::getenv("VCS_SCOPE_FILL");
             if (!(fill && fill[0] == '0') && (g_origRectFill = runtime.lookupFunction(kRectFill)) != nullptr)
                 runtime.replaceFunction(kRectFill, &rectFill);
+            const char *haze = std::getenv("VCS_HAZE_FILL"); // the tunnel vision across the whole picture (see the top)
+            g_hazeFill = !(haze && haze[0] == '0');
             const char *native = std::getenv("VCS_HUD_NATIVE");
             g_layer = !(native && native[0] == '0');
             g_hooked = true;

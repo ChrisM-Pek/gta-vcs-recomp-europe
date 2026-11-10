@@ -945,9 +945,9 @@ Python scripts still usable on their own. docs/LAUNCHER.md has the whole of it; 
       `publish` job for both platforms. Checked end to end on the laptop: AppImage -> files -> game built in 18 min ->
       played; an update's rebuild 1.7 s. Not checked: CI's 22.04 build, an older distribution, apt.llvm.org for real.
 
-- [ ] **The issues round of 2026-11-10 (0.2.5's changes) on Linux** (2026-11-10, the user's request): the five commits
+- [x] **The issues round of 2026-11-10 (0.2.5's changes) on Linux** (2026-11-10, the user's request): the five commits
       after 0.2.4 build with clang 20 without a warning (quick build; CI never compiles the game, only the launcher).
-      Checked on the laptop **with its desktop locked**, so without the graphics card (LINUX.md "A locked desktop"):
+      Checked on the laptop, first **with its desktop locked**, so without the card (LINUX.md "A locked desktop"):
       the null renderer for everything that reads the game's memory or the log, llvmpipe for one picture.
       - rotor blades: `framerate_audit.py --only rotor`: 375 / 382 / 383 / 397 health a second at 1/30 / 60 / 144 /
         240 (Windows: 375 / 391 / 389 / 395); with `VCS_PHYSICS_TIMESTEP=0` 382 at 1/30 and 1830 at 1/144;
@@ -964,9 +964,19 @@ Python scripts still usable on their own. docs/LAUNCHER.md has the whole of it; 
         print the `[rhi] graphics cards` line the docs and the setting promise. It does now - every device with its
         kind and what an unusable one lacks -, and it says so when only Mesa's software renderer is left (a player
         without a Vulkan driver got ~6 fps and not a word in the log).
-      **Not checked** (the card is needed: with the desktop unlocked): the game on the real card and in its shown
-      window, the haze's picture at 16:9 (its anchors are right; the drawing is the scope mask's Stretch, unchanged),
-      `controls_check.py`'s screenshot key, `shakedown.py`'s picture. Never checkable here: the choice between two
+      **Then on the card** (the same day, the desktop unlocked; HD 520, Mesa 25.2.8 ANV, the window shown):
+      - the log names both devices: `[rhi] graphics cards: Intel(R) HD Graphics 520 (SKL GT2) (integrated), llvmpipe
+        (LLVM 20.1.2, 256 bits) (software) (choice: fastest)`; with `VCS_GPU=1` "(choice: power saving)" and still the
+        Intel card - the software renderer stays last either way;
+      - `haze_check.py` passes (2184 haze pieces, all "stretch", 273 frames) and its picture is right: the haze
+        reaches both sides of the 16:9 picture, the clock and money at the right edge, the radar at the left;
+      - `controls_check.py` 75 of 75 (the screenshot key's PNG is 1920x993, 700 KB); `shakedown.py` passes with its
+        picture (luma 73.8 / 73.9 / 73.9);
+      - frame rate, measured as PERFORMANCE.md 16 did (75 s flyover + intro from an empty card, independent timing, a
+        60 cap, no control channel) but in a 1920x993 window, not 960x672: game 57.5 fps (58-59 after the first 10 s),
+        p50 16.7 ms, p95 18.2 ms, host 60.2 fps - where it was. (With the control channel, in the city at 1920x1080,
+        `gamectl.py perf` reads 35-48: the brightness probe's readback every frame, as section 16 says.)
+      Not checked: a ThinLTO build (the quick build was used), and - never checkable here - the choice between two
       cards. Not done, for the user to decide: the game's window has no icon on Linux (issue 91 gave vcs.exe one
       through its resources; DECISIONS.md).
 ## Useful switches

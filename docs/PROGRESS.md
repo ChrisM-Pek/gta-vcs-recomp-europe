@@ -558,6 +558,17 @@ dropped on uploads (lazy render-target patching).
       it after the points before it, in every configuration; a fresh teleport there from Fort Baxter lands (z 14.5).
       Collision streaming order / timing at that spot needs a look.
 ## Phase 5 - stability
+- [x] **Memory growing for as long as the player moves about** (2026-11-10, GitHub issue 115: vcs.exe at 5.3 GB on a
+      PC with 8 GB; PERFORMANCE.md 31, DECISIONS.md 2026-11-10): the RSL replay's recordings, keyed by guest address
+      and length, were never dropped, and the game streams the same model in at ever new addresses. On a route across
+      the map (a move every 30 s) the process grew by 40 MB a minute - 245 -> 842 MB in 15 minutes, 2.3 GB an hour -
+      and stayed at ~300 MB with the recordings off. They now have a limit (`VCS_RSL_RECORDINGS_MB`, 256; 0 = none),
+      least recently used first; a recording's confirmation is withdrawn before it is freed, so the skip (FULLY_NATIVE
+      step 4b) never meets a missing one; the game thread's maps are trimmed with it. Same route: levels off at
+      650-700 MB (40 minutes: +1.45 MB a minute over the second half, +0.78 with no recordings at all; +0.02 with the
+      limit at 64 MB, where it stays at ~470 MB). Checked with the limit at 24 MB: `VCS_RSL_SKIP_VERIFY` 4.87M decisions 0 wrong,
+      `VCS_RSL_WORLD_VERIFY` 7.32M recordings 0 differ; no skipped block read from guest RAM in any run.
+      `tools/memcheck.py` (new) is the check: the route, memory every 10 s, fails when it still rises.
 - [ ] Fire, explosions and flame-thrower flames invisible on AMD GPUs (GitHub issue 4: RX 6600; a laptop's Radeon iGPU,
       while its NVIDIA GPU drew them) - **likely fixed 2026-11-04, waiting on the reporters**: hidden by everything but
       the sky, i.e. the fire's depth lost to every written one. D3D11 no longer writes the GS depth from the pixel shader
@@ -1083,6 +1094,7 @@ Python scripts still usable on their own. docs/LAUNCHER.md has the whole of it; 
 | `VCS_RSL_CENSUS=1` | every 5 s: what the VIF1 chain still carries outside marked blocks and items - top-level tags by DMA id, first VIFcode and data region, per chain (FULLY_NATIVE.md step 5) |
 | `VCS_RSL_SKIP=0`, `VCS_RSL_SKIP_VERIFY=1`, `VCS_RSL_SKIP_KINDS=<mask>` | copy every marked block; decide skips but copy anyway and check each against the recording it would have replayed; which kinds may be skipped (bit 0 world, 1 model, 2 model-b, 3 other call; default all) |
 | `VCS_RSL_MEASURE=1` | with `VCS_RSL_WORLD_LOG`: per chain the bytes copied, the marked blocks and the distinct ones |
+| `VCS_RSL_RECORDINGS_MB=<n>` | the memory the RSL recordings may hold before the least recently used are dropped (256; 0: no limit, as before 2026-11-10 - GitHub issue 115). `VCS_RSL_WORLD_LOG`'s `memory:` line has what they hold, what was dropped and the game thread's map sizes |
 | `PS2X_HW_RT_LOG=1` | the render targets with their names (gsHwSetTargetRole), sizes and scales, every 5 s |
 | `PS2X_HW_REFLECTION_SCALE=0` | the reflection map stays 1x with "Match window" |
 | `PS2X_HW_DUMP_STEPS=1` with F12 | the target after every full-screen draw or render-target read, as `hw_stepN_fbpF.ppm` (the reflection map: the first `_fbp420` file - the end-of-frame dump of FBP 420 is the bloom) |

@@ -1294,3 +1294,36 @@ sweep and the small fixes with clear causes. No choice below was put to the user
 - **vcs.exe's icon and details (91)** are the launcher's icon and the release's VERSION. The version reaches the
   resource file through a generated header, not compile definitions: a definition on the target would be on every
   generated file's command line and rebuild the whole game at each release.
+
+## 2026-11-10 - The RSL recordings get a memory limit (GitHub issue 115; the user's go-ahead, the choices are Claude's)
+
+The user asked for issue 115 (vcs.exe at 5.3 GB) to be looked into and, shown the cause and a plan, said: implement
+the recording cap "as long as it doesn't reduce your ability or prevent you from working on the game". The numbers
+are in PERFORMANCE.md 31; the choices:
+
+- **A limit in bytes, least recently used first** - not a count (recordings run from a few hundred bytes to hundreds
+  of KB), not an age (standing still for an hour must cost nothing), and not recordings keyed by what the block holds
+  instead of where it is. That last one would remove the cause - the same model at a new address would find its
+  recording - but every block would have to be hashed to be looked up, which is the work step 4's skip was made to
+  avoid, and it changes what the verify tools compare. The limit changes nothing about a recording while it lives.
+- **256 MB by default.** One place needs 12-36 MB of recordings, so 256 MB is several districts: driving back and
+  forth across town replays what it replayed before (on the check's route about as many blocks are recorded as with
+  no limit at all). The game then levels off at 650-700 MB on the dev machine at 3x, against 300-350 MB with no
+  recordings and 842 MB and rising after 15 minutes without the limit. With 64 MB it levels off at ~470 MB and
+  records about twice as many world blocks. At a 60 fps cap that costs nothing that shows (the stutter rig at 24
+  MB against no limit: the same); above 100 fps, where the render worker is the limit and a replay is what saves its
+  time, it was not measured - so the default is the size at which hardly more is recorded than before, and about
+  200 MB is what a smaller one could still give back.
+- **Not a setting in the menu**: nothing a player should have to choose. `VCS_RSL_RECORDINGS_MB` for a run (0: no
+  limit - the behaviour before, rule 1's switch back).
+- **A recording is dropped in two steps** (its confirmation withdrawn first, freed when the game thread has applied
+  that) rather than leaving it to the worker's existing fall-back, which reads the block from guest RAM: that
+  fall-back was written for a case that never happens (0 of 12 million skipped blocks) and reads memory the game
+  thread may be writing by then. With the two steps it still never happens, and `VCS_RSL_SKIP_VERIFY` keeps meaning
+  what it meant: a skip decided for a block whose recording is gone would be reported as wrong.
+- **The condition - nothing taken from the tools.** Recordings, replays and both verify modes work as before; a
+  recording that is gone is one that was never made. `VCS_RSL_WORLD_LOG=1` gained a `memory:` line (held, dropped,
+  recorded again, the slowest sweep) and `tools/memcheck.py` is the check that it stays fixed. Tests that pin
+  `VCS_TIMING=0 VCS_FPS=30` are untouched; none of the rig's runs reaches 256 MB of recordings.
+- **Not done**: an `Op` is 104 bytes for every UNPACK because each carries a mesh and a raster name it does not use;
+  a leaner layout would hold more per MB (not measured). Left, as the limit makes it a question of tuning.

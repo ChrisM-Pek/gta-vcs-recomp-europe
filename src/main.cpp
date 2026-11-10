@@ -693,7 +693,7 @@ namespace
             settings::add(s);
 
         // The graphics card, on a PC with more than one (GitHub issue 112: a laptop started the game on its integrated
-        // chip). The log's "[rhi] graphics cards" line names them, "[present] ... on ..." the one in use.
+        // chip). The log's "[rhi] graphics cards" line names them (both backends), "[present] ... on ..." the one in use.
         s = {};
         s.key = "display.gpu";
         s.page = "Graphics";

@@ -944,6 +944,31 @@ Python scripts still usable on their own. docs/LAUNCHER.md has the whole of it; 
       AppImage updates, `deps.py --platform linux`, apt.llvm.org for old Debian / Ubuntu (`linux_packages.py`), one
       `publish` job for both platforms. Checked end to end on the laptop: AppImage -> files -> game built in 18 min ->
       played; an update's rebuild 1.7 s. Not checked: CI's 22.04 build, an older distribution, apt.llvm.org for real.
+
+- [ ] **The issues round of 2026-11-10 (0.2.5's changes) on Linux** (2026-11-10, the user's request): the five commits
+      after 0.2.4 build with clang 20 without a warning (quick build; CI never compiles the game, only the launcher).
+      Checked on the laptop **with its desktop locked**, so without the graphics card (LINUX.md "A locked desktop"):
+      the null renderer for everything that reads the game's memory or the log, llvmpipe for one picture.
+      - rotor blades: `framerate_audit.py --only rotor`: 375 / 382 / 383 / 397 health a second at 1/30 / 60 / 144 /
+        240 (Windows: 375 / 391 / 389 / 395); with `VCS_PHYSICS_TIMESTEP=0` 382 at 1/30 and 1830 at 1/144;
+      - the radio wheel: `controls_check.py` 74 of 75, "wheel: radio stations" from 8: down took, up 8, up 7. The one
+        failure is "screenshot key" - the null renderer's PNG is black;
+      - Purple Haze: `haze_check.py` passes (state 60, both thugs at 100, the truck parked once, 2928 haze pieces all
+        "stretch" in 366 frames with the HUD's right cluster at the edge in each; one `[script-fix] mission audio`
+        line and no "slot was freed" one, so no line is dropped on the way); `hud_check.py` passes; `shakedown.py`
+        (the same wait loop): the shop entered, the shopkeeper there, no script left in the audio wait - its
+        brightness term fails on the null renderer's black picture;
+      - F12: 0 `[draw]` lines and no file without `PS2X_HW_DUMP_KEY=1`; 6643 lines and the `hw_*.ppm` dumps with it;
+      - the graphics card: F2 > Graphics has the row with Fastest and Power saving (no System default: D3D11's),
+        `VCS_GPU=2` is refused (`[settings] VCS_GPU: ignoring display.gpu=2`). **Fixed**: the Vulkan backend did not
+        print the `[rhi] graphics cards` line the docs and the setting promise. It does now - every device with its
+        kind and what an unusable one lacks -, and it says so when only Mesa's software renderer is left (a player
+        without a Vulkan driver got ~6 fps and not a word in the log).
+      **Not checked** (the card is needed: with the desktop unlocked): the game on the real card and in its shown
+      window, the haze's picture at 16:9 (its anchors are right; the drawing is the scope mask's Stretch, unchanged),
+      `controls_check.py`'s screenshot key, `shakedown.py`'s picture. Never checkable here: the choice between two
+      cards. Not done, for the user to decide: the game's window has no icon on Linux (issue 91 gave vcs.exe one
+      through its resources; DECISIONS.md).
 ## Useful switches
 | Env var | Effect |
 |---|---|

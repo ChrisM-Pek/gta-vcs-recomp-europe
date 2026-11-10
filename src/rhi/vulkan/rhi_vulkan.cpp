@@ -1304,14 +1304,22 @@ namespace rhi
                 const char *wanted = std::getenv("VCS_VK_DEVICE");
                 const bool frugal = desc.gpu == GpuPreference::PowerSaving;
                 int best = -1, bestScore = -1;
-                std::string why;
+                std::string why, names; // names: every card for the log, as D3D11's "[rhi] graphics cards" line
                 for (uint32_t i = 0; i < count; ++i)
                 {
                     VkPhysicalDeviceProperties props{};
                     vkGetPhysicalDeviceProperties(devices[i], &props);
                     uint32_t family = 0;
                     std::string missing;
-                    if (!usable(devices[i], props, family, missing))
+                    const bool ok = usable(devices[i], props, family, missing);
+                    const char *kind = props.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU     ? "dedicated"
+                                       : props.deviceType == VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU ? "integrated"
+                                       : props.deviceType == VK_PHYSICAL_DEVICE_TYPE_VIRTUAL_GPU    ? "virtual"
+                                       : props.deviceType == VK_PHYSICAL_DEVICE_TYPE_CPU            ? "software"
+                                                                                                    : "other";
+                    names += (names.empty() ? "" : ", ") + std::string(props.deviceName) + " (" + kind +
+                             (ok ? "" : ", not usable: needs " + missing) + ")";
+                    if (!ok)
                     {
                         why += std::string("; ") + props.deviceName + ": " + missing;
                         continue;
@@ -1331,6 +1339,8 @@ namespace rhi
                         m_queueFamily = family;
                     }
                 }
+                std::fprintf(stderr, "[rhi] graphics cards: %s (choice: %s%s)\n", names.empty() ? "none" : names.c_str(),
+                             frugal ? "power saving" : "fastest", wanted && *wanted ? ", VCS_VK_DEVICE set" : "");
                 if (best < 0)
                 {
                     error = "no GPU with Vulkan 1.3, dynamic rendering, push descriptors and dual-source blending" + why;
@@ -1339,6 +1349,13 @@ namespace rhi
                 m_core->physical = devices[best];
                 VkPhysicalDeviceProperties props{};
                 vkGetPhysicalDeviceProperties(m_core->physical, &props);
+                // Mesa's llvmpipe / lavapipe: what is left when no card's Vulkan driver can be used (not installed, or
+                // the card's device not open to this user) - the game then draws on the processor, a few frames a second.
+                // (Score 100: asked for by VCS_VK_DEVICE.)
+                if (props.deviceType == VK_PHYSICAL_DEVICE_TYPE_CPU)
+                    std::fprintf(stderr, "[rhi] Vulkan: drawing with the software renderer %s - the game will be very slow%s\n",
+                                 props.deviceName,
+                                 bestScore == 100 ? "" : " (no graphics card can be used: is its Vulkan driver installed?)");
                 m_adapterName = props.deviceName;
                 m_maxAnisotropy = props.limits.maxSamplerAnisotropy;
                 VkPhysicalDeviceDriverProperties driver{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DRIVER_PROPERTIES};

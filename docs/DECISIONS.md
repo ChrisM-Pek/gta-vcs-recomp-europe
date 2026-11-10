@@ -1294,3 +1294,28 @@ sweep and the small fixes with clear causes. No choice below was put to the user
 - **vcs.exe's icon and details (91)** are the launcher's icon and the release's VERSION. The version reaches the
   resource file through a generated header, not compile definitions: a definition on the target would be on every
   generated file's command line and rebuild the whole game at each release.
+
+## 2026-11-10 - The issues round checked on Linux (the user's request; the choices below are Claude's)
+
+The user asked for the latest changes to be reviewed and made sure of on Linux. The laptop's desktop was locked while
+this ran. No choice below was put to the user first; they are for review.
+
+- **The lock is not worked around.** Locked, the user's session has neither the graphics card (logind hands
+  `/dev/dri/*` to the greeter) nor a window manager that maps windows. No VT switch, no unlock, no change to the
+  device's permissions: the checks that read the game's memory or its log ran on the null renderer (the game at full
+  speed, no picture), one picture came from llvmpipe, and what needs the card is listed as not checked (PROGRESS.md
+  milestone 9, LINUX.md "A locked desktop").
+- **Hidden runs, against the laptop's rule of shown test windows** (2026-10-30): a locked desktop shows none - a shown
+  window never leaves `SDL_ShowWindow`. The rule stands for an unlocked desktop.
+- **The Vulkan backend prints `[rhi] graphics cards` too**, as D3D11 does since issue 112: the setting's comment,
+  PROGRESS.md and the entry above name that line as the answer to "which card did it take?", and on Linux there was
+  none. Each device comes with its kind (Vulkan's device type: dedicated, integrated, virtual, software) and, when it
+  cannot be used, what it lacks. A second line says when only Mesa's software renderer is left: found here by
+  accident (the locked desktop), it is also what a player without a Vulkan driver gets - a few frames a second, and
+  until now nothing in the log to say why.
+- **No window icon for the game on Linux - left to the user.** Issue 91 was Explorer's blank vcs.exe; its fix (the
+  exe's resources) also gives the Windows window its icon, and Linux has no counterpart: the game's window shows the
+  desktop's generic one. `SDL_SetWindowIcon` with the pixels `launcher/make_icon.py --header` already makes for the
+  launcher would do it on X11 (and on Wayland where the compositor has xdg-toplevel-icon). Not asked for, so not added.
+- **0.2.5's draft notes**: the graphics card bullet says what Linux gets (it already took the dedicated card; Fastest
+  and Power saving), and the vcs.exe bullet is prefixed `Windows:`, as AGENTS.md asks of one-platform bullets.

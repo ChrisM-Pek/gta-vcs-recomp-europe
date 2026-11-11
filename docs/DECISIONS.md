@@ -1378,6 +1378,9 @@ Claude's choices, to that:
 
 ## 2026-11-11 - On foot the keys follow the camera again; the mouse's camera as a PC game's (the user's verdict)
 
+(The next entry changes two things of this one: the camera turns behind him at once and faster, and his line is
+kept through that turn.)
+
 The user played the build above the same day: "it would be better for the player character to always be moving in
 the general direction of the camera. Being disconnected feels bad." And asked for whatever else would make movement
 and the camera feel better with keyboard and mouse. So the direction kept from the key's press is gone (it worked as
@@ -1406,3 +1409,34 @@ The rest is Claude's, to the user's brief:
 - **Not done, and why**: no change to the default keys (Walk is still unbound, where PC GTAs have it on Alt), to
   sprinting, or to how fast he turns to a new heading - they are the game's, they were not what felt wrong, and each
   is a decision about the controls rather than about the camera.
+
+## 2026-11-11 - The on-foot camera follows where he travels; the keys keep their heading through its own turns (the user's request)
+
+Third round the same day. The user, on the build above: "good direction, can you now bring it a bit closer to the
+gamepad camera where the camera will now more actively try to follow vic depending on the direction he is travelling.
+Right now if vic is travelling east or south with the camera behind him, it will stay behind him rather than
+re-orientate back to him." So the camera comes round behind where he travels - sideways and back at the camera too -
+at once, as the gamepad's does. How, is Claude's:
+
+- **The camera's own turn does not turn him.** It has to be so for "south": the game walks him by the camera's
+  heading, so a camera turning behind a player who runs at it turns him away again and never arrives (why the game
+  itself leaves a camera in front of him alone), and behind a sideways runner it swings him into the gamepad's
+  circle, which a stick steers against and a key cannot. Each movement key keeps the heading it was pressed at
+  through the camera's own turns: "travelling east" stays east while the camera comes round.
+- **Only through the camera's own turns: the mouse still steers.** The second round's verdict stands - he goes where
+  the mouse looks. A mouse turn turns the keys' headings with the camera; the first round's fault was that it did
+  not. The mechanism is the first round's (the camera heading the game turns the stick by, `0x6F4CB8`, replaced for
+  his control and put back), now with a heading worked out from the keys instead of a frozen one.
+- **A key goes by the camera as it is when that key goes down**, each on its own. With D held and the camera come
+  round behind him, W as well changes nothing (forward is where he already runs) and letting D go neither; with S
+  held and the camera come round, A as well is to the left on the screen. The alternatives failed one of these:
+  taking all held keys afresh at every change reversed him (S then S + A: "back-left" of a camera now behind him),
+  keeping the first key's frame sent the new key the wrong way on the screen.
+- **At once after a key, after Walking camera return (1.5 s) after the mouse.** The key's hold of the second round is
+  gone: with his line kept there is no circle to hold off, and waiting was what read as "it will stay". After the
+  mouse it still waits, as behind a vehicle, so a look around is not pulled back while it is made. Never: the
+  camera does not turn by itself at all, and the keys then simply follow it.
+- **The turn is the vehicle camera's way back** (1 - e^(-t / 0.6 s) of the gap, at most 2 rad/s, less below a run in
+  proportion, coming in over 0.3 s): a quarter turn is two thirds done in a second and within 0.05 rad after 2.6 s,
+  the half turn after S within 3.4 s. Toward where he actually moves, so sliding along a wall it follows his track.
+  Running straight at the camera it goes round the way it set out.

@@ -8,8 +8,8 @@ Loads the Fort Baxter rig save (a copy, hidden), then: every default key binding
 Keypad Enter, the mouse buttons) gives its PS2 button or stick direction, Alt+Enter is not Start; a rebound key moves
 Vic and the old one no longer does; the walk key holds the stick at walking speed; the mouse turns the on-foot camera
 by the amount asked (heading and pitch, inverted, off) and Vic goes where it looks (src/game/vcs_footcam.cpp: the
-camera held for the mouse and a step to the side, then turning behind him slowly, the gamepad's own camera, L1 and
-the camera keys, the pull-in at a wall), right click locks on to a ped, the Driving keys (W / S / Space
+camera coming round behind where he travels while he keeps his line, held after the mouse, the gamepad's own camera,
+L1 and the camera keys, the pull-in at a wall), right click locks on to a ped, the Driving keys (W / S / Space
 accelerate, brake, handbrake in a car, and nothing else there), the mouse on the vehicle camera (turned 1:1, held while
 the mouse moves, standing and driving, then back behind the car; the right stick takes it back at once), on foot again after
 leaving the car; free aim (src/game/vcs_aim.cpp: the right button enters the game's free aim, the mouse turns it, a shot
@@ -359,12 +359,11 @@ class Check:
     RUNWAY = (-1600.0, -1450.0)         # the airport's runway: open all round (framerate_audit.RUNWAY_SPOT)
 
     def foot_camera(self):
-        """The mouse's camera on foot: the mouse turns it and Vic goes where it looks; it turns by nothing but the mouse
-        while the mouse moves and for Walking camera return after that or after a change of the movement keys (a step
-        to the side is a straight line), then behind him slowly while he moves (a wide curve, where the gamepad's stick
-        runs the game's tight circle), not while he runs at it; the gamepad, L1 and the camera keys have the game's
-        camera; at a wall the camera follows the mouse and is pulled in, as the stick's is, instead of standing at the
-        wall's edge."""
+        """The mouse's camera on foot: the mouse turns it and Vic goes where it looks; it comes round behind where he
+        travels by itself - sideways, back at the camera - while he keeps his line (where the gamepad's stick runs the
+        game's tight circle), a key going by the camera as it is when pressed; after the mouse it waits Walking camera
+        return first; the gamepad, L1 and the camera keys have the game's camera; at a wall the camera follows the
+        mouse and is pulled in, as the stick's is, instead of standing at the wall's edge."""
         g = self.g
         ped = g.player()[0]
 
@@ -417,9 +416,10 @@ class Check:
             g.cmd("press q 1000")
             time.sleep(3.0)
 
-        def run(*keys, seconds=6.0):
-            """From start(): the keys held for `seconds` of game time, sampled."""
-            start()
+        def run(*keys, seconds=6.0, fresh=True):
+            """From start() (unless he stands there already): the keys held for `seconds` of game time, sampled."""
+            if fresh:
+                start()
             for k in keys:
                 g.cmd("key %s down" % k)
             rows = sample(seconds)
@@ -438,8 +438,9 @@ class Check:
         rows = sample(3.5)
         g.cmd("key w up")
         self.ok("on foot the mouse turns the camera and Vic goes where it looks",
-                abs(angle(b0, b1) + 1.0) < 0.01 and abs(angle(f0, f1) + 1.0) < 0.05 and s1 == "state=hold" and
-                abs(turned(rows, 0, 9, 1)[0]) < 0.01 and abs(turned(rows, 0, 9, 2)[0]) < 0.03 and rows[-1][3] == "state=follow",
+                abs(angle(b0, b1) + 1.0) < 0.01 and abs(angle(f0, f1) + 1.0) < 0.05 and s1.startswith("state=hold") and
+                abs(turned(rows, 0, 9, 1)[0]) < 0.01 and abs(turned(rows, 0, 9, 2)[0]) < 0.03 and
+                rows[-1][3].startswith("state=follow"),
                 "camera %+.3f, Vic %+.3f, %s; the 3.5 s after: %+.3f, %+.3f, %s" %
                 (angle(b0, b1), angle(f0, f1), s1, turned(rows, 0, 9, 1)[0], turned(rows, 0, 9, 2)[0], rows[-1][3]))
         time.sleep(1.0)
@@ -453,43 +454,81 @@ class Check:
         self.ok("standing, the camera stays", abs(angle(b0, b1) - 0.5) < 0.01 and abs(angle(b1, beta())) < 0.005,
                 "turned %+.3f, 3 s later %+.3f more, %s" % (angle(b0, b1), angle(b1, beta()), g.cmd("footcam")))
 
-        # a step to the side is a straight line (the camera held from the key's press on), then the camera turns
-        # behind him slowly and he curves with it: 0.6 rad/s at a run
+        # the camera follows where he travels: a key to the side or back turns him that way (by the camera as it was
+        # when it went down), he keeps that line, and the camera comes round behind him by itself
         got = []
-        for key, way in (("a", 1), ("d", -1)):
-            rows = run(key)
-            first = next((r[0] for r in rows if r[3] == "state=follow"), 99.0)
-            got.append((key.upper(), turned(rows, 0.4, 1.4, 1)[0], turned(rows, 0.4, 1.4, 2)[0], first,
-                        way * turned(rows, 3.0, 6.0, 1)[0] / turned(rows, 3.0, 6.0, 1)[1],
-                        way * turned(rows, 3.0, 6.0, 2)[0] / turned(rows, 3.0, 6.0, 2)[1]))
-        self.ok("a step to the side is a straight line, then a wide curve",
-                all(abs(c) < 0.005 and abs(v) < 0.03 and 1.3 < first < 2.0 and 0.5 < rate < 0.66 and abs(rate - vic) < 0.06
-                    for _, c, v, first, rate, vic in got),
-                "; ".join("%s: 0.4-1.4 s camera %+.3f Vic %+.3f, follow from %.2f s, then %.3f rad/s (Vic %.3f)" % r for r in got))
-        # running at the camera (S) it stays in front of him; and the mouse nudged now and then keeps it still
-        rows = run("s")
-        back = turned(rows, 0.4, 9, 1)[0], turned(rows, 0.4, 9, 2)[0]
+        for keys, want in ((("d",), -math.pi / 2), (("a",), math.pi / 2), (("s",), math.pi), (("w", "d"), -math.pi / 4)):
+            start()
+            f0 = facing()
+            rows = run(*keys, seconds=5.0, fresh=False)
+            behind = next((r[0] for r in rows if r[0] > 0.5 and abs(angle(r[2] + math.pi, r[1])) < 0.05), 99.0)
+            got.append(("+".join(keys).upper(), abs(angle(f0 + want, rows[-1][2])), turned(rows, 1.0, 9, 2)[0],
+                        abs(abs(turned(rows, 0, 9, 1)[0]) - abs(want)), behind))
+        self.ok("the camera comes round behind where Vic travels, and he keeps his line",
+                all(off < 0.05 and abs(line) < 0.03 and cam < 0.05 and t < 4.0 for _, off, line, cam, t in got),
+                "; ".join("%s: Vic %.3f from the key's way, %+.3f after 1 s, the camera's turn %.3f from his, behind him at %.2f s" % r
+                          for r in got))
+        # ... and the keys go by the camera as it is when they go down: with D held and the camera round behind him,
+        # W as well changes nothing, nor letting D go; then the mouse steers him
+        start()
+        g.cmd("key d down")
+        time.sleep(4.0)
+        f0 = facing()
+        g.cmd("key w down")
+        time.sleep(1.5)
+        f1 = facing()
+        g.cmd("key d up")
+        time.sleep(1.5)
+        f2, s2 = facing(), g.cmd("footcam")
+        mouse(200)
+        g.wait_frames(3)
+        time.sleep(0.5)
+        f3 = facing()
+        g.cmd("key w up")
+        # S, the camera half round behind him, then A as well: to the left on the screen
+        start()
+        g.cmd("key s down")
+        time.sleep(4.5)
+        f4 = facing()
+        g.cmd("key a down")
+        time.sleep(1.5)
+        f5 = facing()
+        g.cmd("key s up")
+        g.cmd("key a up")
+        self.ok("a key goes by the camera as it is when pressed, and the mouse steers",
+                abs(angle(f0, f1)) < 0.05 and abs(angle(f1, f2)) < 0.05 and s2 == "state=follow keys=0" and
+                abs(angle(f2, f3) + 0.5) < 0.03 and abs(angle(f4, f5) - math.pi / 4) < 0.05,
+                "D, the camera round, + W: Vic %+.3f; D up: %+.3f, %s; 200 counts of mouse: %+.3f; S, the camera round, + A: %+.3f" %
+                (angle(f0, f1), angle(f1, f2), s2, angle(f2, f3), angle(f4, f5)))
+        # the mouse moved now and then keeps the camera to itself; let alone, the camera then comes round
         start()
         g.cmd("key d down")
         rows = []
         for _ in range(4):
             g.cmd("mouse 0 -2")
             rows += sample(0.9)
+        after = sample(4.0)
         g.cmd("key d up")
-        nudged = turned(rows, 0.4, 9, 1)[0], turned(rows, 0.4, 9, 2)[0], sorted(set(r[3] for r in rows))
-        self.ok("running at the camera, and with the mouse in use, the camera stays",
-                all(abs(v) < 0.02 for v in back + nudged[:2]) and nudged[2] == ["state=hold"],
-                "S 6 s: camera %+.3f Vic %+.3f; D with the mouse nudged every second: %+.3f %+.3f %s" % (back + nudged))
-        # Walking camera return: Never (only the mouse turns it), 0.5 s
+        nudged = turned(rows, 0.3, 9, 1)[0], sorted(set(r[3].split()[0] for r in rows)), turned(after, 0, 9, 1)[0]
+        self.ok("the mouse in use keeps the camera, then it follows",
+                abs(nudged[0]) < 0.01 and nudged[1] == ["state=hold"] and abs(nudged[2] + math.pi / 2) < 0.06,
+                "D with the mouse nudged every second: camera %+.3f %s; the 4 s after: %+.3f" % nudged)
+        # Walking camera return: Never (only the mouse turns it; the keys follow the camera, he runs to its left),
+        # 0.5 s after the mouse
         self.setting("mouse.foot_return", -1)
         rows = run("a", seconds=4.0)
-        never = turned(rows, 0.4, 9, 1)[0], sorted(set(r[3] for r in rows))
+        never = turned(rows, 0, 9, 1)[0], turned(rows, 1.0, 9, 2)[0], sorted(set(r[3] for r in rows))
         self.setting("mouse.foot_return", 5)
-        rows = run("d", seconds=2.0)
+        start()
+        g.cmd("key d down")
+        g.cmd("mouse 0 -2")
+        rows = sample(2.0)
+        g.cmd("key d up")
         self.setting("mouse.foot_return", 15)
-        half = next((r[0] for r in rows if r[3] == "state=follow"), 99.0)
-        self.ok("walking camera return: Never, 0.5 s", abs(never[0]) < 0.005 and never[1] == ["state=hold"] and 0.3 < half < 1.0,
-                "Never, A 4 s: camera %+.3f %s; 0.5 s: follow from %.2f s" % (never + (half,)))
+        half = next((r[0] for r in rows if r[3].startswith("state=follow")), 99.0)
+        self.ok("walking camera return: Never, 0.5 s", abs(never[0]) < 0.005 and abs(never[1]) < 0.03 and
+                never[2] == ["state=hold keys=0"] and 0.3 < half < 1.0,
+                "Never, A 4 s: camera %+.3f Vic %+.3f %s; 0.5 s: follow from %.2f s" % (never + (half,)))
 
         # the gamepad: the game's own - the stick follows the game's camera on its string, he circles tightly
         start()
@@ -514,8 +553,8 @@ class Check:
         g.cmd("gamepad rx 0")
         g.cmd("gamepad off")
         self.ok("the gamepad has the game's camera on foot",
-                abs(circled) > 1.5 and state == "state=idle" and abs(nudge) < 0.002 and taken < -0.15 and
-                held == "state=hold" and stick == "state=idle",
+                abs(circled) > 1.5 and state == "state=idle keys=0" and abs(nudge) < 0.002 and taken < -0.15 and
+                held.startswith("state=hold") and stick.startswith("state=idle"),
                 "stick right: Vic turned %+.3f in 2 s, %s; mouse nudge %+.4f, moved %+.3f (%s); right stick: %s" %
                 (circled, state, nudge, taken, held, stick))
         # the camera keys and L1 (the game puts the camera behind Vic) take it from the mouse at once
@@ -536,8 +575,8 @@ class Check:
         g.wait_frames(4)
         s3 = g.cmd("footcam")
         g.cmd("key j up")
-        self.ok("L1 and the camera keys take the camera back", s0 == "state=hold" and abs(o0) > 0.5 and
-                s1 == "state=idle" and abs(o1) < 0.02 and s2 == "state=hold" and s3 == "state=idle",
+        self.ok("L1 and the camera keys take the camera back", s0.startswith("state=hold") and abs(o0) > 0.5 and
+                s1.startswith("state=idle") and abs(o1) < 0.02 and s2.startswith("state=hold") and s3.startswith("state=idle"),
                 "L1: %s %+.3f from behind -> %s %+.3f; camera key: %s -> %s" % (s0, o0, s1, o1, s2, s3))
         # ... and a camera key held while running steers Vic, as the stick does (the game's camera, the game's way)
         time.sleep(1.0)

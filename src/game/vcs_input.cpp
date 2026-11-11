@@ -430,8 +430,8 @@ namespace vcs::input
                 else
                     walk = true;
             }
-            // the movement keys as a direction: on foot a change holds the mouse's camera still for a while, so a step
-            // to the side is a straight line (game/vcs_footcam.h). Not the gamepad's stick
+            // the movement keys as a direction: on foot each keeps its heading while the mouse's camera turns behind the
+            // player by itself (game/vcs_footcam.h). Not the gamepad's stick
             {
                 const int kx = pos[0] - neg[0], ky = pos[1] - neg[1];
                 const bool padStick = lx != 0.0f || ly != 0.0f;
@@ -543,7 +543,7 @@ namespace vcs::input
                 else if (on && game.footCamera && footcam::active())
                 {
                     // the camera behind the player on foot turns by the mouse itself and stays where it is put while
-                    // the mouse moves - he goes where it looks -, then turns behind him slowly while he moves
+                    // the mouse moves - he goes where it looks -, then follows behind where he travels
                     // (game/vcs_footcam.h)
                     footcam::mouse(-dx * m.mouseLook, up * m.mouseLook);
                 }
@@ -817,9 +817,10 @@ namespace vcs::input
                 s.label = "Mouse camera";
                 s.help = "Moving the mouse turns the camera, and the mouse is held in the window while you play (free again "
                          "in the menus and when the window is in the background). On foot it turns the camera itself, as "
-                         "in a PC game, and you go where the camera looks; behind a car it turns the camera itself too, "
-                         "which goes back behind the car after Car camera return. In other vehicle cameras and locked on "
-                         "it moves the right stick. A gamepad has the game's own camera. Off: the mouse only clicks.";
+                         "in a PC game, and you go where the camera looks; behind a car it turns the camera itself too. "
+                         "The camera goes back behind you after Walking / Car camera return. In other vehicle cameras "
+                         "and locked on it moves the right stick. A gamepad has the game's own camera. Off: the mouse "
+                         "only clicks.";
                 s.type = Type::Toggle;
                 s.defaultValue = 1;
                 s.onChange = onChange;
@@ -875,10 +876,9 @@ namespace vcs::input
                 s.page = kKeys;
                 s.section = "Mouse";
                 s.label = "Walking camera return";
-                s.help = "On foot the camera only turns by the mouse while you move the mouse, and for this long after "
-                         "that or after you change direction: a step to the side is a straight line. Then, while you "
-                         "keep moving, it turns behind you slowly, so running sideways becomes a wide curve. Standing, "
-                         "it stays. Never: only the mouse turns it.";
+                s.help = "On foot the camera follows you: run sideways or back and it comes round behind you while you keep "
+                         "your direction. After you move the mouse it waits this long first, and stays where you put "
+                         "it meanwhile. Standing, it stays. Never: only the mouse turns it.";
                 s.type = Type::Choice;
                 s.choices = {{"0.5 s", 5}, {"1 s", 10}, {"1.5 s", 15}, {"2 s", 20}, {"3 s", 30}, {"5 s", 50}, {"Never", -1}};
                 s.defaultValue = 15;

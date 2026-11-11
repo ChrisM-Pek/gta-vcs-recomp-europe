@@ -2365,8 +2365,8 @@ timing at 60 fps; independent timing at 60 / 144 fps got through, by luck (below
 - The follow camera ignores the stick while `0x488EB4` is set (FUN_002a2e30) and while CPad +0x96 is set; under a
   script camera TheCamera + 0x888 is 0 (section 12).
 - **Mouse look** (src/game/vcs_input.cpp, Keyboard > Mouse camera; since 2026-11-11 the same turn is applied by a hook
-  before the camera's update, which also holds it and frees the player's direction: "On foot: the camera free of the
-  player" below. What follows is the turn itself, and the whole of it with `VCS_FOOTCAM=0`): on foot (mode 4, no script
+  before the camera's update, which is then the whole of the on-foot camera for the keyboard and mouse: "On foot: the
+  mouse's camera" below. What follows is the turn itself, and the whole of it with `VCS_FOOTCAM=0`): on foot (mode 4, no script
   camera, controls on, not
   paused: the pause menu leaves the mode at 4, `m_UserPause` 0x4CD2AC / `m_CodePause` 0x4CD11C are bytes) the
   pad read adds the mouse's turn to beta and turns +0x220 / +0x230 about the player by the same angle (exact: 300
@@ -2415,7 +2415,7 @@ timing at 60 fps; independent timing at 60 / 144 fps got through, by luck (below
   at once. The stick could not turn it while held or returning: its term goes through +0x140, zeroed there every
   update and smoothed from 0 (about a fifth of its speed), and steps below `0x487E94` are snapped back (the user's
   report: the gamepad did nothing until the camera was back behind the car).
-- **On foot: the camera free of the player** (2026-11-11, the user's request; src/game/vcs_footcam.cpp. Found by
+- **On foot: the mouse's camera** (2026-11-11, the user's request; src/game/vcs_footcam.cpp. Found by
   reading the decompile of FUN_0029dab0 again - `build/analysis/decomp/followped.c` - and the disassembly listing
   for the callers of the pad's stick getters and the readers of `0x6F4CB8`, then measured in hidden runs with the
   rig's `trace`).
@@ -2438,7 +2438,8 @@ timing at 60 fps; independent timing at 60 / 144 fps got through, by luck (below
     (`0x487B5C` outdoors, `0x487B98` indoors; 0.02: 1 rad/s), none when the gap is over 2.967 (170 degrees: running at
     the camera leaves it in front of him). `0x487E10` set makes it a fixed turn instead (x `0x487E64` / `0x487E68`):
     **L1** (FUN_00286630 = CPad +0xA: "camera behind him", which also levels the pitch) and a shot from the hip with
-    an automatic gun (x 2.5) latch it until he moves or the camera is there. All of it goes through the one cap, so
+    some guns (x 2.5; seen with the AK, type 28: the camera 1 rad off came behind him while he fired; not with the
+    Micro SMG, 24, or the pistol, 19) latch it until he moves or the camera is there. All of it goes through the one cap, so
     0 there switches every automatic turn off (the table has no other reader). Not through the table: while he runs
     at a camera more than 90 degrees off, the pitch is eased toward a limit that shrinks to 0.349 rad with the camera
     right in front (453-469).
@@ -2465,29 +2466,42 @@ timing at 60 fps; independent timing at 60 / 144 fps got through, by luck (below
     update), `0x6F4528` (TheCamera +0x58: "behind him") or `0x6F4D28` (+0x858: "in front of him") is set; all three
     are 32-bit. After a teleport from far away it also starts at its lowest pitch (-1.483, above him looking down:
     0.39 m from him across the ground); L1 puts it level behind him (-0.056).
-  - **The module** (pre-hooks only). *The camera*, before FUN_0029DAB0 (a0 the CCam, a1 the point it turns about:
-    his position), states idle / hold / return as behind a vehicle: the mouse's turn goes to beta, alpha (in the
-    table's limits), their last-update copies (`0x487E60` / `0x487E5C`: a change under 0.0001 is undone) and the
-    source points; while held or returning the source points move with him, the cap above is 0, the speeds +0x140 /
-    +0x130 and `0x487E10` are cleared, and **`0x487E58` is set to 1** - the game's own path for a turned stick: no
-    five lines, the pull-in. Walking camera return after the mouse stops, while he moves (his move speed over 0.01 a
-    step), beta eases behind his nose (1 - e^(-t / 0.6 s), at most 2 rad/s) and the game's camera has it again;
-    standing it goes to idle where it is. Idle with him running more than 170 degrees off for that long starts the
-    return too. It stands down for a frame without this camera, a restart, a script camera, the controls off, the
-    pause, the free camera, L1, the right stick and the gamepad. *His direction*, before FUN_00230640: while the
-    same movement keys stay held (and the follow camera was the last frame's camera, the keyboard the device), the
-    heading at `0x6F4CB8` is replaced by the one it had when they were pressed; before FUN_0036AFD0 the camera's own
-    goes back. A change of the keys, or the camera keys' stick, takes it afresh. The pad report is not touched.
-  - **Measured** (`tools/controls_check.py --only foot_camera`, and scratch runs at 60 / 144 fps with the same
-    numbers): W held and 400 counts of mouse - the camera -1.000 rad, his heading +0.000, both still there 0.8 s
-    later; hold -> return 1.5 s after the mouse stops -> idle 2.8 s later, 0.010 from behind him. Standing: +0.500
-    for 200 counts, unchanged 3 s later. W after a quarter turn of the camera: he runs 0.000 from where it looks. A
-    held: his heading +0.000 over 2.5 s while the game's camera swings 0.6-0.7 rad behind him (the gamepad's stick to
-    the right: he turns 2.7 rad in 2 s). S: the camera comes round 3.13 rad, his heading +0.000. At the wall,
-    standing: the turn exact (+-0.000), the camera 0.001 from its heading, pulled in to 3.2 of 4.5 m; running along
-    it with the camera brought round to the wall's side the turn is exact too, pulled in, his heading +0.000. A
-    run that leaves the street and slides along its buildings turns the game's idle camera after his track,
-    not his nose (0.14 rad there): the game's own.
+  - **A camera on a string, and why a sideways runner circles.** The update measures its heading and pitch from
+    where the camera stood (the source points, placed around him at the end of the last update) to where he is now,
+    and eases beta toward that. So when he moves across the view the camera pivots after him at his speed over its
+    distance - a run's 4.5-5 m/s at 4.5 m - and since the stick follows the camera he runs a circle about it:
+    measured with the gamepad's stick held to the right, 2.7-2.8 rad in 2 s (1.4 rad/s) at 30 / 60 / 144 fps. The
+    capped turn above adds little to that. Source points moved along with him each frame (and the cap at 0, the speed
+    +0x140 cleared) take the string away: the heading then stays where it is, to 0.000.
+  - **The module** (one pre-hook, before FUN_0029DAB0: a0 the CCam, a1 the point it turns about - his position).
+    For the keyboard and mouse it is the whole camera's heading: every update the source points move with him, the
+    cap above is 0, the speeds +0x140 / +0x130 are cleared and **`0x487E58` is set to 1** - the game's own path for a
+    turned stick: no five lines, the pull-in. The mouse's turn goes to beta, alpha (in the table's limits), their
+    last-update copies (`0x487E60` / `0x487E5C`: a change under 0.0001 is undone) and the source points. The keys
+    follow the camera as the game has them (nothing is done to `0x6F4CB8`): he goes where it looks. States: *hold*
+    for Walking camera return (1.5 s) after the mouse moved or the movement keys changed - the camera turns by the
+    mouse alone; then *follow* - while he moves (over 0.01 a step, relative to what he stands on: ped +0x514, as the
+    game takes it) beta eases toward opposite to where he moves, 1 - e^(-t / 0.6 s) of the gap and at most 0.6 rad/s
+    at a run (0.08 a step; less in proportion below it, coming in over 0.8 s), not within 0.01 of it and not past
+    170 degrees (running at the camera, as the game's rule: the keys follow the camera, so that turn would only turn
+    him); *idle* - the game's camera: a frame without this camera, a restart, a script camera, the controls off, the
+    pause, the free camera, L1, the right stick, the gamepad, and `0x487E10` set by the game (the shot from the hip)
+    unless the mouse moved within the hold (it then clears it).
+  - **Measured** (`tools/controls_check.py --only foot_camera`; a scratch run of the same at 30 / 60 / 144 fps):
+    W held and 400 counts of mouse - the camera -1.000 rad and his heading -1.000 with it, nothing more in the 3.5 s
+    after. Standing: +0.500 for 200 counts, unchanged 3 s later. A or D from standing: camera and heading +0.000
+    between 0.4 and 1.4 s, follow from 1.5-1.6 s, then both turn 0.57-0.60 rad/s (W + A and S + D the same); S: both
+    +0.000 over 6 s. D with the mouse nudged every second: held throughout, +0.000. Never: +0.000 over 4 s of A.
+    At the wall: the turn exact (+-0.000), the camera 0.001 from its heading, pulled in to 3.2 of 4.5 m. A run into
+    a building stops him (0.006 a step): nothing to follow. The AK fired from the hip with the camera a radian off
+    and the mouse at rest: idle, the camera behind him (0.004); with the mouse moving 60 counts meanwhile: hold,
+    -0.150.
+  - **Tried and dropped the same day: the keys keeping the direction they were pressed at** (the user's first
+    choice; played, it felt disconnected - W did not go where one looked). It worked as built: a pre-hook on
+    FUN_00230640 put the heading `0x6F4CB8` had when the movement keys were pressed in its place, one on FUN_0036AFD0
+    put the camera's own back, and he held his heading to +0.000 through a radian of mouse and through the camera's
+    return behind him, the pad report untouched. In the history at 6948b7a.
+- **The camera update** (2026-10-30, for the trainer's free camera; FUN_00378dd8 decompiled with `tools/eedecomp.py`):
   FUN_00378dd8 = CCamera::Process. At `0x378FC0` it calls **FUN_00294540 = CCam::Process** on the active CCam
   (`TheCamera + 0x70 + ActiveCam x 0x270`, ActiveCam = byte `TheCamera + 0x50`; the only caller), then
   **FUN_002A2ED0** (CCam::ProcessSpecialHeightRoutines: lifts the follow camera for peds near the player in modes 4,

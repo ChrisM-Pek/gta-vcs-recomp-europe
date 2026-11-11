@@ -430,8 +430,8 @@ namespace vcs::input
                 else
                     walk = true;
             }
-            // the movement keys as a direction: on foot they keep the heading they were pressed at, whatever the camera
-            // does (game/vcs_footcam.h). The gamepad's stick moves the player the game's way
+            // the movement keys as a direction: on foot a change holds the mouse's camera still for a while, so a step
+            // to the side is a straight line (game/vcs_footcam.h). Not the gamepad's stick
             {
                 const int kx = pos[0] - neg[0], ky = pos[1] - neg[1];
                 const bool padStick = lx != 0.0f || ly != 0.0f;
@@ -543,14 +543,14 @@ namespace vcs::input
                 else if (on && game.footCamera && footcam::active())
                 {
                     // the camera behind the player on foot turns by the mouse itself and stays where it is put while
-                    // the mouse moves, then goes back behind him while he moves; his direction is the keys' alone
+                    // the mouse moves - he goes where it looks -, then turns behind him slowly while he moves
                     // (game/vcs_footcam.h)
                     footcam::mouse(-dx * m.mouseLook, up * m.mouseLook);
                 }
                 else if (on && game.footCamera)
                 {
-                    // VCS_FOOTCAM=0, as before: the camera turned here, once, and left to the game's update - the
-                    // player walks by it, so the mouse steers him.
+                    // VCS_FOOTCAM=0, as before: the camera turned here, once, and left to the game's update, which
+                    // swings it behind the player again at once.
                     // heading: right turns clockwise (the angle falls), kept in 0..2 pi as the game keeps it. The camera
                     // eases its heading back toward where it stands (its source points, +0x220 / +0x230, placed around
                     // the player from the heading at the end of each update), so those turn with it.
@@ -730,8 +730,8 @@ namespace vcs::input
                     keysUsed = keysUsed || ps2control::keyDown(k);
             if (padUsed != keysUsed) // both at once: as it was
                 g_lastDevice.store(static_cast<int>(padUsed ? Device::Gamepad : Device::Keyboard), std::memory_order_relaxed);
-            // the on-foot camera: the mouse's (held where it is put, the player's direction the keys' own) for the
-            // keyboard and mouse, the game's own as soon as the gamepad is used
+            // the on-foot camera: the mouse's (game/vcs_footcam.h) for the keyboard and mouse, the game's own as soon
+            // as the gamepad is used
             if (padUsed != keysUsed)
             {
                 g_footKeyboard = keysUsed;
@@ -816,11 +816,10 @@ namespace vcs::input
                 s.section = "Mouse";
                 s.label = "Mouse camera";
                 s.help = "Moving the mouse turns the camera, and the mouse is held in the window while you play (free again "
-                         "in the menus and when the window is in the background). On foot and behind a car it turns the "
-                         "camera itself and does not steer: the movement keys go where the camera looks when you press "
-                         "them and keep that direction, and the camera goes back behind you after Walking / Car camera "
-                         "return. In other vehicle cameras and locked on it moves the right stick. A gamepad has the "
-                         "game's own camera. Off: the mouse only clicks.";
+                         "in the menus and when the window is in the background). On foot it turns the camera itself, as "
+                         "in a PC game, and you go where the camera looks; behind a car it turns the camera itself too, "
+                         "which goes back behind the car after Car camera return. In other vehicle cameras and locked on "
+                         "it moves the right stick. A gamepad has the game's own camera. Off: the mouse only clicks.";
                 s.type = Type::Toggle;
                 s.defaultValue = 1;
                 s.onChange = onChange;
@@ -876,9 +875,10 @@ namespace vcs::input
                 s.page = kKeys;
                 s.section = "Mouse";
                 s.label = "Walking camera return";
-                s.help = "On foot the camera stays where the mouse puts it while the mouse moves, and the player keeps "
-                         "going where his keys sent him; this long after the mouse stops, while he moves, it eases back "
-                         "behind him. Standing, it stays. Never: only the mouse turns it.";
+                s.help = "On foot the camera only turns by the mouse while you move the mouse, and for this long after "
+                         "that or after you change direction: a step to the side is a straight line. Then, while you "
+                         "keep moving, it turns behind you slowly, so running sideways becomes a wide curve. Standing, "
+                         "it stays. Never: only the mouse turns it.";
                 s.type = Type::Choice;
                 s.choices = {{"0.5 s", 5}, {"1 s", 10}, {"1.5 s", 15}, {"2 s", 20}, {"3 s", 30}, {"5 s", 50}, {"Never", -1}};
                 s.defaultValue = 15;

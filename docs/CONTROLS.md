@@ -102,15 +102,16 @@ as with L1). It does nothing of this while a control is bound to the wheel or wh
 - **Mouse camera** (on by default): the mouse turns the camera, and the mouse is held in the window while playing (free
   in the menus and when the window is in the background). **On foot** it turns the camera itself, as in a PC game:
   every movement turns it by the same angle at any speed and frame rate (100%: 400 counts - half an inch at 800 DPI -
-  a radian), up / down as directly as left / right, moving the mouse forward looks up. **The mouse looks, the keys
-  steer**: the camera is free of the player. A movement key goes where the camera looks at the moment it is pressed
-  and keeps that direction while it is held, whatever the camera does meanwhile - so A / D run straight lines, and
-  turning the mouse while running does not turn him. While the mouse moves the camera stays where it is put;
-  **Walking camera return** (1.5 s; 0.5-5 s or Never) after it stops, while he moves, it eases back behind him (about
-  2 s) and the game's camera carries on (it swings behind him by itself when he changes direction). Standing, the
-  camera stays. Near a wall it is pulled in toward him, as the gamepad's is. **A gamepad** has the game's own camera
-  and its stick that follows the camera, at once when it is used; so do L1 (camera behind him) and the camera keys.
-  `VCS_FOOTCAM=0` puts the old way back (the mouse steers him). **In the scopes and free
+  a radian), up / down as directly as left / right, moving the mouse forward looks up. **He goes where the camera
+  looks**: the movement keys follow the camera, so the mouse steers him. The camera is the mouse's, not the game's
+  camera on its string: it turns by nothing but the mouse while the mouse moves and for **Walking camera return**
+  (1.5 s; 0.5-5 s or Never) after that - and after any change of the movement keys, so a step or a strafe to the side
+  (A / D) is a straight line. Then, while he keeps moving, it turns behind him slowly (at most 0.6 rad/s): running
+  sideways becomes a wide curve, not the tight circle of the game's own camera. Running at the camera (S) it stays in
+  front of him, as in the game; standing, it stays. Near a wall it is pulled in toward him, as the gamepad's is.
+  **A gamepad** has the game's own camera, at once when it is used; so do L1 (camera behind him), the camera keys and
+  a shot from the hip. `VCS_FOOTCAM=0` puts the old way back (the mouse turns the game's camera, which swings back
+  behind him at once and stops at a wall's edge). **In the scopes and free
   aim** it turns the view itself too (above). **Behind a car, bike or boat** it turns the camera itself as well, and
   while the mouse moves the camera stays where it is put - the car neither drags it along nor pulls it back; **Car
   camera return** (1.5 s; 0.5-5 s or Never) after the mouse stops it eases back behind the vehicle (about 2 s) and the
@@ -209,8 +210,8 @@ the game layer `setting <key> [value]` (a setting read or changed; an action set
 bindings made, and the pad reads so far), `mouse <dx> <dy>` (mouse motion in counts, y down, as the mouse sends it),
 `gamepad on|off`, `gamepad <a b x y lb rb back start ls rs up down left right> <0|1>`, `gamepad <lx ly rx ry lt rt>
 <value>` (a gamepad set from the channel in place of the real one while on), `aimstate` (free aim on or not, and
-the shots sent down the camera line so far) and `carcam` / `footcam` (the mouse camera's state behind a vehicle / on
-foot: idle, hold or return; on foot also whether the movement keys held have their own heading). `--control` (`PS2X_CONTROL=1`) opens the same channel with the window shown; `PS2X_INPUT=injected`
+the shots sent down the camera line so far) and `carcam` / `footcam` (the mouse camera's state behind a vehicle:
+idle, hold or return; on foot: idle - the game's camera -, hold or follow). `--control` (`PS2X_CONTROL=1`) opens the same channel with the window shown; `PS2X_INPUT=injected`
 ignores physical input with the window shown. Injected keys go through the bindings like physical ones:
 `tools/controls_check.py` checks them (also a `regress.py` step). `VCS_INPUT_MAP=0` falls back to the runtime's fixed
 built-in mapping (`ps2_pad.cpp`, the old defaults).

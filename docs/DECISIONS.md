@@ -1330,6 +1330,9 @@ are in PERFORMANCE.md 31; the choices:
 
 ## 2026-11-11 - On foot the mouse looks and the keys steer: the camera free of the player (the user's request)
 
+(Built, played and changed the same day: the next entry. The keys' own direction is gone again; the hook, the
+wall and the gamepad's part stayed.)
+
 The user asked for the on-foot mouse camera to be like the vehicle one: the mouse moves the camera without changing
 where the player goes ("the player and the camera should be independent"), the camera goes slowly back behind him
 while he moves, a controller gets the old behaviour back, and the camera must stop refusing to turn toward a
@@ -1372,3 +1375,34 @@ Claude's choices, to that:
   game's own handling is back.
 - **Mouse camera off** keeps the game's camera and its camera-relative keys, as before: all of this belongs to the
   mouse camera.
+
+## 2026-11-11 - On foot the keys follow the camera again; the mouse's camera as a PC game's (the user's verdict)
+
+The user played the build above the same day: "it would be better for the player character to always be moving in
+the general direction of the camera. Being disconnected feels bad." And asked for whatever else would make movement
+and the camera feel better with keyboard and mouse. So the direction kept from the key's press is gone (it worked as
+built - his heading +0.000 through a radian of mouse - and felt wrong: W no longer went where one looked). Kept from
+that build: the camera turned by a hook before the game's update, the pull-in at walls, the gamepad's own camera.
+The rest is Claude's, to the user's brief:
+
+- **The keys follow the camera, as the game has them**: the mouse steers him. Nothing is done to the stick or to the
+  heading the game turns it by.
+- **The mouse's camera replaces the game's own for the keyboard and mouse, not only while the mouse moves.** The
+  game's camera hangs on a string behind him: run sideways and it pivots after him at his speed over its distance
+  (1.4 rad/s), and with the keys following it he runs a 3.5 m circle about the camera. That is the PS2's way and
+  right for a stick; with a mouse in the other hand it is the camera turning by itself. Handing back to it after the
+  mouse rests (the first build) would have put that circle back the moment the hold ran out.
+- **Held, then a slow turn behind him.** The camera only turns by the mouse while the mouse moves and for Walking
+  camera return (1.5 s) after it - and after any change of the movement keys, so a step or a strafe to the side is a
+  straight line whether or not the mouse was just used. After that, while he moves, it turns toward behind where he
+  moves at no more than 0.6 rad/s (less at a walk in proportion, coming in over 0.8 s): he curves, on a 7.5 m radius
+  at a run. A camera that never turned by itself is the setting's Never; the first build's 2 rad/s return would have
+  spun him, because with the keys following the camera a sideways runner never closes the gap.
+- **Running at the camera it stays in front of him**, as in the game (which leaves a camera more than 170 degrees
+  off alone): turning it would turn him, and it would never get behind him.
+- **The game still has the camera for what it does on its own account**: L1 (camera behind him), the camera keys,
+  and a shot from the hip with the guns the game does it for (the AK: it swings behind him so the shots can be seen)
+  unless the mouse was moved within the hold. And the gamepad, at once, as before.
+- **Not done, and why**: no change to the default keys (Walk is still unbound, where PC GTAs have it on Alt), to
+  sprinting, or to how fast he turns to a new heading - they are the game's, they were not what felt wrong, and each
+  is a decision about the controls rather than about the camera.

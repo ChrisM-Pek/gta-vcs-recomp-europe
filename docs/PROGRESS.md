@@ -738,29 +738,28 @@ dropped on uploads (lazy render-target patching).
   gamepad's stick did nothing after the mouse until the camera was back behind the car) the right stick - gamepad or
   camera keys - now hands the camera back to the game at once: controls_check "the right stick takes the car camera
   back from the mouse" (0.5 s of full right after the mouse: -0.98 rad, state idle).
-- **On foot the mouse looks, the keys steer** (2026-11-11, the user's request: the camera free of the player, back
-  behind him while he moves, the gamepad as before, and the camera no longer refusing to turn toward a building; it
-  must feel like PC controls, not a pretend gamepad). The mouse turned the on-foot camera at the pad read and the
-  game walked the player by the camera's heading, so it steered him; nothing held the camera. Now
-  src/game/vcs_footcam.cpp, three pre-hooks: before the follow camera's update (FUN_0029DAB0) the mouse's turn is
-  applied and the camera held where it is put, then eased back behind him (Keyboard > **Walking camera return**, 1.5 s;
-  0.5-5 s or Never) - while he moves; standing it stays; before the player's control (FUN_00230640) the camera
-  heading it turns the stick by (`0x6F4CB8`) is the one of the moment the movement keys were pressed, for as long as
-  they stay held, and before the next reader (FUN_0036AFD0) the camera's own again. The pad report is untouched.
-  The gamepad, L1 and the camera keys have the game's camera at once. **The wall**: the camera stood still at a
-  wall's edge while its heading turned on behind the wall, because the game pulls the camera in toward the player
-  only for a turned stick (measured at the barracks door: 0.744 rad behind its heading after a radian of mouse, at
-  4.41 m; with the stick pulled in to 3.2 m); while the mouse holds the camera it now takes that path (`0x487E58`):
-  0.001 rad from its heading, 3.2 of 4.5 m. game-internals.md 12b ("On foot: the camera free of the player": how the
-  stick becomes his heading, the five lines and the pull-in, the game's own turn behind him), DECISIONS.md
-  2026-11-11, CONTROLS.md. Measured at 30 / 60 / 144 fps: W held and 400 counts -> the camera -1.000 rad, his
-  heading +0.000; back within 0.010 rad of behind him 2.8 s after the return starts; A / S straight lines (+0.000)
-  where the gamepad's stick turns him 2.7 rad in 2 s. `VCS_FOOTCAM=0` is the old path. `tools/controls_check.py`:
-  11 new checks (`--only foot_camera` runs them alone, a new option; the wall one takes the stick's camera as its
-  reference); 86 checks, 0 failed. `framerate_audit.py` footcam now runs him with the gamepad's stick (the game's own
-  swing: with the keys he no longer circles): 95 / 99 / 100 degrees a second at 1/30 / 60 / 144, as before (97 / 99 /
-  100 with D). With `VCS_FOOTCAM=0` the wall measurement is the old one again (the camera at 4.41 m, not pulled in;
-  W + mouse turns him 0.9 rad).
+- **The mouse's camera on foot** (2026-11-11, the user's request, in two rounds the same day; DECISIONS.md has
+  both). The mouse turned the on-foot camera at the pad read and left it to the game's camera, which swings back
+  behind the player by itself and stood still at a wall's edge. Now src/game/vcs_footcam.cpp, a pre-hook on the
+  follow camera's update (FUN_0029DAB0), is the camera's heading for the keyboard and mouse: the mouse turns it and he
+  goes where it looks (the keys follow the camera, as the game has them); it turns by the mouse alone while the mouse
+  moves and for Keyboard > **Walking camera return** (1.5 s; 0.5-5 s or Never) after that or after a change of the
+  movement keys, so a step to the side is a straight line; then, while he moves, it turns behind him at no more than
+  0.6 rad/s - a wide curve where the game's camera on its string turns him 1.4 rad/s about itself; running at the
+  camera it stays. The gamepad, L1, the camera keys and a shot from the hip have the game's camera. **The wall**:
+  the camera stood still at a wall's edge while its heading turned on behind the wall, because the game pulls the
+  camera in toward the player only for a turned stick (measured at the barracks door: 0.744 rad behind its heading
+  after a radian of mouse, at 4.41 m; with the stick pulled in to 3.2 m); the mouse's camera takes that path
+  (`0x487E58`): 0.001 rad from its heading, 3.2 of 4.5 m. The first round kept the player's direction from the key's
+  press whatever the camera did (the camera heading the game turns the stick by, `0x6F4CB8`, replaced for his
+  control): exact, and it felt disconnected - dropped. game-internals.md 12b ("On foot: the mouse's camera": how the
+  stick becomes his heading, the camera on a string, the five lines and the pull-in), CONTROLS.md. Measured at 30 /
+  60 / 144 fps: W held and 400 counts -> the camera -1.000 rad and his heading -1.000; A or D +0.000 for the first
+  1.5 s, then camera and heading 0.57-0.60 rad/s (the gamepad's stick: 2.7 rad in 2 s); S +0.000. `VCS_FOOTCAM=0` is
+  the old path (the wall measurement the old one again). `tools/controls_check.py`: 10 new checks (`--only
+  foot_camera` runs them alone, a new option; the wall one takes the stick's camera as its reference); 85 checks, 0
+  failed. `framerate_audit.py` footcam runs him with the gamepad's stick now (the game's own camera: 96 / 99 / 99
+  degrees a second at 1/30 / 60 / 144, as before - 97 / 99 / 100 with D).
 - **Music / sound effects volume** (2026-10-28, asked for by the user): Audio > Music and Sound effects are the game's
   own levels, in step with its pause menu both ways and kept across save loads (game-internals.md 9c). controls_check
   checks that the levels reach the game and its prefs, a save load keeps them, and the pause menu's slider changes the
@@ -1005,7 +1004,7 @@ Python scripts still usable on their own. docs/LAUNCHER.md has the whole of it; 
 | `VCS_TIMING_LOG=1` | independent timing: fps, host wait, EE clock vs real time, WaitVBlank callers every 2 s |
 | `VCS_GAME_VOLUME=0` | Audio > Music / Sound effects leave the game's own levels alone (no setter hooks, no sync; the reference) |
 | `VCS_CARCAM=0` | the hook on the camera behind a vehicle not installed: the mouse moves the right stick there, as before 2026-11-03; Car camera return does nothing |
-| `VCS_FOOTCAM=0` | the hooks on the on-foot camera and the player's control not installed: the mouse turns the camera at the pad read and steers the player, as before 2026-11-11 (no hold, no return, the camera standing at a wall's edge); Walking camera return does nothing |
+| `VCS_FOOTCAM=0` | the hook on the on-foot camera not installed: the mouse turns the game's camera at the pad read, as before 2026-11-11 (it swings back behind the player at once, and stands at a wall's edge); Walking camera return does nothing |
 | `VCS_FREEAIM=0` | free aim's hooks not installed (CGame::Process, CCamera::Process, the weapons' line test): the game's aiming untouched, the setting does nothing |
 | `VCS_INPUT_MAP=0` | the runtime's fixed built-in key / gamepad mapping instead of the player's bindings (`ps2_pad.cpp`; the reference) |
 | `VCS_VSYNC=0\|1\|2` | Vertical sync for one run: off, on, off with tearing allowed |

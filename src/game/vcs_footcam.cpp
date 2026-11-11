@@ -1,4 +1,4 @@
-// See vcs_footcam.h and game-internals.md 12b ("On foot: the camera free of the player").
+// See vcs_footcam.h and game-internals.md 12b ("On foot: the mouse's camera").
 #include "game/vcs_footcam.h"
 
 #include "game/vcs_freecam.h"
@@ -19,19 +19,14 @@ namespace vcs::footcam
     namespace
     {
         constexpr uint32_t kRamMask = 0x01FFFFFFu;
-        constexpr uint32_t kFollowPed = 0x0029DAB0u;     // the camera behind the player on foot (mode 4): a0 the CCam,
-                                                         // a1 the point it turns about (the player's position)
-        constexpr uint32_t kPlayerControl = 0x00230640u; // CPlayerPed::ProcessControl (a0 the ped): the stick to a heading
-        constexpr uint32_t kAfterWorld = 0x0036AFD0u;    // the next reader of the camera's heading, after the world's update
+        constexpr uint32_t kFollowPed = 0x0029DAB0u; // the camera behind the player on foot (mode 4): a0 the CCam, a1 the
+                                                     // point it turns about (the player's position)
         constexpr uint32_t kTheCamera = 0x006F44D0u;
         constexpr uint32_t kActiveCam = kTheCamera + 0x50u; // byte: which of Cams[3] is active
         constexpr uint32_t kCams = kTheCamera + 0x70u, kCamSize = 0x270u;
         constexpr uint32_t kBehindPlayer = kTheCamera + 0x58u;   // the game asks for the camera right behind the player,
         constexpr uint32_t kInFrontOfPlayer = kTheCamera + 0x858u; // or in front of him: the next update starts afresh
         constexpr uint32_t kLooksAtPlayer = kTheCamera + 0x888u; // 0 under a script camera
-        // the heading the player's control turns the stick by (VC's Orientation): atan2 of the frame camera's forward,
-        // written by the camera's update (FUN_0037B2C8) and read by the next frame's world
-        constexpr uint32_t kOrientation = kTheCamera + 0x7E8u;
         // the CCam: +0 mode, +0x70 the entity it follows, +0x78 alpha (pitch), +0x7C beta (heading), +0xAC set for its
         // first update, +0x130 / +0x140 the pitch / heading speeds, +0x1A0 the point the last update turned about,
         // +0x220 / +0x230 where it stands (the heading and pitch are measured from these at the next update)
@@ -44,8 +39,8 @@ namespace vcs::footcam
         // +0x34 / +0x38 the pitch limits up / down
         constexpr uint32_t kTable = 0x00487B30u, kTableRow = 0x3Cu, kSwingCap = 0x2Cu, kPitchUp = 0x34u, kPitchDown = 0x38u;
         constexpr uint32_t kIndoors = 0x00489F7Cu;
-        constexpr uint32_t kCentring = 0x00487E10u;  // set: the game is turning the camera behind the player (L1, a shot)
-        constexpr uint32_t kWallTurn = 0x00487E54u;  // the turn away from a wall the five lines found, a frame
+        constexpr uint32_t kCentring = 0x00487E10u;  // set: the game is turning the camera behind the player (L1, a shot
+                                                     // from the hip); it clears it when the camera is there or he moves
         constexpr uint32_t kWallSkip = 0x00487E58u;  // > 0: no five lines this update, the line of sight pulls the
                                                      // camera in instead (the game sets 2 after a pull-in, and counts down)
         constexpr uint32_t kLastAlpha = 0x00487E5Cu; // last update's alpha / beta: a change below 0.0001 is undone
@@ -53,50 +48,52 @@ namespace vcs::footcam
         constexpr uint32_t kCamStickLocked = 0x00488EB4u; // the camera ignores the stick's turn while set
         constexpr uint32_t kPad0 = 0x005147A8u;      // CPad 0: +0xA L1 (s16), +0x96 DisablePlayerControls (s16)
         constexpr uint32_t kPlayerPed = 0x004E4910u; // CWorld::Players[0].m_pPed
-        constexpr uint32_t kPedForward = 0x10u, kPedMoveSpeed = 0x140u, kPedVehicle = 0x480u, kPedState = 0x8C4u;
+        constexpr uint32_t kPedMoveSpeed = 0x140u;   // units a step (the same place in every physical entity)
+        constexpr uint32_t kPedStandsOn = 0x514u;    // the entity he stands on (0: the ground); the game's camera takes
+                                                     // his speed relative to it
         constexpr uint32_t kTimeStep = 0x004CD110u;     // CTimer::ms_fTimeStep (1.0 = 1/50 s)
         constexpr uint32_t kFrameCounter = 0x004CD124u; // CTimer::m_FrameCounter
         constexpr uint32_t kUserPause = 0x004CD2ACu, kCodePause = 0x004CD11Cu; // bytes
 
         constexpr float kTwoPi = 6.2831855f;
-        constexpr float kReturnTime = 0.6f;   // the way back eases out: 1 - e^(-t / this) of what is left
-        constexpr float kReturnRate = 2.0f;   // ... at most this many radians a second
-        constexpr float kReturnLimit = 4.0f;  // seconds; the game's own camera has it after that in any case
-        constexpr float kMoving = 0.01f;      // the player moves: units a step (0.5 m/s; a walk is 0.03, a run 0.12)
-        constexpr float kSwingLimit = 2.9670599f; // the game's swing leaves a camera further than this (170 degrees)
-                                                  // from behind him where it is
+        // The turn behind a moving player once the camera is free to: toward opposite to where he moves, eased
+        // (1 - e^(-t / kFollowTime) of what is left), at most kFollowRate radians a second at a run and less in
+        // proportion below it - the same curve at a walk -, coming in over kFollowRamp seconds. With the keys following
+        // the camera a sideways runner keeps the gap open, so the rate is how tight he curves: 0.6 rad/s at a run's
+        // 4.5 m/s is a 7.5 m radius, where the game's camera on its string turns 1.4 rad/s about itself (a 3.5 m one).
+        constexpr float kFollowTime = 0.6f, kFollowRate = 0.6f, kFollowRamp = 0.8f;
+        constexpr float kRunSpeed = 0.08f;        // a run, units a step (it varies 0.085 - 0.105 with his stride)
+        constexpr float kMoving = 0.01f;          // the player moves: units a step (0.5 m/s; a walk is 0.03)
+        constexpr float kBehind = 0.01f;          // radians: the camera is behind him (his track's small sway is not
+                                                  // the camera's)
+        constexpr float kSwingLimit = 2.9670599f; // the game's own turn leaves a camera further than this (170 degrees)
+                                                  // from behind him where it is: running at the camera
+        constexpr float kLong = 1.0e6f;           // seconds: "long ago"
 
         uint8_t *g_rdram = nullptr;
-        PS2Runtime::RecompiledFunction g_origCamera = nullptr, g_origControl = nullptr, g_origAfterWorld = nullptr;
+        PS2Runtime::RecompiledFunction g_orig = nullptr;
         std::atomic<bool> g_installed{false};
         std::atomic<float> g_delay{1.5f};
 
         // game thread
         enum class State
         {
-            Idle,   // the game's camera
-            Hold,   // the mouse moved: the camera stays where it is put
-            Return, // easing back behind the player
+            Idle,   // the game's camera (the gamepad, L1, the camera keys, a shot from the hip; not on foot)
+            Hold,   // the mouse moved or the movement keys changed: the camera stays where it is put
+            Follow, // ... and since then long enough: it turns behind him while he moves
         };
         State g_state = State::Idle;
         std::atomic<int> g_stateShown{0};
         bool g_enabled = false;             // the keyboard / mouse is in use, Mouse camera on
         float g_turn = 0.0f, g_tilt = 0.0f; // the mouse since the last update
         bool g_stick = false;               // the right stick since the last update
+        int g_keys = 0, g_heldKeys = 0;     // the movement keys held now (walkKeys), at the last update
         uint32_t g_frame = 0;               // the last camera update's frame
-        uint32_t g_followFrame = 0;         // ... the last one with the follow camera behind the player, not restarting
-        float g_idle = 0.0f, g_returning = 0.0f, g_away = 0.0f; // seconds of game time
+        float g_sinceInput = kLong, g_sinceMouse = kLong; // seconds of game time since the mouse or the keys, the mouse
+        float g_following = 0.0f;                         // ... of turning behind him
         float g_lastTarget[3] = {};
         bool g_swingOff = false;
         float g_swingCaps[2] = {};
-        // the player's direction
-        int g_keys = 0;             // the movement keys held now (walkKeys)
-        int g_walkKeys = 0;         // ... the ones the heading below was taken for
-        uint32_t g_walkFrame = 0;   // the last frame it was given to the player's control
-        float g_walkHeading = 0.0f; // the camera's heading when they were pressed
-        bool g_given = false;       // it is in the camera's place right now
-        float g_realHeading = 0.0f; // ... and this is the camera's own
-        std::atomic<int> g_givenShown{0};
 
         uint32_t rd32(uint32_t a)
         {
@@ -131,7 +128,7 @@ namespace vcs::footcam
             g_stateShown.store(static_cast<int>(s), std::memory_order_relaxed);
         }
 
-        // The game's turn behind a walking player: off while the mouse has the camera, the game's own otherwise.
+        // The game's own turn behind a walking player: off while this camera has the view, the game's otherwise.
         void swingOff(bool off)
         {
             if (off == g_swingOff)
@@ -146,11 +143,12 @@ namespace vcs::footcam
             g_swingOff = off;
         }
 
+        // The game's camera, from the next update on.
         void reset()
         {
             swingOff(false);
             setState(State::Idle);
-            g_idle = g_returning = g_away = 0.0f;
+            g_following = 0.0f;
         }
 
         // Turns the camera about the point it looks at: `turn` about z (left +), `tilt` up / down (up +, kept in the
@@ -196,23 +194,15 @@ namespace vcs::footcam
             }
         }
 
-        // The camera's own heading back in its place (the player's control had the movement keys' meanwhile).
-        void giveBack()
-        {
-            if (!g_given)
-                return;
-            wrf(kOrientation, g_realHeading);
-            g_given = false;
-        }
-
         // Before the game's update of the camera behind the player on foot (he has moved this frame).
         void prepare(uint32_t cam, uint32_t target)
         {
-            giveBack();
             const bool stick = g_stick;
             float turn = g_turn, tilt = g_tilt;
             g_turn = g_tilt = 0.0f;
             g_stick = false;
+            const bool keysChanged = g_keys != g_heldKeys;
+            g_heldKeys = g_keys;
 
             // the trainer's free camera has the view (and writes the CCam's target point): a fresh start after it
             if (freecam::flying())
@@ -235,69 +225,36 @@ namespace vcs::footcam
             if (!gap)
                 p[2] = rdf(cam + kCamTarget + 8) + moved[2];
 
-            const uint32_t ped = rd32(kPlayerPed);
-            const bool follow = cam == kCams + g_rdram[kActiveCam] * kCamSize && (rd32(cam) & 0xFFFFu) == kModeFollowPed &&
-                                ped && rd32(cam + kCamTargetEntity) == ped && rd32(cam + kCamRestart) == 0 &&
-                                rd32(kBehindPlayer) == 0 && rd32(kInFrontOfPlayer) == 0 && rd32(kLooksAtPlayer) == 1;
-            if (follow)
-                g_followFrame = frame;
-            // the game's own camera: its stick locked or the controls off, paused, L1 held (the player asks the game to
-            // put the camera behind him), the right stick
-            const bool usable = follow && g_enabled && rd16(kPad0 + 0x96u) == 0 && rd32(kCamStickLocked) == 0 &&
-                                !g_rdram[kUserPause] && !g_rdram[kCodePause] && rd16(kPad0 + 0xAu) == 0 && !stick;
-            if (!usable || gap)
-            {
-                reset();
-                if (!usable)
-                    return;
-            }
-
             const float dt = std::clamp(rdf(kTimeStep), 0.0f, 5.0f) / 50.0f;
             const float delay = g_delay.load(std::memory_order_relaxed);
-            const bool moving = std::hypot(rdf(ped + kPedMoveSpeed), rdf(ped + kPedMoveSpeed + 4)) > kMoving;
-            // behind the player: beta is the angle of the target-to-camera direction
-            const float behind = std::atan2(-rdf(ped + kPedForward + 4), -rdf(ped + kPedForward));
-            float away = std::remainder(behind - rdf(cam + kCamBeta), kTwoPi);
+            const bool mouseMoved = turn != 0.0f || tilt != 0.0f;
+            g_sinceMouse = mouseMoved ? 0.0f : std::min(g_sinceMouse + dt, kLong);
+            g_sinceInput = mouseMoved || keysChanged ? 0.0f : std::min(g_sinceInput + dt, kLong);
+            const bool mouseHas = delay < 0.0f || g_sinceMouse < delay; // the mouse has the camera to itself
 
-            if (turn != 0.0f || tilt != 0.0f)
-            {
-                setState(State::Hold);
-                g_idle = 0.0f;
-            }
-            else if (g_state == State::Hold)
-            {
-                g_idle += dt;
-                if (delay >= 0.0f && g_idle >= delay)
-                {
-                    // standing, it stays where it is: the game's camera does not turn it either
-                    setState(moving ? State::Return : State::Idle);
-                    g_returning = 0.0f;
-                }
-            }
-            else if (g_state == State::Idle)
-            {
-                // running at the camera (S): the game's swing leaves a camera in front of him there. After the same
-                // delay it comes round as well
-                g_away = moving && delay >= 0.0f && std::fabs(away) > kSwingLimit ? g_away + dt : 0.0f;
-                if (g_away > 0.0f && g_away >= delay)
-                {
-                    setState(State::Return);
-                    g_returning = 0.0f;
-                }
-            }
-            if (g_state == State::Return && !moving)
-                setState(State::Idle);
+            // The game's own camera: no follow camera behind the player (another camera, a restart, a script's), its
+            // stick locked or the controls off, paused, L1 held (the player asks the game to put the camera behind
+            // him), the right stick - and the game turning it behind him for a shot from the hip, unless the mouse
+            // has just said otherwise
+            const uint32_t ped = rd32(kPlayerPed);
+            const bool usable = g_enabled && cam == kCams + g_rdram[kActiveCam] * kCamSize &&
+                                (rd32(cam) & 0xFFFFu) == kModeFollowPed && ped && rd32(cam + kCamTargetEntity) == ped &&
+                                rd32(cam + kCamRestart) == 0 && rd32(kBehindPlayer) == 0 && rd32(kInFrontOfPlayer) == 0 &&
+                                rd32(kLooksAtPlayer) == 1 && rd16(kPad0 + 0x96u) == 0 && rd32(kCamStickLocked) == 0 &&
+                                !g_rdram[kUserPause] && !g_rdram[kCodePause] && rd16(kPad0 + 0xAu) == 0 && !stick &&
+                                (rd32(kCentring) == 0 || mouseHas);
+            if (!usable)
+                return reset();
 
-            if (g_state == State::Idle)
-            {
-                swingOff(false);
-                return;
-            }
-            g_away = 0.0f;
-            // held and on the way back: the source points move with the player (so he does not drag the camera after
-            // him), the game's own turns are off and the speeds left from before stop - the camera goes only where it
-            // is turned here. Walls: the game's path for a turned stick, the pull-in toward the player (with the stick
-            // at rest it turns the camera away from them, or leaves it standing at the wall's edge)
+            const bool hold = delay < 0.0f || g_sinceInput < delay;
+            if (hold || g_state != State::Follow)
+                g_following = 0.0f;
+            setState(hold ? State::Hold : State::Follow);
+
+            // This camera goes only where it is turned here: the source points move with the player (so he does not
+            // drag it after him, as on a string), the game's own turns are off and the speeds left from before stop.
+            // Walls: the game's path for a turned stick, the pull-in toward the player (with the stick at rest it
+            // turns the camera away from them, or leaves it standing at the wall's edge)
             swingOff(true);
             for (uint32_t off : kCamPoints)
                 for (int i = 0; i < 3; ++i)
@@ -307,68 +264,40 @@ namespace vcs::footcam
             wr32(kCentring, 0);
             if (rd32(kWallSkip) == 0)
                 wr32(kWallSkip, 1);
-            if (g_state == State::Hold)
+
+            if (mouseMoved)
                 turnCamera(cam, p, turn, tilt);
-            else
+            if (hold)
+                return;
+            // free to turn behind him: opposite to where he moves (beta is the angle of the target-to-camera
+            // direction), relative to what he stands on as the game's camera takes it. Not while he stands, and not
+            // when he runs at the camera - the keys follow the camera, so that turn would never get there
+            float vx = rdf(ped + kPedMoveSpeed), vy = rdf(ped + kPedMoveSpeed + 4);
+            if (const uint32_t ground = rd32(ped + kPedStandsOn))
             {
-                // back behind the player, easing out; then the game's camera has it. The pitch stays the mouse's
-                g_returning += dt;
-                const float k = 1.0f - std::exp(-dt / kReturnTime), cap = kReturnRate * dt;
-                turnCamera(cam, p, std::clamp(away * k, -cap, cap), 0.0f);
-                away = std::remainder(behind - rdf(cam + kCamBeta), kTwoPi);
-                if (std::fabs(away) < 0.01f || g_returning >= kReturnLimit)
-                    setState(State::Idle);
+                vx -= rdf(ground + kPedMoveSpeed);
+                vy -= rdf(ground + kPedMoveSpeed + 4);
             }
+            const float speed = std::hypot(vx, vy);
+            const float away = std::remainder(std::atan2(-vy, -vx) - rdf(cam + kCamBeta), kTwoPi);
+            if (speed <= kMoving || std::fabs(away) > kSwingLimit)
+            {
+                g_following = 0.0f;
+                return;
+            }
+            if (std::fabs(away) < kBehind)
+                return;
+            g_following += dt;
+            const float rate = kFollowRate * std::min(speed / kRunSpeed, 1.0f) * std::min(g_following / kFollowRamp, 1.0f);
+            const float cap = rate * dt;
+            turnCamera(cam, p, std::clamp(away * (1.0f - std::exp(-dt / kFollowTime)), -cap, cap), 0.0f);
         }
 
         // FUN_0029DAB0 (CCam::Process's case for mode 4): the mouse's say first, then the game's update.
         PS2_GUEST_CC void followPed(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
         {
             prepare(GPR_U32(ctx, 4), GPR_U32(ctx, 5));
-            g_origCamera(rdram, ctx, runtime);
-        }
-
-        // FUN_00230640 (CPlayerPed::ProcessControl, a0 the ped): his control turns the stick into a heading by the
-        // camera's (heading = atan2(-x, -y) - Orientation, FUN_00232DE8; the fight control FUN_00233728 the same way).
-        // While the same movement keys stay held it gets the camera's heading of the moment they were pressed, so he
-        // keeps his direction whatever the camera does. Pressed, they take the camera's as it is: that frame is the
-        // game's own.
-        PS2_GUEST_CC void playerControl(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
-        {
-            giveBack();
-            const uint32_t ped = rd32(kPlayerPed), frame = rd32(kFrameCounter);
-            // on foot behind the follow camera (its last update: this frame's comes after the world), by the keyboard
-            const bool on = g_enabled && g_keys != 0 && ped && GPR_U32(ctx, 4) == ped && frame - g_followFrame <= 1 &&
-                            !(rd32(ped + kPedVehicle) && rd32(ped + kPedState) == 0x37);
-            if (!on)
-                g_walkKeys = 0;
-            else
-            {
-                const float real = rdf(kOrientation);
-                // (the camera keys turn the camera through the stick: the game's way, and he follows the camera as
-                // the game has it - this frame's pad reads have set g_stick, the camera's update takes it after this)
-                if (g_keys != g_walkKeys || frame - g_walkFrame > 1 || g_stick)
-                {
-                    g_walkKeys = g_keys;
-                    g_walkHeading = real;
-                }
-                g_walkFrame = frame;
-                if (g_walkHeading != real)
-                {
-                    g_realHeading = real;
-                    g_given = true;
-                    wrf(kOrientation, g_walkHeading);
-                }
-            }
-            g_givenShown.store(on ? 1 : 0, std::memory_order_relaxed);
-            g_origControl(rdram, ctx, runtime);
-        }
-
-        // FUN_0036AFD0: the next reader of the camera's heading after the world. It gets the camera's own.
-        PS2_GUEST_CC void afterWorld(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
-        {
-            giveBack();
-            g_origAfterWorld(rdram, ctx, runtime);
+            g_orig(rdram, ctx, runtime);
         }
     }
 
@@ -380,24 +309,15 @@ namespace vcs::footcam
             std::fprintf(stderr, "[footcam] off (VCS_FOOTCAM=0)\n");
             return;
         }
-        g_origCamera = runtime.lookupFunction(kFollowPed);
-        g_origControl = runtime.lookupFunction(kPlayerControl);
-        g_origAfterWorld = runtime.lookupFunction(kAfterWorld);
-        if (!g_origCamera || !g_origControl || !g_origAfterWorld)
-        {
-            std::fprintf(stderr, "[footcam] not installed: a function is missing\n");
+        g_orig = runtime.lookupFunction(kFollowPed);
+        if (!g_orig)
             return;
-        }
         runtime.replaceFunction(kFollowPed, &followPed);
-        runtime.replaceFunction(kPlayerControl, &playerControl);
-        runtime.replaceFunction(kAfterWorld, &afterWorld);
         g_installed = true;
-        // footcam -> ok state=<idle|hold|return> keys=<0|1: the movement keys held have their own heading, not the
-        // camera's> (tools/controls_check.py)
+        // footcam -> ok state=<idle|hold|follow> (tools/controls_check.py)
         ps2control::addCommand("footcam", [](const std::string &, ps2control::Reply reply) {
-            static const char *const names[] = {"idle", "hold", "return"};
-            reply(std::string("ok state=") + names[g_stateShown.load(std::memory_order_relaxed)] +
-                  " keys=" + (g_givenShown.load(std::memory_order_relaxed) ? "1" : "0"));
+            static const char *const names[] = {"idle", "hold", "follow"};
+            reply(std::string("ok state=") + names[g_stateShown.load(std::memory_order_relaxed)]);
         });
     }
 

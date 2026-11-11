@@ -246,11 +246,11 @@ itself ("GTA Vice City Stories Launcher vX"), so the file has no heading. Follow
   game streams the same model in at another address, so such keys never stop coming. The RSL recordings were one
   (bounded since 2026-11-10, `VCS_RSL_RECORDINGS_MB`); `VCS_RSL_WORLD_LOG=1` prints what they hold, `tools/memcheck.py`
   is the check (PERFORMANCE.md 31).
-- On the keyboard the player does not turn with the camera (W held, the camera turned by the mouse or by the game):
-  meant - the movement keys keep the heading they were pressed at (`src/game/vcs_footcam.cpp`, game-internals.md 12b
-  "On foot: the camera free of the player"). A test that needs the game's camera-relative stick uses the gamepad's
-  (`gamepad lx 1`) or `VCS_FOOTCAM=0`. A camera that stands still at a wall while its heading turns on: the game's
-  pull-in not running for that turn (`0x487E58`, the same section).
+- On the keyboard the on-foot camera does not swing behind a sideways runner at once, and then only slowly: meant
+  - with the keyboard and mouse the camera is the mouse's, not the game's camera on its string
+  (`src/game/vcs_footcam.cpp`, game-internals.md 12b "On foot: the mouse's camera"). A test that needs the game's
+  own camera uses the gamepad's stick (`gamepad lx 1`) or `VCS_FOOTCAM=0`. A camera that stands still at a wall while
+  its heading turns on: the game's pull-in not running for that turn (`0x487E58`, the same section).
 - First things to grep in a log: `[ee] thread N -> dormant`, `[guest-branch:unlisted-resume]`.
 
 ## Working style for long autonomous runs

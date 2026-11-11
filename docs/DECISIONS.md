@@ -1354,3 +1354,17 @@ in PROGRESS.md, and this entry. Not kept: the `--only` option of `tools/controls
 For another attempt: every build was exact to its specification in the checks and still wrong in the hand - the
 question was never the mechanism. Worth settling by playing, before anything is built to completion: whether the
 camera should turn by itself at all on the keyboard and mouse, and what a key should mean once it has.
+
+## 2026-11-11 - The wall fix alone, on the mouse look as it was (the user's go-ahead)
+
+After the revert above the user was asked whether the wall fix should come back by itself and said: "Yes, wall fix
+only." So it is the smallest thing that does it, in the pad read where the mouse already turns the camera - no hook,
+no camera of its own: while the mouse turns the on-foot camera the update is told to take the path it takes for a
+turned stick (the pull-in toward the player), through the game's own switch for it (`0x487E58`). Claude's choices:
+
+- **A tail of 300 ms after the mouse's last turn.** A slow hand, or a high frame rate, leaves frames without a count
+  between frames with one; on those the game's own turn away from a wall he walks along would have worked against
+  the mouse. Standing, where the user saw the fault, it makes no difference.
+- **Nothing else of the on-foot camera changes**: the game's swing behind him, its string, the keys following the
+  camera are as they were. With the mouse at rest the game's own handling of walls is back.
+- `VCS_FOOT_WALL=0` is the switch back (rule 1); not a setting - there is nothing to choose.

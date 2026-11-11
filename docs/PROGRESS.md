@@ -677,13 +677,16 @@ dropped on uploads (lazy render-target patching).
   limits (src/game/vcs_input.cpp; why: game-internals.md 12b). The gamepad keeps the game's own speeds (pitch 0.6 x the
   heading's). `tools/controls_check.py`: "mouse pitch at once" (120 counts -> +0.300 two frames later, still +0.300
   after 22); 47 checks, 0 failed.
-- [ ] **The mouse's camera stops at a wall on foot** (reported by the user 2026-11-11): turned toward a building with
-  the mouse, the camera stands still at the wall's edge while its heading turns on behind the wall (at the Fort Baxter
-  barracks door: 0.744 rad behind its heading after a radian of mouse; the gamepad's stick is pulled in toward the
-  player instead). Cause found - the game pulls the camera in only for a turned stick - and a fix known (`0x487E58`):
-  game-internals.md 12b "On foot: the stick, the camera on its string, walls". The fix was part of an on-foot mouse
-  camera that was built and taken out again the same day (DECISIONS.md 2026-11-11); on its own it has not been asked
-  for.
+- [x] **The mouse's camera stopped at a wall on foot** (reported by the user 2026-11-11, fixed the same day): turned
+  toward a building with the mouse, the camera stood still at the wall's edge while its heading turned on behind the
+  wall (at the Fort Baxter barracks door: 0.744 rad behind its heading after a radian of mouse, at 4.41 m; the
+  gamepad's stick is pulled in toward the player instead). The game pulls the camera in only for a turned stick;
+  while the mouse turns the on-foot camera, and 300 ms after, the pad read now sets `0x487E58`, the game's own switch
+  for that path (src/game/vcs_input.cpp; game-internals.md 12b "On foot: the stick, the camera on its string,
+  walls"). Measured at 30 / 60 / 144 fps: the camera 0.001 rad from its heading, pulled in to 3.19 m. First part of
+  an on-foot mouse camera that was built and taken out again that day (DECISIONS.md), then asked for on its own.
+  `VCS_FOOT_WALL=0`: as before. `tools/controls_check.py`: two new checks (the stick's camera at the wall as the
+  reference, then the mouse's); 77 checks, 0 failed.
 - **Free aim with the mouse and the gamepad** (2026-10-31, asked for by the user): Keyboard > Free aim / Gamepad > Free
   aim (off by default): with a gun, holding R1's button aims where the mouse / right stick points with the game's own
   circle, shots go through it, Vic moves as he does locked on with that gun; fists / melee / thrown / scoped weapons keep
@@ -989,6 +992,7 @@ Python scripts still usable on their own. docs/LAUNCHER.md has the whole of it; 
 | `VCS_TIMING_LOG=1` | independent timing: fps, host wait, EE clock vs real time, WaitVBlank callers every 2 s |
 | `VCS_GAME_VOLUME=0` | Audio > Music / Sound effects leave the game's own levels alone (no setter hooks, no sync; the reference) |
 | `VCS_CARCAM=0` | the hook on the camera behind a vehicle not installed: the mouse moves the right stick there, as before 2026-11-03; Car camera return does nothing |
+| `VCS_FOOT_WALL=0` | on foot the mouse's turn does not ask the camera's update for the pull-in at walls: the camera stands at a wall's edge while its heading turns on, as before 2026-11-11 |
 | `VCS_FREEAIM=0` | free aim's hooks not installed (CGame::Process, CCamera::Process, the weapons' line test): the game's aiming untouched, the setting does nothing |
 | `VCS_INPUT_MAP=0` | the runtime's fixed built-in key / gamepad mapping instead of the player's bindings (`ps2_pad.cpp`; the reference) |
 | `VCS_VSYNC=0\|1\|2` | Vertical sync for one run: off, on, off with tearing allowed |

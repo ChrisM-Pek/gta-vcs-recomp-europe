@@ -2440,7 +2440,8 @@ timing at 60 fps; independent timing at 60 / 144 fps got through, by luck (below
     0 there switches every automatic turn off (the table has no other reader). Not through the table: while he runs
     at a camera more than 90 degrees off, the pitch is eased toward a limit that shrinks to 0.349 rad with the camera
     right in front (453-469).
-  - **Walls, and why the mouse's camera stops at a building** (the user's report; open). The update first asks whether
+  - **Walls, and why the mouse's camera stopped at a building** (the user's report; fixed, the end of this point).
+    The update first asks whether
     the camera stick is in use: CPad +6 / +8 (the right stick) or +0xA (L1) non-zero. **Stick at rest** and
     `0x487E58` 0: five lines (FUN_001908C0, buildings only) from beside the player - 0.3 behind the point looked at,
     0.17 apart across the view - to the camera's Source; while he moves, each blocked one adds `(i - 2) x 0.03` to
@@ -2458,7 +2459,16 @@ timing at 60 fps; independent timing at 60 / 144 fps got through, by luck (below
     stayed 0 (a standing ped's move speed is exactly 0) and `0x487E58` 0. The other calls of the update change
     neither beta nor the source points: FUN_002A4D38 (the pull-in's offset from the wall: tan(FOV / 2) x near x
     1.15), FUN_002A5590 (Source kept 0.5 above water), FUN_0029F960 (a ped the camera is inside), read in the
-    listing. Nothing outside FUN_0029DAB0 reads `0x487E54` / `0x487E58` / `0x487E10`.
+    listing. Nothing outside FUN_0029DAB0 reads `0x487E54` / `0x487E58` / `0x487E10`. **The fix** (2026-11-11,
+    src/game/vcs_input.cpp, where the mouse turns the camera at the pad read): while the mouse turns the on-foot
+    camera, and for 300 ms of game time after its last turn, `0x487E58` is set to 1 when it is 0 - before the
+    camera's update of the same frame, which then takes the stick's path: no five lines, the pull-in. The 300 ms
+    are for a slow hand: frames without a mouse count between frames with one would otherwise be the game's own turn
+    away from a wall he walks along. Measured at the same wall at 30 / 60 / 144 fps, 400 counts toward it at 10 a
+    frame, 2 a frame and 1 every third frame: the camera 0.001 rad from its heading, pulled in to 3.19 m, and still
+    there 2 s later (the game keeps a pulled-in camera pulled in). `VCS_FOOT_WALL=0`: 0.744 rad behind its heading
+    at 4.41 m, as before. Check: `tools/controls_check.py` ("at a wall the camera follows the mouse and is pulled
+    in"; the stick's camera at the same wall is its reference).
   - **The update starts afresh** (beta from his heading, the source points rebuilt) while CCam +0xAC (its first
     update), `0x6F4528` (TheCamera +0x58: "behind him") or `0x6F4D28` (+0x858: "in front of him") is set; all three
     are 32-bit. After a teleport from far away it also starts at its lowest pitch (-1.483, above him looking down:
@@ -2474,7 +2484,8 @@ timing at 60 fps; independent timing at 60 / 144 fps got through, by luck (below
     revert): a module that was the camera's heading on foot for the keyboard and mouse, by a pre-hook on FUN_0029DAB0.
     What it showed about the game: (1) **`0x487E58` set to 1 before the update gives the mouse's turn the stick's
     path** - no five lines, the pull-in: at the barracks door the camera then stood 0.001 rad from its heading,
-    pulled in to 3.2 of 4.5 m, where it had stood 0.744 rad behind it. (2) The cap at 0 in both table rows, the
+    pulled in to 3.2 of 4.5 m, where it had stood 0.744 rad behind it (this part came back on its own: the fix
+    above). (2) The cap at 0 in both table rows, the
     source points moved with him and the speeds +0x140 / +0x130 cleared before every update hold the heading exactly
     where it is put (as behind a vehicle); `0x487E60` / `0x487E5C` are the last update's beta / alpha, and a change
     under 0.0001 from them is undone. (3) **Replacing `0x6F4CB8` before FUN_00230640 and putting the camera's own

@@ -116,7 +116,7 @@ if(VCS_HAVE_GENERATED)
         target_sources(ps2EntryRunner PRIVATE "${CMAKE_SOURCE_DIR}/src/vcs.rc")
         # the resource compiler doesn't report the files it embeds
         set_source_files_properties("${CMAKE_SOURCE_DIR}/src/vcs.rc" TARGET_DIRECTORY ps2EntryRunner
-            PROPERTIES OBJECT_DEPENDS "${CMAKE_SOURCE_DIR}/src/vcs.manifest;${CMAKE_SOURCE_DIR}/launcher/launcher.ico;${CMAKE_BINARY_DIR}/vcs_version/vcs_version.h"
+            PROPERTIES OBJECT_DEPENDS "${CMAKE_SOURCE_DIR}/src/vcs.manifest;${CMAKE_SOURCE_DIR}/src/vcs.ico;${CMAKE_BINARY_DIR}/vcs_version/vcs_version.h"
                        INCLUDE_DIRECTORIES "${CMAKE_BINARY_DIR}/vcs_version")
         if(MSVC)
             target_link_options(ps2EntryRunner PRIVATE /MANIFEST:NO)  # lld in mingw mode makes none of its own

@@ -884,7 +884,7 @@ dropped on uploads (lazy render-target patching).
   **Graphics card**, Fastest by default - D3D11 through DXGI's ranking, Vulkan by device type; `[rhi] graphics cards` in
   the log; only one card here, so the choice between two is not checked); F12's frame dump only with
   `PS2X_HW_DUMP_KEY=1` (issue 89: Bandicam's and Steam's key; checked: 0 `[draw]` lines without, 893 with); vcs.exe's
-  icon and version information (issue 91: the launcher's icon, VERSION through a header only the resource file sees;
+  icon and version information (issue 91: the launcher's icon - since 2026-11-11 its own, the same scene by day in lighter colours -, VERSION through a header only the resource file sees;
   checked: Explorer's details read 0.2.4, "GTA: Vice City Stories PC port").
 
 ## Milestone 9 - Linux (started 2026-10-30)

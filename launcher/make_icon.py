@@ -35,24 +35,26 @@ WHITE = rgb(0xFFFFFF)
 
 
 class Palette:
-    def __init__(self, night, sky, horizon, sea, pink, pink_hi, skyline, lights, sun_top, far, sea_far, stars):
+    def __init__(self, night, sky, horizon, sea, pink, pink_hi, skyline, lights, sun_top, far, sea_far, stars,
+                 haze=1.0):
         self.night, self.sky, self.horizon, self.sea = rgb(night), rgb(sky), rgb(horizon), rgb(sea)
         self.pink, self.pink_hi, self.skyline, self.lights = rgb(pink), rgb(pink_hi), rgb(skyline), rgb(lights)
         self.sun_top = sun_top(self)
         self.far = mix(self.skyline, self.horizon, far)  # the towers in the haze
         self.sea_far = rgb(sea_far)                      # the sea at the icon's bottom edge
         self.stars = stars
+        self.haze = haze  # the pink glow around the sun and just above the horizon (0: none)
 
 
 # The launcher: dusk, theme.h's kDarkPalette
 DUSK = Palette(night=0x0A0A0B, sky=0x140A0F, horizon=0x3A0E24, sea=0x0F080B, pink=0xFF2E8B, pink_hi=0xFF62A8,
                skyline=0x0B0709, lights=0xFFB8D6, sun_top=lambda p: mix(p.pink_hi, WHITE, 0.22),  # backdrop.cpp's sun
                far=0.55, sea_far=0x0A0A0B, stars=True)
-# The game (vcs.exe): the same scene by day, from kLightPalette's pinks - a pale sky warming to the horizon, rose
+# The game (vcs.exe): the same scene by day, from kLightPalette's pinks - a plain white sky (the user's choice), rose
 # towers, a sea that keeps enough colour at the bottom edge to stand apart from a white desktop or Explorer window
-DAY = Palette(night=0xFFF4F8, sky=0xFFC6DD, horizon=0xFFA3C6, sea=0xFFB3CF, pink=0xEC1A62, pink_hi=0xFF4C84,
+DAY = Palette(night=0xFFFFFF, sky=0xFFFFFF, horizon=0xFFFFFF, sea=0xFFB3CF, pink=0xEC1A62, pink_hi=0xFF4C84,
               skyline=0xD9618F, lights=0xFFF1F6, sun_top=lambda p: mix(rgb(0xFFB547), p.pink_hi, 0.35),
-              far=0.5, sea_far=0xF58AB2, stars=False)
+              far=0.4, sea_far=0xF58AB2, stars=False, haze=0.0)
 
 
 def hash01(n):
@@ -180,7 +182,7 @@ def pixel(S, x, y):
         # the sky: dark up high, the horizon's glow below, a pink haze around the sun
         t = y / h
         colour = mix(mix(SKY, NIGHT, t * 0.5), HORIZON, max(0.0, (t - 0.35) / 0.65) ** 1.4)
-        glow = 0.22 * math.exp(-(d - sr) / (0.07 if S.size >= 128 else 0.04)) if d >= sr else 0
+        glow = 0.22 * P.haze * math.exp(-(d - sr) / (0.07 if S.size >= 128 else 0.04)) if d >= sr else 0
         colour = mix(colour, PINK, glow)
         for (px, py, pr, a) in S.stars:
             if (x - px) ** 2 + (y - py) ** 2 < pr * pr:
@@ -201,7 +203,7 @@ def pixel(S, x, y):
         if y >= h - line:
             colour = mix(colour, PINK, 0.85)
         elif y > h - 0.05:
-            colour = mix(colour, PINK, 0.25 * (1 - (h - y) / 0.05) ** 2)
+            colour = mix(colour, PINK, 0.25 * P.haze * (1 - (h - y) / 0.05) ** 2)
     else:
         t = (y - h) / (1 - h)
         colour = mix(SEA, P.sea_far, t)

@@ -145,7 +145,7 @@ motion is (2026-11-01, the user's "rethink everything"; before, a sidebar of pag
   striped sun behind the beach's towers, the horizon's line and the sun on the sea, in the dark palette. Each size is
   drawn for itself: 16 and 20 px only the sun, its stripes and the sea; towers from 24 px; up to 64 px every edge and
   stripe on whole pixels; lit windows and stars only at 256. The same script draws vcs.exe's icon (`src/vcs.ico`): the
-  scene by day - pale pink sky, an orange-to-pink sun, rose towers, no stars - so the game and the launcher don't look
+  scene by day - a white sky, an orange-to-pink sun, rose towers, no stars - so the game and the launcher don't look
   alike in Explorer or on the taskbar.
 - The first frame: the last doctor answer (`build/launcher_state.json`) gives the right mode at once; while this run's
   check is out, only "fine" is believed (anything else shows as checking) and the big button waits.

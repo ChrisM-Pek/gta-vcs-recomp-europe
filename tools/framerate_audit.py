@@ -584,21 +584,23 @@ def scenario_carcam(s):
 
 
 def scenario_footcam(s):
-    """The on-foot camera (FUN_0029dab0) swinging after the player while he runs to its right (D, 2.5 s): its turn rate
-    over the last 2 s, degrees a second. (The controls follow the camera, so after a turn the player lines up with the
-    camera rather than the camera with him; running sideways is where its own turn shows.) Same max(step, 1.0) as the
-    car camera's."""
+    """The on-foot camera (FUN_0029dab0) swinging after the player while he runs to its right (the gamepad's stick, 2.5
+    s): its turn rate over the last 2 s, degrees a second. (The stick follows the camera, so after a turn the player
+    lines up with the camera rather than the camera with him; running sideways is where its own turn shows.) Same
+    max(step, 1.0) as the car camera's. The gamepad, not D: the movement keys keep the direction they were pressed at
+    (src/game/vcs_footcam.cpp), so with them he runs a straight line and the camera's turn ends behind him."""
     x, y, h = FOOT_SPOT
     leave_vehicle(s)
     s.place(x, y, heading=h)
     s.wait_sim(1.5)  # the camera settles behind him
     path = os.path.join(ROOT, "build", "audit", "trace_%d_footcam.txt" % s.step)
     s.g.cmd("trace %s 0x%x 1" % (path, CAM_BETA))
-    s.key("D", True)
+    s.g.cmd("gamepad on")
+    s.g.cmd("gamepad lx 1")
     try:
         s.wait_sim(2.5)
     finally:
-        s.key("D", False)
+        s.g.cmd("gamepad off")
         s.g.cmd("trace off")
     rows = [[float(v) for v in line.split()] for line in open(path)]
     t0 = rows[0][1]

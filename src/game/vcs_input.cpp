@@ -8,6 +8,7 @@
 
 #include "game/vcs_aim.h"
 #include "game/vcs_carcam.h"
+#include "game/vcs_footcam.h"
 #include "game/vcs_freecam.h"
 #include "game/vcs_frontend.h"
 #include "platform/platform.h"
@@ -191,6 +192,12 @@ namespace vcs::input
         std::atomic<uint64_t> g_lastReport{0};       // buttons | rx << 16 | ry << 24 | lx << 32 | ly << 40 ("padstate")
         std::atomic<uint32_t> g_reads{0};            // pad reads so far ("padstate")
         std::atomic<int> g_lastDevice{static_cast<int>(Device::Keyboard)}; // lastDevice()
+        // The on-foot camera's device (game/vcs_footcam.h; game thread): as lastDevice - the gamepad used gives the game
+        // its own camera back at once -, and a mouse moved slowly, under the counts a frame that make it the device in
+        // use, still takes the camera again once it has moved this far with the gamepad at rest.
+        bool g_footKeyboard = true;
+        float g_footMouse = 0.0f;
+        constexpr float kFootMouseBack = 30.0f;
 
         std::string keyId(const Control &c, int slot) { return std::string("keys.") + c.id + (slot ? "2" : ""); }
         std::string padId(const Control &c) { return std::string("pad.") + c.id; }
@@ -305,10 +312,11 @@ namespace vcs::input
             return static_cast<uint8_t>(v < 0.0f ? 128.0f + v * 128.0f : 128.0f + v * 127.0f);
         }
 
-        // The mouse camera. On foot the mouse turns the follow camera itself: its heading and pitch are written in the
-        // game, with the points the camera stands at turned to match. Every other camera (vehicles, aiming) gets the
-        // mouse's speed (counts per second) as the right stick, so it turns as far for the same hand movement at any
-        // frame rate.
+        // The mouse camera. On foot and behind a vehicle the mouse turns the follow camera itself: its heading and pitch
+        // are written in the game, with the points the camera stands at turned to match, by a hook before the camera's
+        // update (game/vcs_footcam.h, game/vcs_carcam.h). Every other camera (the other vehicle views, the lock-on)
+        // gets the mouse's speed (counts per second) as the right stick, so it turns as far for the same hand movement
+        // at any frame rate.
         struct MouseCamera
         {
             std::chrono::steady_clock::time_point last{};
@@ -422,6 +430,13 @@ namespace vcs::input
                 else
                     walk = true;
             }
+            // the movement keys as a direction: on foot they keep the heading they were pressed at, whatever the camera
+            // does (game/vcs_footcam.h). The gamepad's stick moves the player the game's way
+            {
+                const int kx = pos[0] - neg[0], ky = pos[1] - neg[1];
+                const bool padStick = lx != 0.0f || ly != 0.0f;
+                footcam::walkKeys((kx || ky) && !padStick && !game.driving ? (kx + 1) + (ky + 1) * 3 + 1 : 0);
+            }
             float *axes[4] = {&lx, &ly, &rx, &ry};
             for (int a = 0; a < 4; ++a)
                 if (neg[a] != pos[a])
@@ -444,6 +459,7 @@ namespace vcs::input
             const auto now = ps2x::hostNow();
             const float dt = g_mouse.last.time_since_epoch().count() ? std::chrono::duration<float>(now - g_mouse.last).count() : 0.0f;
             const uint32_t frame = g_rdram ? rd32(kFrameCounter) : 0;
+            float mouseMoved = 0.0f; // counts this game frame (the on-foot camera's device, below)
             if (freeCamera)
                 g_mouse = {};
             else if (frame != g_mouse.frame || dt >= 0.25f || dt == 0.0f)
@@ -462,6 +478,7 @@ namespace vcs::input
                 }
                 // a hand on the mouse moves it more than a nudge of the desk does
                 keysUsed = keysUsed || std::fabs(dx) + std::fabs(dy) > 12.0f;
+                mouseMoved = std::fabs(dx) + std::fabs(dy);
                 const bool on = m.mouseCamera && !blocked;
                 // up (+) for a mouse moved forward (SDL: y grows downwards); the game looks up for a stick pulled
                 // back (y > 0)
@@ -523,8 +540,17 @@ namespace vcs::input
                     wrf(cam + 0x7C, beta);
                     wrf(cam + 0x78, rdf(cam + 0x78) + up * look);
                 }
+                else if (on && game.footCamera && footcam::active())
+                {
+                    // the camera behind the player on foot turns by the mouse itself and stays where it is put while
+                    // the mouse moves, then goes back behind him while he moves; his direction is the keys' alone
+                    // (game/vcs_footcam.h)
+                    footcam::mouse(-dx * m.mouseLook, up * m.mouseLook);
+                }
                 else if (on && game.footCamera)
                 {
+                    // VCS_FOOTCAM=0, as before: the camera turned here, once, and left to the game's update - the
+                    // player walks by it, so the mouse steers him.
                     // heading: right turns clockwise (the angle falls), kept in 0..2 pi as the game keeps it. The camera
                     // eases its heading back toward where it stands (its source points, +0x220 / +0x230, placed around
                     // the player from the heading at the end of each update), so those turn with it.
@@ -674,6 +700,8 @@ namespace vcs::input
             // game at once, should the mouse have held it a moment before (game/vcs_carcam.h)
             if ((rx != 0.0f || ry != 0.0f) && game.driving)
                 carcam::stickMoved();
+            else if (rx != 0.0f || ry != 0.0f)
+                footcam::stickMoved(); // on foot as well (game/vcs_footcam.h)
             rx += g_mouse.x;
             ry += g_mouse.y;
             buttons |= g_mouse.wheelButton;
@@ -702,6 +730,16 @@ namespace vcs::input
                     keysUsed = keysUsed || ps2control::keyDown(k);
             if (padUsed != keysUsed) // both at once: as it was
                 g_lastDevice.store(static_cast<int>(padUsed ? Device::Gamepad : Device::Keyboard), std::memory_order_relaxed);
+            // the on-foot camera: the mouse's (held where it is put, the player's direction the keys' own) for the
+            // keyboard and mouse, the game's own as soon as the gamepad is used
+            if (padUsed != keysUsed)
+            {
+                g_footKeyboard = keysUsed;
+                g_footMouse = 0.0f;
+            }
+            else if (!padUsed && !g_footKeyboard && (g_footMouse += mouseMoved) >= kFootMouseBack)
+                g_footKeyboard = true;
+            footcam::enable(m.mouseCamera && g_footKeyboard);
 
             const uint16_t word = static_cast<uint16_t>(~buttons);
             data[2] = static_cast<uint8_t>(word & 0xFF);
@@ -778,9 +816,11 @@ namespace vcs::input
                 s.section = "Mouse";
                 s.label = "Mouse camera";
                 s.help = "Moving the mouse turns the camera, and the mouse is held in the window while you play (free again "
-                         "in the menus and when the window is in the background). On foot it turns the camera itself, as "
-                         "in a PC game, and behind a car too (it goes back behind the car after Car camera return); in other "
-                         "vehicle cameras and locked on it moves the right stick. Off: the mouse only clicks.";
+                         "in the menus and when the window is in the background). On foot and behind a car it turns the "
+                         "camera itself and does not steer: the movement keys go where the camera looks when you press "
+                         "them and keep that direction, and the camera goes back behind you after Walking / Car camera "
+                         "return. In other vehicle cameras and locked on it moves the right stick. A gamepad has the "
+                         "game's own camera. Off: the mouse only clicks.";
                 s.type = Type::Toggle;
                 s.defaultValue = 1;
                 s.onChange = onChange;
@@ -792,8 +832,8 @@ namespace vcs::input
                 s.section = "Mouse";
                 s.label = "Mouse sensitivity";
                 s.help = "How far the camera turns for a mouse movement (100%: 400 counts, half an inch at 800 DPI, turn the "
-                         "camera on foot a radian). Looking up / down and the cameras the stick turns have a top speed "
-                         "(the stick's), so very fast flicks there turn no faster.";
+                         "camera on foot a radian). The cameras the stick turns (other vehicle cameras, locked on) have "
+                         "a top speed, the stick's, so very fast flicks there turn no faster.";
                 s.type = Type::Integer;
                 s.min = 10;
                 s.max = 400;
@@ -829,6 +869,20 @@ namespace vcs::input
                 s.choices = {{"0.5 s", 5}, {"1 s", 10}, {"1.5 s", 15}, {"2 s", 20}, {"3 s", 30}, {"5 s", 50}, {"Never", -1}};
                 s.defaultValue = 15;
                 s.onChange = [](int v) { carcam::setReturnDelay(v < 0 ? -1.0f : v / 10.0f); };
+                settings::add(s);
+
+                s = {};
+                s.key = "mouse.foot_return";
+                s.page = kKeys;
+                s.section = "Mouse";
+                s.label = "Walking camera return";
+                s.help = "On foot the camera stays where the mouse puts it while the mouse moves, and the player keeps "
+                         "going where his keys sent him; this long after the mouse stops, while he moves, it eases back "
+                         "behind him. Standing, it stays. Never: only the mouse turns it.";
+                s.type = Type::Choice;
+                s.choices = {{"0.5 s", 5}, {"1 s", 10}, {"1.5 s", 15}, {"2 s", 20}, {"3 s", 30}, {"5 s", 50}, {"Never", -1}};
+                s.defaultValue = 15;
+                s.onChange = [](int v) { footcam::setReturnDelay(v < 0 ? -1.0f : v / 10.0f); };
                 settings::add(s);
 
                 s = {};

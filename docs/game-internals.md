@@ -2364,7 +2364,10 @@ timing at 60 fps; independent timing at 60 / 144 fps got through, by luck (below
   divided by `max(step, 1.0)`, too slow above 50 fps until patched (2026-10-31, section 4: the follow cameras).
 - The follow camera ignores the stick while `0x488EB4` is set (FUN_002a2e30) and while CPad +0x96 is set; under a
   script camera TheCamera + 0x888 is 0 (section 12).
-- **Mouse look** (src/game/vcs_input.cpp, Keyboard > Mouse camera): on foot (mode 4, no script camera, controls on, not
+- **Mouse look** (src/game/vcs_input.cpp, Keyboard > Mouse camera; since 2026-11-11 the same turn is applied by a hook
+  before the camera's update, which also holds it and frees the player's direction: "On foot: the camera free of the
+  player" below. What follows is the turn itself, and the whole of it with `VCS_FOOTCAM=0`): on foot (mode 4, no script
+  camera, controls on, not
   paused: the pause menu leaves the mode at 4, `m_UserPause` 0x4CD2AC / `m_CodePause` 0x4CD11C are bytes) the
   pad read adds the mouse's turn to beta and turns +0x220 / +0x230 about the player by the same angle (exact: 300
   counts in 30 moves -> -0.750 rad, 400 counts a radian), and does the same for the pitch: alpha += the tilt, and
@@ -2412,7 +2415,79 @@ timing at 60 fps; independent timing at 60 / 144 fps got through, by luck (below
   at once. The stick could not turn it while held or returning: its term goes through +0x140, zeroed there every
   update and smoothed from 0 (about a fifth of its speed), and steps below `0x487E94` are snapped back (the user's
   report: the gamepad did nothing until the camera was back behind the car).
-- **The camera update** (2026-10-30, for the trainer's free camera; FUN_00378dd8 decompiled with `tools/eedecomp.py`):
+- **On foot: the camera free of the player** (2026-11-11, the user's request; src/game/vcs_footcam.cpp. Found by
+  reading the decompile of FUN_0029dab0 again - `build/analysis/decomp/followped.c` - and the disassembly listing
+  for the callers of the pad's stick getters and the readers of `0x6F4CB8`, then measured in hidden runs with the
+  rig's `trace`).
+  - **How the stick becomes his heading.** The player's control **FUN_00232DE8** (called from CPlayerPed::
+    ProcessControl **FUN_00230640**, a0 the ped, at 0x231494 / 0x231550 / 0x2315A8 / 0x2315C0) reads the left stick
+    through FUN_00285690 (x) and FUN_002857E8 (y) and sets **ped +0x8E4 (the heading he turns to; +0x8E0 the current
+    one) = LimitRadianAngle(atan2(-x, -y) - `*(float *)0x6F4CB8`)** (the load at 0x232E34, atan2 at 0x232F3C).
+    **`0x6F4CB8` = TheCamera +0x7E8 is the camera's heading** (VC's `Orientation`): written by FUN_0037B2C8 (called
+    by CCamera::Process at 0x37ADC0, after the CCam's update) as atan2 of the frame camera's forward, then + pi by
+    CCamera::Process for a look behind (0x37B1B4 / 0x37B284). Its other readers: the fight control FUN_00233728
+    (0x2337CC), CPed::ProcessControl FUN_001F4BF0 (0x1F7760 / 0x1F7944), FUN_002339D0 (0x233A00; reached only with
+    `0x488EB4` set), and three that place things around the camera: FUN_0018CD88 (0x18CD98), FUN_003E4270 /
+    FUN_003E4528 (0x3E4430 / 0x3E46D8), FUN_0036AFD0 (0x36B118). The order in CGame::Process (FUN_003BA8D8): the pad
+    0x3BA93C, FUN_003E3720 0x3BAAB8, FUN_0018CD88 0x3BAB98, **CWorld::Process 0x3BABD0** (the player's control, with
+    the heading the last frame's camera left), **FUN_0036AFD0 0x3BABF4**, **CCamera::Process 0x3BAC38**. So the mouse
+    steered him: whatever turns the camera turns the stick's meaning. The stick's size: `sqrt(x^2 + y^2) / 60`, a walk
+    below 1, a run from 2 (120 units) - read in the listing (FUN_00231C20), not measured: a diagonal is no faster.
+  - **The game's own turn behind a walking player** (followped.c 396-435): a share `min(his speed x table +0x28 x
+    step, 1)` of the gap between the camera's heading and behind his nose, capped at **table +0x2C x step**
+    (`0x487B5C` outdoors, `0x487B98` indoors; 0.02: 1 rad/s), none when the gap is over 2.967 (170 degrees: running at
+    the camera leaves it in front of him). `0x487E10` set makes it a fixed turn instead (x `0x487E64` / `0x487E68`):
+    **L1** (FUN_00286630 = CPad +0xA: "camera behind him", which also levels the pitch) and a shot from the hip with
+    an automatic gun (x 2.5) latch it until he moves or the camera is there. All of it goes through the one cap, so
+    0 there switches every automatic turn off (the table has no other reader). Not through the table: while he runs
+    at a camera more than 90 degrees off, the pitch is eased toward a limit that shrinks to 0.349 rad with the camera
+    right in front (453-469).
+  - **Walls, and why the mouse's camera stopped at a building** (the user's report). The update first asks whether
+    the camera stick is in use: CPad +6 / +8 (the right stick) or +0xA (L1) non-zero. **Stick at rest** and
+    `0x487E58` 0: five lines (FUN_001908C0, buildings only) from beside the player - 0.3 behind the point looked at,
+    0.17 apart across the view - to the camera's Source; while he moves, each blocked one adds `(i - 2) x 0.03` to
+    **`0x487E54`**, which is added to beta every frame and falls by 5% a frame (the camera turns away from a wall he
+    walks along; per frame, not per time step). **The line of sight that pulls Source in toward him (followped.c
+    635) runs only when the stick is in use, when all five lines are blocked, or while `0x487E58` > 0** - the game
+    sets it to 2 after a pull-in and counts it down, so a pulled-in camera stays pulled in. A mouse turn is none of
+    these: Source is put at the full distance inside the wall, and FUN_002A4EC8 - the near plane's fit, as read in
+    the listing: a sphere at Source + Front x near against the world, pushed out up to four times, the near clip
+    shrunk to 0.15, else **the last good position kept** (CCam +0x90, `0x487E14` set) - leaves the camera where it
+    last fitted. Measured at the Fort Baxter barracks door (-1648.87, -261.0; a wall behind him: the stick's camera
+    is pulled in from 4.5 m to 2.3-3.4 m between 240 and 300 degrees): standing, 400 counts of mouse toward the wall
+    turned beta the whole radian
+    (3.690 -> 4.690) while the camera stood still from 3.945 on, 0.744 rad behind its heading, at 4.41 m; `0x487E54`
+    stayed 0 (a standing ped's move speed is exactly 0) and `0x487E58` 0. The other calls of the update change
+    neither beta nor the source points: FUN_002A4D38 (the pull-in's offset from the wall: tan(FOV / 2) x near x
+    1.15), FUN_002A5590 (Source kept 0.5 above water), FUN_0029F960 (a ped the camera is inside), read in the
+    listing. Nothing outside FUN_0029DAB0 reads `0x487E54` / `0x487E58` / `0x487E10`.
+  - **The update starts afresh** (beta from his heading, the source points rebuilt) while CCam +0xAC (its first
+    update), `0x6F4528` (TheCamera +0x58: "behind him") or `0x6F4D28` (+0x858: "in front of him") is set; all three
+    are 32-bit. After a teleport from far away it also starts at its lowest pitch (-1.483, above him looking down:
+    0.39 m from him across the ground); L1 puts it level behind him (-0.056).
+  - **The module** (pre-hooks only). *The camera*, before FUN_0029DAB0 (a0 the CCam, a1 the point it turns about:
+    his position), states idle / hold / return as behind a vehicle: the mouse's turn goes to beta, alpha (in the
+    table's limits), their last-update copies (`0x487E60` / `0x487E5C`: a change under 0.0001 is undone) and the
+    source points; while held or returning the source points move with him, the cap above is 0, the speeds +0x140 /
+    +0x130 and `0x487E10` are cleared, and **`0x487E58` is set to 1** - the game's own path for a turned stick: no
+    five lines, the pull-in. Walking camera return after the mouse stops, while he moves (his move speed over 0.01 a
+    step), beta eases behind his nose (1 - e^(-t / 0.6 s), at most 2 rad/s) and the game's camera has it again;
+    standing it goes to idle where it is. Idle with him running more than 170 degrees off for that long starts the
+    return too. It stands down for a frame without this camera, a restart, a script camera, the controls off, the
+    pause, the free camera, L1, the right stick and the gamepad. *His direction*, before FUN_00230640: while the
+    same movement keys stay held (and the follow camera was the last frame's camera, the keyboard the device), the
+    heading at `0x6F4CB8` is replaced by the one it had when they were pressed; before FUN_0036AFD0 the camera's own
+    goes back. A change of the keys, or the camera keys' stick, takes it afresh. The pad report is not touched.
+  - **Measured** (`tools/controls_check.py --only foot_camera`, and scratch runs at 60 / 144 fps with the same
+    numbers): W held and 400 counts of mouse - the camera -1.000 rad, his heading +0.000, both still there 0.8 s
+    later; hold -> return 1.5 s after the mouse stops -> idle 2.8 s later, 0.010 from behind him. Standing: +0.500
+    for 200 counts, unchanged 3 s later. W after a quarter turn of the camera: he runs 0.000 from where it looks. A
+    held: his heading +0.000 over 2.5 s while the game's camera swings 0.6-0.7 rad behind him (the gamepad's stick to
+    the right: he turns 2.7 rad in 2 s). S: the camera comes round 3.13 rad, his heading +0.000. At the wall,
+    standing: the turn exact (+-0.000), the camera 0.001 from its heading, pulled in to 3.2 of 4.5 m; running along
+    it with the camera brought round to the wall's side the turn is exact too, pulled in, his heading +0.000. A
+    run that leaves the street and slides along its buildings turns the game's idle camera after his track,
+    not his nose (0.14 rad there): the game's own.
   FUN_00378dd8 = CCamera::Process. At `0x378FC0` it calls **FUN_00294540 = CCam::Process** on the active CCam
   (`TheCamera + 0x70 + ActiveCam x 0x270`, ActiveCam = byte `TheCamera + 0x50`; the only caller), then
   **FUN_002A2ED0** (CCam::ProcessSpecialHeightRoutines: lifts the follow camera for peds near the player in modes 4,

@@ -1327,3 +1327,48 @@ are in PERFORMANCE.md 31; the choices:
   `VCS_TIMING=0 VCS_FPS=30` are untouched; none of the rig's runs reaches 256 MB of recordings.
 - **Not done**: an `Op` is 104 bytes for every UNPACK because each carries a mesh and a raster name it does not use;
   a leaner layout would hold more per MB (not measured). Left, as the limit makes it a question of tuning.
+
+## 2026-11-11 - On foot the mouse looks and the keys steer: the camera free of the player (the user's request)
+
+The user asked for the on-foot mouse camera to be like the vehicle one: the mouse moves the camera without changing
+where the player goes ("the player and the camera should be independent"), the camera goes slowly back behind him
+while he moves, a controller gets the old behaviour back, and the camera must stop refusing to turn toward a
+building. And: it has to feel like native PC controls, as the vehicle camera does - "it should not just try to emulate
+a gamepad". Asked, the user chose:
+
+- **A key goes where the camera looks at the moment it is pressed, and keeps that direction while held.** The other
+  ways offered: keys relative to the direction he was already running (only a start from standing takes the view), or
+  steering him like a car (W forward, A / D turn him). With the choice made, A / D run straight lines; the gamepad's
+  circles come from the camera swinging behind a stick that follows it.
+- **The old way (the mouse steers him) stays as a hidden switch only**, `VCS_FOOTCAM=0`, as `VCS_CARCAM=0` for the
+  car. No menu entry.
+
+Claude's choices, to that:
+
+- **Nothing goes through a pretend stick.** The camera is turned by a hook before the game's update, as behind a car.
+  The player's direction is kept by giving his control the camera heading of the moment the keys were pressed
+  (`0x6F4CB8`, the one value the game turns the stick by) instead of the camera's current one, and putting the real one
+  back before anything else reads it. The alternative - turning the left stick's vector the other way in the pad
+  report - would have gone through the game's stick dead zone (coarse direction steps, coarsest at the walking
+  speed), and would have reached the lock-on and free-aim strafing, which use the stick without the camera.
+- **"Pressed" is any change of the movement keys held**, a key let go as well: what is held then goes by the view of
+  that moment. Otherwise W + D after a look to the side would keep W's old direction and add D's new one.
+- **Standing, the camera stays where the mouse put it**; the return is for a moving player only (the user's words). It
+  uses the car camera's ease (1 - e^(-t / 0.6 s), at most 2 rad/s) and its own delay, **Walking camera return** (1.5 s
+  by default, the car's choices). The pitch is not returned: on foot the game leaves it where it was put too.
+- **After the return the game's own camera carries on**, as behind a car: it swings behind him when he changes
+  direction, at once, and keeps its other habits (turning away from a wall he walks along, levelling a steep pitch
+  when he runs at it, coming behind him for a shot from the hip). Only while the mouse holds the camera are they off.
+  One thing was added: the game leaves a camera more than 170 degrees from behind him where it is (running at the
+  camera after S); after the same delay it comes round there too, as the user asked for a moving player.
+- **The gamepad**: used, it has the game's camera and its camera-relative stick at once (no return, nothing held), and
+  the mouse does nothing to the on-foot camera until the keyboard or mouse is the device again - a bound key, a mouse
+  moved as a hand moves it (the prompts' rule), or 30 counts of slower movement with the gamepad at rest, so a nudge of
+  the desk does not take the camera and a slow hand still does. L1 (the game's "camera behind him") and the camera
+  keys take the camera from the mouse at once as well, as the right stick does behind a car.
+- **The wall**: while the mouse holds the camera, walls are handled the way the game handles them for a turned stick
+  (the camera is pulled in toward him). With the stick at rest the game does not pull in; the camera then stood at
+  the wall's edge while its heading turned on behind the wall (game-internals.md 12b). With the mouse at rest the
+  game's own handling is back.
+- **Mouse camera off** keeps the game's camera and its camera-relative keys, as before: all of this belongs to the
+  mouse camera.

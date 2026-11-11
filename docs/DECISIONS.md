@@ -1328,115 +1328,29 @@ are in PERFORMANCE.md 31; the choices:
 - **Not done**: an `Op` is 104 bytes for every UNPACK because each carries a mesh and a raster name it does not use;
   a leaner layout would hold more per MB (not measured). Left, as the limit makes it a question of tuning.
 
-## 2026-11-11 - On foot the mouse looks and the keys steer: the camera free of the player (the user's request)
+## 2026-11-11 - A mouse camera of its own on foot: built in three rounds, then taken out (the user's decision)
 
-(Built, played and changed the same day: the next entry. The keys' own direction is gone again; the hook, the
-wall and the gamepad's part stayed.)
+The user asked for the on-foot mouse controls to be upgraded as the vehicle camera had been: the camera free of the
+player, back behind him while he moves, the gamepad as before, the camera no longer stopping at a building, and all
+of it feeling like PC controls rather than a pretend gamepad. Three builds the same day, each played by the user:
 
-The user asked for the on-foot mouse camera to be like the vehicle one: the mouse moves the camera without changing
-where the player goes ("the player and the camera should be independent"), the camera goes slowly back behind him
-while he moves, a controller gets the old behaviour back, and the camera must stop refusing to turn toward a
-building. And: it has to feel like native PC controls, as the vehicle camera does - "it should not just try to emulate
-a gamepad". Asked, the user chose:
+1. The movement keys kept the direction they were pressed at whatever the camera did (the user's own choice among
+   three); the mouse only looked. Verdict: "it would be better for the player character to always be moving in the
+   general direction of the camera. Being disconnected feels bad."
+2. The keys followed the camera again; the camera held still after the mouse or a change of keys, then turned behind
+   him slowly. Verdict: a good direction, but the camera should follow where he travels more actively, "a bit closer
+   to the gamepad camera" - travelling east or south it stayed where it was.
+3. The camera came round behind where he travels at once, the keys keeping their heading through that turn only.
+   Then: "revert all changes that have been made today related to the camera while walking."
 
-- **A key goes where the camera looks at the moment it is pressed, and keeps that direction while held.** The other
-  ways offered: keys relative to the direction he was already running (only a start from standing takes the view), or
-  steering him like a car (W forward, A / D turn him). With the choice made, A / D run straight lines; the gamepad's
-  circles come from the camera swinging behind a stick that follows it.
-- **The old way (the mouse steers him) stays as a hidden switch only**, `VCS_FOOTCAM=0`, as `VCS_CARCAM=0` for the
-  car. No menu entry.
+So all of it is out again - the module, its setting (Walking camera return), its checks, the notes - by one revert of
+the three commits (6948b7a, 993d670, ea5628e stay in the history). On foot the mouse turns the game's own camera at
+the pad read and steers the player, as since 2026-10-29. **The wall stop is back with it** (the mouse's camera
+standing at a building's edge): its fix was part of the module. Kept, as the rules of this repository ask: what was
+found out about the game (game-internals.md 12b "On foot: the stick, the camera on its string, walls"), the open item
+in PROGRESS.md, and this entry. Not kept: the `--only` option of `tools/controls_check.py` and the gamepad-driven
+`framerate_audit.py` footcam scenario, which came with those commits.
 
-Claude's choices, to that:
-
-- **Nothing goes through a pretend stick.** The camera is turned by a hook before the game's update, as behind a car.
-  The player's direction is kept by giving his control the camera heading of the moment the keys were pressed
-  (`0x6F4CB8`, the one value the game turns the stick by) instead of the camera's current one, and putting the real one
-  back before anything else reads it. The alternative - turning the left stick's vector the other way in the pad
-  report - would have gone through the game's stick dead zone (coarse direction steps, coarsest at the walking
-  speed), and would have reached the lock-on and free-aim strafing, which use the stick without the camera.
-- **"Pressed" is any change of the movement keys held**, a key let go as well: what is held then goes by the view of
-  that moment. Otherwise W + D after a look to the side would keep W's old direction and add D's new one.
-- **Standing, the camera stays where the mouse put it**; the return is for a moving player only (the user's words). It
-  uses the car camera's ease (1 - e^(-t / 0.6 s), at most 2 rad/s) and its own delay, **Walking camera return** (1.5 s
-  by default, the car's choices). The pitch is not returned: on foot the game leaves it where it was put too.
-- **After the return the game's own camera carries on**, as behind a car: it swings behind him when he changes
-  direction, at once, and keeps its other habits (turning away from a wall he walks along, levelling a steep pitch
-  when he runs at it, coming behind him for a shot from the hip). Only while the mouse holds the camera are they off.
-  One thing was added: the game leaves a camera more than 170 degrees from behind him where it is (running at the
-  camera after S); after the same delay it comes round there too, as the user asked for a moving player.
-- **The gamepad**: used, it has the game's camera and its camera-relative stick at once (no return, nothing held), and
-  the mouse does nothing to the on-foot camera until the keyboard or mouse is the device again - a bound key, a mouse
-  moved as a hand moves it (the prompts' rule), or 30 counts of slower movement with the gamepad at rest, so a nudge of
-  the desk does not take the camera and a slow hand still does. L1 (the game's "camera behind him") and the camera
-  keys take the camera from the mouse at once as well, as the right stick does behind a car.
-- **The wall**: while the mouse holds the camera, walls are handled the way the game handles them for a turned stick
-  (the camera is pulled in toward him). With the stick at rest the game does not pull in; the camera then stood at
-  the wall's edge while its heading turned on behind the wall (game-internals.md 12b). With the mouse at rest the
-  game's own handling is back.
-- **Mouse camera off** keeps the game's camera and its camera-relative keys, as before: all of this belongs to the
-  mouse camera.
-
-## 2026-11-11 - On foot the keys follow the camera again; the mouse's camera as a PC game's (the user's verdict)
-
-(The next entry changes two things of this one: the camera turns behind him at once and faster, and his line is
-kept through that turn.)
-
-The user played the build above the same day: "it would be better for the player character to always be moving in
-the general direction of the camera. Being disconnected feels bad." And asked for whatever else would make movement
-and the camera feel better with keyboard and mouse. So the direction kept from the key's press is gone (it worked as
-built - his heading +0.000 through a radian of mouse - and felt wrong: W no longer went where one looked). Kept from
-that build: the camera turned by a hook before the game's update, the pull-in at walls, the gamepad's own camera.
-The rest is Claude's, to the user's brief:
-
-- **The keys follow the camera, as the game has them**: the mouse steers him. Nothing is done to the stick or to the
-  heading the game turns it by.
-- **The mouse's camera replaces the game's own for the keyboard and mouse, not only while the mouse moves.** The
-  game's camera hangs on a string behind him: run sideways and it pivots after him at his speed over its distance
-  (1.4 rad/s), and with the keys following it he runs a 3.5 m circle about the camera. That is the PS2's way and
-  right for a stick; with a mouse in the other hand it is the camera turning by itself. Handing back to it after the
-  mouse rests (the first build) would have put that circle back the moment the hold ran out.
-- **Held, then a slow turn behind him.** The camera only turns by the mouse while the mouse moves and for Walking
-  camera return (1.5 s) after it - and after any change of the movement keys, so a step or a strafe to the side is a
-  straight line whether or not the mouse was just used. After that, while he moves, it turns toward behind where he
-  moves at no more than 0.6 rad/s (less at a walk in proportion, coming in over 0.8 s): he curves, on a 7.5 m radius
-  at a run. A camera that never turned by itself is the setting's Never; the first build's 2 rad/s return would have
-  spun him, because with the keys following the camera a sideways runner never closes the gap.
-- **Running at the camera it stays in front of him**, as in the game (which leaves a camera more than 170 degrees
-  off alone): turning it would turn him, and it would never get behind him.
-- **The game still has the camera for what it does on its own account**: L1 (camera behind him), the camera keys,
-  and a shot from the hip with the guns the game does it for (the AK: it swings behind him so the shots can be seen)
-  unless the mouse was moved within the hold. And the gamepad, at once, as before.
-- **Not done, and why**: no change to the default keys (Walk is still unbound, where PC GTAs have it on Alt), to
-  sprinting, or to how fast he turns to a new heading - they are the game's, they were not what felt wrong, and each
-  is a decision about the controls rather than about the camera.
-
-## 2026-11-11 - The on-foot camera follows where he travels; the keys keep their heading through its own turns (the user's request)
-
-Third round the same day. The user, on the build above: "good direction, can you now bring it a bit closer to the
-gamepad camera where the camera will now more actively try to follow vic depending on the direction he is travelling.
-Right now if vic is travelling east or south with the camera behind him, it will stay behind him rather than
-re-orientate back to him." So the camera comes round behind where he travels - sideways and back at the camera too -
-at once, as the gamepad's does. How, is Claude's:
-
-- **The camera's own turn does not turn him.** It has to be so for "south": the game walks him by the camera's
-  heading, so a camera turning behind a player who runs at it turns him away again and never arrives (why the game
-  itself leaves a camera in front of him alone), and behind a sideways runner it swings him into the gamepad's
-  circle, which a stick steers against and a key cannot. Each movement key keeps the heading it was pressed at
-  through the camera's own turns: "travelling east" stays east while the camera comes round.
-- **Only through the camera's own turns: the mouse still steers.** The second round's verdict stands - he goes where
-  the mouse looks. A mouse turn turns the keys' headings with the camera; the first round's fault was that it did
-  not. The mechanism is the first round's (the camera heading the game turns the stick by, `0x6F4CB8`, replaced for
-  his control and put back), now with a heading worked out from the keys instead of a frozen one.
-- **A key goes by the camera as it is when that key goes down**, each on its own. With D held and the camera come
-  round behind him, W as well changes nothing (forward is where he already runs) and letting D go neither; with S
-  held and the camera come round, A as well is to the left on the screen. The alternatives failed one of these:
-  taking all held keys afresh at every change reversed him (S then S + A: "back-left" of a camera now behind him),
-  keeping the first key's frame sent the new key the wrong way on the screen.
-- **At once after a key, after Walking camera return (1.5 s) after the mouse.** The key's hold of the second round is
-  gone: with his line kept there is no circle to hold off, and waiting was what read as "it will stay". After the
-  mouse it still waits, as behind a vehicle, so a look around is not pulled back while it is made. Never: the
-  camera does not turn by itself at all, and the keys then simply follow it.
-- **The turn is the vehicle camera's way back** (1 - e^(-t / 0.6 s) of the gap, at most 2 rad/s, less below a run in
-  proportion, coming in over 0.3 s): a quarter turn is two thirds done in a second and within 0.05 rad after 2.6 s,
-  the half turn after S within 3.4 s. Toward where he actually moves, so sliding along a wall it follows his track.
-  Running straight at the camera it goes round the way it set out.
+For another attempt: every build was exact to its specification in the checks and still wrong in the hand - the
+question was never the mechanism. Worth settling by playing, before anything is built to completion: whether the
+camera should turn by itself at all on the keyboard and mouse, and what a key should mean once it has.

@@ -26,7 +26,6 @@
 #include "game/vcs_stream.h"
 #include "game/vcs_aim.h"
 #include "game/vcs_carcam.h"
-#include "game/vcs_footcam.h"
 #include "game/vcs_freecam.h"
 #include "game/vcs_frontend.h"
 #include "game/vcs_hud.h"
@@ -1192,7 +1191,6 @@ namespace
         vcs::freecam::install(runtime);    // the trainer's free camera (game/vcs_freecam.h)
         vcs::aim::install(runtime);        // free aim with the mouse / right stick (game/vcs_aim.h)
         vcs::carcam::install(runtime);     // the mouse on the camera behind a vehicle (game/vcs_carcam.h)
-        vcs::footcam::install(runtime);    // ... and behind the player on foot, his direction his own (game/vcs_footcam.h)
         vcs::world::install(runtime);      // density and draw distance (game/vcs_world_detail.h)
         vcs::driveby::install(runtime);    // the NPC drive-by's fire rate (game/vcs_driveby.h)
         vcs::installFrameRateHooks(runtime); // 30 / 60 fps (game/vcs_framerate.h)

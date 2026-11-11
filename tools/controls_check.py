@@ -2,14 +2,12 @@
 """Controls and player settings check (docs/CONTROLS.md, src/game/vcs_input.cpp): the bindings, checked in the pad
 report they make and in the game, plus the settings registry's presets and reset, with menu screenshots.
 
-    python tools/controls_check.py [OUT] [--port 47673] [--only foot_camera]
+    python tools/controls_check.py [OUT] [--port 47673]
 
 Loads the Fort Baxter rig save (a copy, hidden), then: every default key binding (both slots, either Shift / Ctrl,
 Keypad Enter, the mouse buttons) gives its PS2 button or stick direction, Alt+Enter is not Start; a rebound key moves
 Vic and the old one no longer does; the walk key holds the stick at walking speed; the mouse turns the on-foot camera
-by the amount asked (heading and pitch, inverted, off) and Vic goes where it looks (src/game/vcs_footcam.cpp: the
-camera coming round behind where he travels while he keeps his line, held after the mouse, the gamepad's own camera,
-L1 and the camera keys, the pull-in at a wall), right click locks on to a ped, the Driving keys (W / S / Space
+by the amount asked (heading and pitch, inverted, off), right click locks on to a ped, the Driving keys (W / S / Space
 accelerate, brake, handbrake in a car, and nothing else there), the mouse on the vehicle camera (turned 1:1, held while
 the mouse moves, standing and driving, then back behind the car; the right stick takes it back at once), on foot again after
 leaving the car; free aim (src/game/vcs_aim.cpp: the right button enters the game's free aim, the mouse turns it, a shot
@@ -57,10 +55,9 @@ NOT_START_KEYS = ["return", "kpenter"]
 
 
 class Check:
-    def __init__(self, out, port, only=None):
+    def __init__(self, out, port):
         self.out = out
         self.port = port
-        self.only = only
         self.results = []
         self.g = None
 
@@ -353,298 +350,6 @@ class Check:
         p = self.held("w")
         self.ok("on foot again", self.cam()[0] == 4 and abs(turn + 0.75) < 0.03 and p["ly"] == 0 and p["buttons"] == 0,
                 "mode %d heading %+.3f, W %s" % (self.cam()[0], turn, p))
-
-    # ---- the mouse's camera on foot (src/game/vcs_footcam.cpp, game-internals.md 12b) ----
-    BARRACKS_DOOR = (-1648.87, -261.0)  # a wall right behind Vic here (rig.Game.BARRACKS_DOOR)
-    RUNWAY = (-1600.0, -1450.0)         # the airport's runway: open all round (framerate_audit.RUNWAY_SPOT)
-
-    def foot_camera(self):
-        """The mouse's camera on foot: the mouse turns it and Vic goes where it looks; it comes round behind where he
-        travels by itself - sideways, back at the camera - while he keeps his line (where the gamepad's stick runs the
-        game's tight circle), a key going by the camera as it is when pressed; after the mouse it waits Walking camera
-        return first; the gamepad, L1 and the camera keys have the game's camera; at a wall the camera follows the
-        mouse and is pulled in, as the stick's is, instead of standing at the wall's edge."""
-        g = self.g
-        ped = g.player()[0]
-
-        def angle(a, b):
-            return (b - a + math.pi) % (2 * math.pi) - math.pi
-
-        def beta():
-            return g.peekf(self.CAM + 0x7C, 1)[0]
-
-        def facing():
-            f = g.peekf(ped + 0x10, 2)
-            return math.atan2(f[1], f[0])
-
-        def off_behind():
-            """How far the camera is from behind Vic (beta is the heading from him to the camera)."""
-            return angle(facing() + math.pi, beta())
-
-        def stands():
-            """(where the camera really stands seen from the point it looks at, how far from it)"""
-            s, t = g.peekf(self.CAM + 0x20, 3), g.peekf(self.CAM + 0x1A0, 3)
-            return math.atan2(s[1] - t[1], s[0] - t[0]), math.dist(s, t)
-
-        def mouse(counts, per=10):
-            """As a hand moves it: a few counts every game frame."""
-            for _ in range(abs(counts) // per):
-                g.cmd("mouse %d 0" % (per if counts > 0 else -per))
-                g.wait_frames(1)
-
-        def clock():
-            return g.u32(0x4CD104) / 1000.0  # the game's clock, seconds
-
-        def sample(seconds):
-            """[(game seconds, the camera's heading, Vic's, the module's state)] over the next `seconds` of game time."""
-            rows, t0 = [], clock()
-            while clock() - t0 < seconds:
-                rows.append((clock() - t0, beta(), facing(), g.cmd("footcam")))
-                time.sleep(0.1)
-            return rows
-
-        def turned(rows, a, b, col):
-            """(the turn of column `col` between game times a and b, the time between its first and last sample)"""
-            pick = [r for r in rows if a <= r[0] <= b]
-            return sum(angle(x[col], y[col]) for x, y in zip(pick, pick[1:])), max(pick[-1][0] - pick[0][0], 1e-6)
-
-        def start(heading=0.0):
-            """Vic on open ground, facing north (heading 0), the camera level behind him (L1: after a teleport from far
-            away it looks straight down from above him) and the mouse and keys long at rest."""
-            g.teleport(self.RUNWAY[0], self.RUNWAY[1], -100.0, heading)
-            time.sleep(3.0)
-            g.cmd("press q 1000")
-            time.sleep(3.0)
-
-        def run(*keys, seconds=6.0, fresh=True):
-            """From start() (unless he stands there already): the keys held for `seconds` of game time, sampled."""
-            if fresh:
-                start()
-            for k in keys:
-                g.cmd("key %s down" % k)
-            rows = sample(seconds)
-            for k in keys:
-                g.cmd("key %s up" % k)
-            return rows
-
-        # W held: a radian of mouse turns the camera, and Vic with it (he goes where it looks); then nothing more
-        start()
-        g.cmd("key w down")
-        time.sleep(1.5)
-        f0, b0 = facing(), beta()
-        mouse(400)
-        g.wait_frames(3)
-        f1, b1, s1 = facing(), beta(), g.cmd("footcam")
-        rows = sample(3.5)
-        g.cmd("key w up")
-        self.ok("on foot the mouse turns the camera and Vic goes where it looks",
-                abs(angle(b0, b1) + 1.0) < 0.01 and abs(angle(f0, f1) + 1.0) < 0.05 and s1.startswith("state=hold") and
-                abs(turned(rows, 0, 9, 1)[0]) < 0.01 and abs(turned(rows, 0, 9, 2)[0]) < 0.03 and
-                rows[-1][3].startswith("state=follow"),
-                "camera %+.3f, Vic %+.3f, %s; the 3.5 s after: %+.3f, %+.3f, %s" %
-                (angle(b0, b1), angle(f0, f1), s1, turned(rows, 0, 9, 1)[0], turned(rows, 0, 9, 2)[0], rows[-1][3]))
-        time.sleep(1.0)
-
-        # standing it stays where the mouse put it
-        b0 = beta()
-        mouse(-200)
-        g.wait_frames(3)
-        b1 = beta()
-        time.sleep(3.0)
-        self.ok("standing, the camera stays", abs(angle(b0, b1) - 0.5) < 0.01 and abs(angle(b1, beta())) < 0.005,
-                "turned %+.3f, 3 s later %+.3f more, %s" % (angle(b0, b1), angle(b1, beta()), g.cmd("footcam")))
-
-        # the camera follows where he travels: a key to the side or back turns him that way (by the camera as it was
-        # when it went down), he keeps that line, and the camera comes round behind him by itself
-        got = []
-        for keys, want in ((("d",), -math.pi / 2), (("a",), math.pi / 2), (("s",), math.pi), (("w", "d"), -math.pi / 4)):
-            start()
-            f0 = facing()
-            rows = run(*keys, seconds=5.0, fresh=False)
-            behind = next((r[0] for r in rows if r[0] > 0.5 and abs(angle(r[2] + math.pi, r[1])) < 0.05), 99.0)
-            got.append(("+".join(keys).upper(), abs(angle(f0 + want, rows[-1][2])), turned(rows, 1.0, 9, 2)[0],
-                        abs(abs(turned(rows, 0, 9, 1)[0]) - abs(want)), behind))
-        self.ok("the camera comes round behind where Vic travels, and he keeps his line",
-                all(off < 0.05 and abs(line) < 0.03 and cam < 0.05 and t < 4.0 for _, off, line, cam, t in got),
-                "; ".join("%s: Vic %.3f from the key's way, %+.3f after 1 s, the camera's turn %.3f from his, behind him at %.2f s" % r
-                          for r in got))
-        # ... and the keys go by the camera as it is when they go down: with D held and the camera round behind him,
-        # W as well changes nothing, nor letting D go; then the mouse steers him
-        start()
-        g.cmd("key d down")
-        time.sleep(4.0)
-        f0 = facing()
-        g.cmd("key w down")
-        time.sleep(1.5)
-        f1 = facing()
-        g.cmd("key d up")
-        time.sleep(1.5)
-        f2, s2 = facing(), g.cmd("footcam")
-        mouse(200)
-        g.wait_frames(3)
-        time.sleep(0.5)
-        f3 = facing()
-        g.cmd("key w up")
-        # S, the camera half round behind him, then A as well: to the left on the screen
-        start()
-        g.cmd("key s down")
-        time.sleep(4.5)
-        f4 = facing()
-        g.cmd("key a down")
-        time.sleep(1.5)
-        f5 = facing()
-        g.cmd("key s up")
-        g.cmd("key a up")
-        self.ok("a key goes by the camera as it is when pressed, and the mouse steers",
-                abs(angle(f0, f1)) < 0.05 and abs(angle(f1, f2)) < 0.05 and s2 == "state=follow keys=0" and
-                abs(angle(f2, f3) + 0.5) < 0.03 and abs(angle(f4, f5) - math.pi / 4) < 0.05,
-                "D, the camera round, + W: Vic %+.3f; D up: %+.3f, %s; 200 counts of mouse: %+.3f; S, the camera round, + A: %+.3f" %
-                (angle(f0, f1), angle(f1, f2), s2, angle(f2, f3), angle(f4, f5)))
-        # the mouse moved now and then keeps the camera to itself; let alone, the camera then comes round
-        start()
-        g.cmd("key d down")
-        rows = []
-        for _ in range(4):
-            g.cmd("mouse 0 -2")
-            rows += sample(0.9)
-        after = sample(4.0)
-        g.cmd("key d up")
-        nudged = turned(rows, 0.3, 9, 1)[0], sorted(set(r[3].split()[0] for r in rows)), turned(after, 0, 9, 1)[0]
-        self.ok("the mouse in use keeps the camera, then it follows",
-                abs(nudged[0]) < 0.01 and nudged[1] == ["state=hold"] and abs(nudged[2] + math.pi / 2) < 0.06,
-                "D with the mouse nudged every second: camera %+.3f %s; the 4 s after: %+.3f" % nudged)
-        # Walking camera return: Never (only the mouse turns it; the keys follow the camera, he runs to its left),
-        # 0.5 s after the mouse
-        self.setting("mouse.foot_return", -1)
-        rows = run("a", seconds=4.0)
-        never = turned(rows, 0, 9, 1)[0], turned(rows, 1.0, 9, 2)[0], sorted(set(r[3] for r in rows))
-        self.setting("mouse.foot_return", 5)
-        start()
-        g.cmd("key d down")
-        g.cmd("mouse 0 -2")
-        rows = sample(2.0)
-        g.cmd("key d up")
-        self.setting("mouse.foot_return", 15)
-        half = next((r[0] for r in rows if r[3].startswith("state=follow")), 99.0)
-        self.ok("walking camera return: Never, 0.5 s", abs(never[0]) < 0.005 and abs(never[1]) < 0.03 and
-                never[2] == ["state=hold keys=0"] and 0.3 < half < 1.0,
-                "Never, A 4 s: camera %+.3f Vic %+.3f %s; 0.5 s: follow from %.2f s" % (never + (half,)))
-
-        # the gamepad: the game's own - the stick follows the game's camera on its string, he circles tightly
-        start()
-        g.cmd("gamepad on")
-        g.cmd("gamepad lx 1")
-        time.sleep(1.0)
-        f0 = facing()
-        time.sleep(2.0)
-        circled, state = angle(f0, facing()), g.cmd("footcam")
-        g.cmd("gamepad lx 0")
-        time.sleep(2.0)  # he stops, the camera settles
-        b0 = beta()
-        g.cmd("mouse 5 0")  # a nudge of the desk does not take the camera from the gamepad; a hand on the mouse does
-        g.wait_frames(3)
-        nudge = angle(b0, beta())
-        mouse(100, per=5)
-        g.wait_frames(3)
-        taken, held = angle(b0, beta()), g.cmd("footcam")
-        g.cmd("gamepad rx 1")
-        g.wait_frames(4)
-        stick = g.cmd("footcam")
-        g.cmd("gamepad rx 0")
-        g.cmd("gamepad off")
-        self.ok("the gamepad has the game's camera on foot",
-                abs(circled) > 1.5 and state == "state=idle keys=0" and abs(nudge) < 0.002 and taken < -0.15 and
-                held.startswith("state=hold") and stick.startswith("state=idle"),
-                "stick right: Vic turned %+.3f in 2 s, %s; mouse nudge %+.4f, moved %+.3f (%s); right stick: %s" %
-                (circled, state, nudge, taken, held, stick))
-        # the camera keys and L1 (the game puts the camera behind Vic) take it from the mouse at once
-        g.cmd("press q 1000")
-        time.sleep(1.5)
-        mouse(400)
-        g.wait_frames(2)
-        s0, o0 = g.cmd("footcam"), off_behind()
-        g.cmd("key q down")
-        time.sleep(1.0)
-        s1, o1 = g.cmd("footcam"), off_behind()
-        g.cmd("key q up")
-        time.sleep(0.5)
-        mouse(100)
-        g.wait_frames(2)
-        s2 = g.cmd("footcam")
-        g.cmd("key j down")
-        g.wait_frames(4)
-        s3 = g.cmd("footcam")
-        g.cmd("key j up")
-        self.ok("L1 and the camera keys take the camera back", s0.startswith("state=hold") and abs(o0) > 0.5 and
-                s1.startswith("state=idle") and abs(o1) < 0.02 and s2.startswith("state=hold") and s3.startswith("state=idle"),
-                "L1: %s %+.3f from behind -> %s %+.3f; camera key: %s -> %s" % (s0, o0, s1, o1, s2, s3))
-        # ... and a camera key held while running steers Vic, as the stick does (the game's camera, the game's way)
-        time.sleep(1.0)
-        g.cmd("key w down")
-        time.sleep(1.0)
-        f0 = facing()
-        g.cmd("key j down")
-        time.sleep(1.0)
-        g.cmd("key j up")
-        steered = angle(f0, facing())
-        g.cmd("key w up")
-        self.ok("the camera keys steer Vic", abs(steered) > 0.5, "1 s of J while running: Vic turned %+.3f" % steered)
-        time.sleep(2.0)
-
-        # a wall: where the stick's camera is pulled in toward Vic (the reference), the mouse's is too, and it stands
-        # where its heading says - not at the wall's edge while the heading turns on (the user's report). With the
-        # game's far view (Select steps through three; the near one, 2 m, does not reach this wall)
-        start()
-        zoom, steps = stands()[1], 0
-        while stands()[1] < 4.0 and steps < 3:
-            g.cmd("press backspace 150")
-            time.sleep(1.5)
-            steps += 1
-        g.teleport(self.BARRACKS_DOOR[0], self.BARRACKS_DOOR[1], -100.0, 0.0)
-        time.sleep(3.0)
-        g.cmd("press q 1000")  # the camera level behind him, not above him looking down
-        time.sleep(2.0)
-        path = os.path.join(self.out, "footcam_orbit.txt").replace("\\", "/")
-        g.cmd("trace %s 0x%x 1 0x%x 3 0x%x 3" % (path, self.CAM + 0x7C, self.CAM + 0x20, self.CAM + 0x1A0))
-        g.cmd("gamepad on")
-        g.cmd("gamepad rx 1")
-        time.sleep(4.0)
-        g.cmd("gamepad rx 0")
-        g.cmd("gamepad off")
-        g.wait_frames(5)
-        g.cmd("trace off")
-        orbit = [[float(v) for v in line.split()][3:] for line in open(path)]
-        orbit = [(r[0], math.dist(r[1:4], r[4:7])) for r in orbit]
-        full = max(d for _, d in orbit)
-        near = [b for b, d in orbit if d < 0.8 * full]
-        found = self.ok("a wall pulls the stick's camera in", len(near) > 5,
-                        "%d of %d frames under %.2f m" % (len(near), len(orbit), 0.8 * full))
-        wall = math.atan2(sum(math.sin(b) for b in near), sum(math.cos(b) for b in near)) if found else 0.0
-        half = max(abs(angle(wall, b)) for b in near) if found else 0.0
-        got = []
-        for side in ((-1, 1) if found else ()):
-            want = wall + side * (half + 0.5)  # outside the arc, then a radian across it
-            for _ in range(6):
-                d = angle(beta(), want)
-                if abs(d) < 0.004:
-                    break
-                g.cmd("mouse %d 0" % max(-400, min(400, int(round(-d / 0.0025)))))
-                g.wait_frames(8)
-            time.sleep(0.5)
-            b0 = beta()
-            mouse(side * 400)
-            g.wait_frames(10)
-            at, dist = stands()
-            got.append((angle(b0, beta()) + side * 1.0, angle(beta(), at), dist))
-        self.ok("at a wall the camera follows the mouse and is pulled in",
-                found and all(abs(t) < 0.01 and abs(o) < 0.02 and d < 0.9 * full for t, o, d in got),
-                "; ".join("turn off by %+.3f, the camera %+.3f from its heading, %.2f of %.2f m" % (t, o, d, full)
-                          for t, o, d in got))
-        start()
-        while abs(stands()[1] - zoom) > 0.2 and steps < 6:  # the view as it was
-            g.cmd("press backspace 150")
-            time.sleep(1.5)
-            steps += 1
 
     # ---- free aim (src/game/vcs_aim.cpp, game-internals.md 12c) ----
     PED_POOL, PED_SIZE = 0x487A94, 0xD20
@@ -1241,10 +946,6 @@ class Check:
             # the player's own vcs.ini is read by hidden runs too (never written): start from the defaults
             self.ok("start from the defaults", self.setting("advanced.reset_all") == "pressed")
             g.prime()
-            if self.only:
-                getattr(self, self.only)()
-                self.ok("still running", g.alive())
-                return self.summary()
             g.teleport(75.0, 175.0, -100.0)
             time.sleep(2)
             idle = self.pad()
@@ -1288,7 +989,6 @@ class Check:
             self.ok("walk unbound", walk == "0", walk)
 
             self.mouse_and_driving()
-            self.foot_camera()
             self.free_aim()
             self.car_free_aim()
             self.forced_free_aim()
@@ -1375,9 +1075,6 @@ class Check:
             self.ok("still running", g.alive())
         finally:
             g.quit()
-        return self.summary()
-
-    def summary(self):
         fails = [r for r in self.results if not r[1]]
         with open(os.path.join(self.out, "summary.txt"), "w", encoding="utf-8") as f:
             for name, good, detail in self.results:
@@ -1391,12 +1088,10 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("out", nargs="?")
     ap.add_argument("--port", type=int, default=47673)
-    ap.add_argument("--only", metavar="GROUP", help="one group of checks on its own, for a quick run while working on "
-                    "it: mouse_and_driving, foot_camera, free_aim, car_free_aim, forced_free_aim, mounted_gun")
     a = ap.parse_args()
     out = os.path.abspath(a.out or os.path.join(ROOT, "build", "controls", time.strftime("%Y%m%d-%H%M%S")))
     os.makedirs(out, exist_ok=True)
-    sys.exit(0 if Check(out, a.port, a.only).run() else 1)
+    sys.exit(0 if Check(out, a.port).run() else 1)
 
 
 if __name__ == "__main__":

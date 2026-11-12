@@ -1424,3 +1424,28 @@ turned stick (the pull-in toward the player), through the game's own switch for 
   closed row cuts it to "(integr", Mesa's name being longer than the box; left as it is, for the user to decide.
   0.2.5's draft notes: the graphics card bullet describes the list by name, for both systems (it still said Fastest /
   Power saving / System default, which no release ever had).
+
+## 2026-11-12 - macOS: Apple Silicon, Metal, nothing to install but Apple's tools (the user's decisions; the rest Claude's)
+
+- **The user's three**: Apple Silicon only (Intel Macs are left out: no machine to test them, and their GPUs would be a
+  second set to check); a **self-contained build** - Apple's Command Line Tools are the only prerequisite, everything
+  else is downloaded or built from pinned sources, never Homebrew; the release's launcher **signed ad-hoc** for now
+  (players allow it once in System Settings > Privacy & Security), Developer ID and notarization later.
+- **Metal, not Vulkan through MoltenVK**: the user asked for Metal for both programs. A Metal RHI backend
+  (`src/rhi/metal/rhi_metal.mm`, Objective-C++ with ARC, no metal-cpp) keeps D3D11's behaviour as the Vulkan backend
+  does, with the same tricks: an upload ring for write-discard buffers, passes that start at their first draw and are
+  suspended around copies, a dummy texture for unbound slots.
+- **Shaders: the one HLSL source through glslang and SPIRV-Cross, as MSL text compiled at run time.** The Command Line
+  Tools have no Metal compiler (`xcrun metal` needs Xcode and a separate download); the OS's Metal framework compiles
+  MSL. Fast math off (`MTLMathModeSafe`). glslang and SPIRV-Cross are built from the Vulkan SDK 1.4.350.1 tags, the same
+  pins as the Vulkan headers. Bindings without the Vulkan shifts (Metal has 16 sampler slots and a table per kind).
+- **Apple clang and ld64**, not Homebrew's LLVM: Homebrew's bitcode can't go through Apple's linker for ThinLTO, and
+  lld isn't part of the Command Line Tools. `preserve_none` exists from Apple clang 17 (LLVM 19), checked by CMake.
+- **sse2neon with its precise options** for the generated code's SSE (already wired upstream for ARM): VU0 / HLE verify
+  agree with the Windows reference. FPCR through `ps2x::fpControl` rather than sse2neon's emulated `_mm_getcsr`.
+- **macOS 13 or newer** (Metal 3 on every Apple Silicon Mac).
+- **FFmpeg from source**: only the MPEG-2 decoder, its parser and swscale, static, LGPL - about a minute, no package.
+- **16 MB thread stacks** for the game thread, the render worker and the GS stage (`ps2x::Thread`): macOS gives a
+  `std::thread` 512 KB.
+- **The launcher keeps macOS' window buttons** (traffic lights over the UI's title bar, a full-size content view)
+  instead of drawing Windows' on the right; Command counts as Ctrl for its shortcuts.

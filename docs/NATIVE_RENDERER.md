@@ -707,3 +707,25 @@ Checks still to do: picture against D3D11 on the same PC (scenes), validation cl
 4. paraLLEl-GS kept as readback-only (its Vulkan window present is dropped).
 5. HLE hooks at the VIF1 packet level with a mesh cache, not in recompiled game code.
 6. The emulated GS path stays as fallback and reference indefinitely.
+
+### Metal backend (macOS, 2026-11-12)
+
+`src/rhi/metal/rhi_metal.mm` (docs/MACOS.md; the plan in DECISIONS.md 2026-11-12). The Vulkan backend's behaviour,
+which is D3D11's, on Metal:
+
+- Shaders: the one HLSL source as MSL text (`tools/hlsl_msl.py`), compiled with `newLibraryWithSource` (fast math off),
+  one library per shader, entry `vcs_main`. cbuffer bN -> buffer N in both stages, tN / sN -> texture / sampler N,
+  vertex buffers at buffer 30. `gs_draw.hlsl` writes the point size from the vertex stage only (`VCS_POINT_SIZE`):
+  Metal refuses a pixel input the vertex stage doesn't write, and a line pipeline whose vertex shader writes one with
+  its input class set - so only points set `inputPrimitiveTopology`.
+- Pipelines are made at the first draw per (colour format, depth format, samples), as Vulkan's variants; depth states
+  are cached objects; `depthClip = false` is the encoder's clamp mode; the RHI's write mask is reversed (Metal's red is
+  bit 3).
+- A pass's render encoder starts at its first draw; a copy, upload or readback inside it ends it, and the next draw
+  starts one that loads (suspends, in `PS2X_RHI_STATS`). Dynamic buffers take a slice of the frame's shared upload
+  ring per update; `updateTexture` goes through the ring and a blit, in command order. New render targets are cleared
+  to zero; textures with data are written in place (`replaceRegion`), from helper threads too (early textures on).
+- Unbound or self-target slots read a 1x1 black texture; MSAA is clamped to what the GPU supports; resolves are a
+  render pass with a resolve store.
+- First numbers (M1, intro cutscene, 60 fps cap): ~1,500 draws and 28 passes a frame, 1 suspend, 60 fps held.
+

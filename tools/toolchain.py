@@ -49,6 +49,8 @@ def show(path):
         return path
     return path if rel.startswith("..") else rel
 IS_WINDOWS = platform.system() == "Windows"
+# macOS: Apple Silicon only, Apple's clang and linker from the Command Line Tools (docs/MACOS.md, DECISIONS.md 2026-11-12)
+IS_MACOS = platform.system() == "Darwin"
 
 # our progress lines and the tools' output interleave in order even when stdout is a pipe. UTF-8 whatever the
 # console's code page: the launcher reads UTF-8, and its PYTHONIOENCODING / PYTHONUTF8 do nothing under -I (isolated
@@ -420,9 +422,9 @@ def run_with_progress(cmd, log, label, cwd=ROOT, env=None):
 # SSE4 (SSE4.2 and POPCNT: x86-64-v2) for CPUs without AVX - first-generation Core i, and the Pentium / Celeron / Atom
 # chips that lacked AVX until 2020. A binary built for a newer CPU dies on its first unknown instruction before it
 # prints anything (a report from a Xeon E5-2687W, 2026-10-30: "recompiling fails in 1 second", empty log).
-CPU_LEVELS = ("AVX2", "AVX", "SSE4")
+CPU_LEVELS = ("AVX2", "AVX", "SSE4", "ARM64")
 CPU_TEXT = {"AVX2": "AVX2 (Haswell / Zen and newer)", "AVX": "AVX (Sandy Bridge class, no AVX2)",
-            "SSE4": "SSE4.2 (no AVX)"}
+            "SSE4": "SSE4.2 (no AVX)", "ARM64": "Apple Silicon (arm64)"}
 
 
 def cpu_features():
@@ -458,6 +460,8 @@ def cpu_level():
     """The PS2X_CPU this PC builds for: "AVX2", "AVX" or "SSE4"; None for a CPU without SSE4.2 (not supported).
     VCS_CPU=AVX2|AVX|SSE4 chooses (e.g. to build and test an older CPU's build on a newer one). When the features can't
     be read the default stays (AVX2)."""
+    if IS_MACOS:  # Apple Silicon only (an Intel Mac: check_cpu stops)
+        return "ARM64" if platform.machine().lower() in ("arm64", "aarch64") else None
     forced = os.environ.get("VCS_CPU", "").strip().upper()
     if forced:
         if forced not in CPU_LEVELS:
@@ -477,6 +481,12 @@ def cpu_level():
 
 def cpu_name():
     """The CPU's name for messages ("" when unknown)."""
+    if IS_MACOS:
+        try:
+            return subprocess.run(["sysctl", "-n", "machdep.cpu.brand_string"], capture_output=True, text=True,
+                                  timeout=10).stdout.strip()
+        except (OSError, subprocess.SubprocessError):
+            return ""
     if IS_WINDOWS:
         try:
             import winreg
@@ -497,6 +507,9 @@ def cpu_name():
 def check_cpu():
     """The CPU level, or stop: a CPU without SSE4.2 can't run the game (code cpu_unsupported)."""
     level = cpu_level()
+    if level is None and IS_MACOS:
+        fail("this Mac's processor (%s) is an Intel one: the macOS build is for Apple Silicon only (M1 or newer)"
+             % (cpu_name() or "unknown"), "cpu_unsupported")
     if level is None:
         fail("this PC's processor (%s) has no SSE4.2: the game needs a CPU from 2008 or later (Intel Core i / AMD "
              "Bulldozer or newer)" % (cpu_name() or "unknown"), "cpu_unsupported")
@@ -668,6 +681,8 @@ def llvm_mingw_bin(download=True):
 def build_env():
     """Environment for CMake / Ninja / the compiler."""
     env = dict(os.environ)
+    if IS_MACOS:
+        return env  # Apple's clang through xcrun (compiler_defines); Homebrew's LLVM is never taken
     if not IS_WINDOWS:
         llvm = _linux_llvm_bin(env)
         if llvm:
@@ -761,6 +776,9 @@ CMAKE_DOWNLOADS = {
                      "ed85135c5a5135b45e50423cb406dea04ca3338da0b8ef3c9ede963559680be0", "cmake-4.4.5-linux-x86_64"),
     "linux-aarch64": ("https://github.com/Kitware/CMake/releases/download/v4.4.5/cmake-4.4.5-linux-aarch64.tar.gz",
                       "301d5063ab259577c1b57ce5490b1aab9ea5c56dc4c822f73499553dab94925f", "cmake-4.4.5-linux-aarch64"),
+    # the program is in CMake.app/Contents/bin (TOOL_BIN_DIRS)
+    "macos": ("https://github.com/Kitware/CMake/releases/download/v4.4.5/cmake-4.4.5-macos-universal.tar.gz",
+              "679e77a96b9ef9484cc6c1445255fc4f84206b48a65420efbedf16bdab55fbff", "cmake-4.4.5-macos-universal"),
 }
 NINJA_DOWNLOADS = {
     "windows": ("https://github.com/ninja-build/ninja/releases/download/v1.13.2/ninja-win.zip",
@@ -769,7 +787,11 @@ NINJA_DOWNLOADS = {
                      "5749cbc4e668273514150a80e387a957f933c6ed3f5f11e03fb30955e2bbead6", "ninja-1.13.2"),
     "linux-aarch64": ("https://github.com/ninja-build/ninja/releases/download/v1.13.2/ninja-linux-aarch64.zip",
                       "fd2cacc8050a7f12a16a2e48f9e06fca5c14fc4c2bee2babb67b58be17a607fc", "ninja-1.13.2"),
+    "macos": ("https://github.com/ninja-build/ninja/releases/download/v1.13.2/ninja-mac.zip",
+              "c99048673aa765960a99cf10c6ddb9f1fad506099ff0a0e137ad8960a88f321b", "ninja-1.13.2"),
 }
+# where a downloaded tool's program is, inside its folder (macOS' CMake is an app bundle)
+TOOL_BIN_DIRS = ("bin", os.path.join("CMake.app", "Contents", "bin"), "")
 _PROBED = {}  # (tool, path) -> version tuple or None: each candidate runs once per process
 
 
@@ -778,6 +800,8 @@ def download_platform():
     always takes the x64 builds (Windows on Arm runs them emulated)."""
     if IS_WINDOWS:
         return "windows"
+    if IS_MACOS:
+        return "macos"  # universal builds
     if platform.system() == "Linux":
         machine = platform.machine().lower()
         if machine in ("x86_64", "amd64"):
@@ -883,6 +907,9 @@ def _tool_dirs(env):
         dirs += [os.path.join(r"C:\msys64", env_name, "bin") for env_name in ("ucrt64", "clang64", "mingw64")]
         dirs += _newest(os.path.join(local, "Programs", "Python", "Python3*", "Scripts"))  # pip's cmake / ninja
         dirs += _newest(os.path.join(roaming, "Python", "Python3*", "Scripts"))
+    elif IS_MACOS:
+        dirs += ["/opt/homebrew/bin", "/usr/local/bin", "/Applications/CMake.app/Contents/bin",
+                 os.path.join(home, "Applications", "CMake.app", "Contents", "bin")]
     else:
         dirs += ["/usr/local/bin", "/usr/bin", "/snap/bin", os.path.join(home, ".local", "bin")]
         dirs += _newest("/opt/cmake*/bin") + _newest(os.path.join(home, "Android", "Sdk", "cmake", "*", "bin"))
@@ -897,9 +924,9 @@ def _tool_dirs(env):
         except KeyError:
             pass
     key = download_platform()
-    for downloads, sub in ((CMAKE_DOWNLOADS, "bin"), (NINJA_DOWNLOADS, "")):
+    for downloads in (CMAKE_DOWNLOADS, NINJA_DOWNLOADS):
         if key in downloads:
-            dirs.append(os.path.join(TOOLS_DIR, downloads[key][2], sub))
+            dirs += [os.path.join(TOOLS_DIR, downloads[key][2], sub) for sub in TOOL_BIN_DIRS]
     unique, seen = [], set()
     for d in dirs:
         norm = os.path.normcase(os.path.abspath(d)) if d else ""
@@ -1013,7 +1040,7 @@ def _download_tool(title, downloads, probe, minimum, names, hint=CMAKE_HINT, cod
         shutil.copytree(source, target)
     shutil.rmtree(unpacked, ignore_errors=True)
     target = os.path.join(TOOLS_DIR, folder)  # the plain form again: the program goes on PATH and into CMake
-    for d in (os.path.join(target, "bin"), target):
+    for d in [os.path.join(target, sub) for sub in TOOL_BIN_DIRS]:
         for name in names:
             path = os.path.join(d, exe(name))
             if os.path.isfile(path):
@@ -1154,6 +1181,9 @@ def configure(env, force=False, build_dir=BUILD_DIR, defines=None):
     cmd = ["cmake", "-S", ROOT, "-B", build_dir, "-G", "Ninja", "-DCMAKE_BUILD_TYPE=Release", "-DPS2X_ENABLE_AGRESSIVE_LOGS=OFF"]
     cmd += ["-D%s=%s" % (k, v) for k, v in (defines or {}).items()]
     cmd += compiler_defines(env) + deps_defines() + python_defines()
+    if IS_MACOS:  # the Metal shaders' compilers (built once from pinned sources)
+        import shader_tools
+        cmd += shader_tools.cmake_defines(env)
     if os.path.normcase(os.path.abspath(build_dir)) == os.path.normcase(BUILD_DIR):
         cmd.append("-DVCS_GAME_DIR=" + BUILD.replace(os.sep, "/"))  # vcs.exe at the top of the build folder
     print("[build] configuring " + show(build_dir) + "".join(" %s=%s" % kv for kv in (defines or {}).items()))
@@ -1228,6 +1258,8 @@ def deps_defines(deps_dir=DEPS_DIR):
             defines.append("-DFETCHCONTENT_SOURCE_DIR_%s=%s" % (name.upper(), path.replace(os.sep, "/")))
         elif name.startswith("ffmpeg-") and name.endswith(".zip"):
             defines.append("-DFFMPEG_PREBUILT_URL=" + path.replace(os.sep, "/"))
+        elif name.startswith("ffmpeg-") and name.endswith(".tar.xz"):  # macOS: the source FFmpeg is built from
+            defines.append("-DFFMPEG_SOURCE_URL=" + path.replace(os.sep, "/"))
     if os.path.isfile(os.path.join(deps_dir, "manifest.json")):  # complete (tools/deps.py fetch): never download
         defines.append("-DFETCHCONTENT_FULLY_DISCONNECTED=ON")
     return defines
@@ -1283,6 +1315,8 @@ def compiler_defines(env):
         return ["-DCMAKE_%s_COMPILER=%s" % (lang, tools[name].replace(os.sep, "/"))
                 for lang, name in (("C", "clang"), ("CXX", "clang++"), ("RC", "llvm-windres"))] + \
                ["-DCMAKE_EXE_LINKER_FLAGS=-static"] + ninja
+    if IS_MACOS:
+        return macos_compiler_defines() + ninja
     clang, clangxx = _which("clang", env), _which("clang++", env)
     if not clang or not clangxx or clang_version(clang) < MIN_CLANG:
         fail("clang %d or newer not found - install it (docs/LINUX.md; e.g. sudo apt install clang-20 lld-20 llvm-20), "
@@ -1316,6 +1350,69 @@ def _gcc_with_libstdcxx(clangxx):
     print("[toolchain] clang's GCC folder %s has no libstdc++; using %s (or install libstdc++-%s-dev)"
           % (m.group(1).strip(), best, os.path.basename(m.group(1).strip())))
     return best
+
+
+# ---- macOS: the Command Line Tools ------------------------------------------------------------------------------
+# Apple's clang, linker (ld64), make, git and python3 come with the Command Line Tools (or Xcode); nothing else is
+# installed: CMake / Ninja are downloaded, FFmpeg and the shader tools are built from pinned sources (DECISIONS.md
+# 2026-11-12). Apple clang 17 is LLVM 19 (preserve_none on arm64); CMakeLists.txt checks the attribute itself.
+MIN_APPLE_CLANG = 17
+CLT_INSTALL = ["xcode-select", "--install"]
+
+
+def macos_developer_dir():
+    """The active developer folder (Command Line Tools or Xcode), None when there is none: without one /usr/bin/clang,
+    git and python3 are stubs that open Apple's installer."""
+    try:
+        r = subprocess.run(["xcode-select", "-p"], capture_output=True, text=True, timeout=30)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    path = r.stdout.strip()
+    return path if r.returncode == 0 and path and os.path.isdir(path) else None
+
+
+def xcrun_find(tool):
+    """The full path of a developer tool (clang, llvm-profdata...) through xcrun, None when absent."""
+    if not macos_developer_dir():
+        return None
+    try:
+        r = subprocess.run(["xcrun", "-f", tool], capture_output=True, text=True, timeout=60)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    path = r.stdout.strip()
+    return path if r.returncode == 0 and os.path.isfile(path) else None
+
+
+def macos_missing():
+    """What the macOS build lacks: [(label, command)], empty when the Command Line Tools are there with a new enough
+    clang."""
+    clang = xcrun_find("clang")
+    if not clang:
+        return [("Xcode Command Line Tools", " ".join(CLT_INSTALL))]
+    if clang_version(clang) < MIN_APPLE_CLANG:
+        return [("Apple clang %d or newer (Xcode 16.3 / its Command Line Tools)" % MIN_APPLE_CLANG,
+                 "softwareupdate --list   (then install the newest Command Line Tools)")]
+    return []
+
+
+def macos_compiler_defines():
+    """Apple's clang / clang++ by full path, and macOS 13 as the oldest system the build runs on."""
+    missing = macos_missing()
+    if missing:
+        fail("%s not found: run %s" % (missing[0][0], missing[0][1]), "no_clt")
+    clang, clangxx = xcrun_find("clang"), xcrun_find("clang++")
+    return ["-DCMAKE_C_COMPILER=" + clang, "-DCMAKE_CXX_COMPILER=" + clangxx, "-DCMAKE_OSX_ARCHITECTURES=arm64",
+            "-DCMAKE_OSX_DEPLOYMENT_TARGET=" + MACOS_DEPLOYMENT_TARGET]
+
+
+MACOS_DEPLOYMENT_TARGET = "13.0"  # Metal 3 on every Apple Silicon Mac
+
+
+def llvm_profdata(env):
+    """The llvm-profdata that matches the compiler (PGO): Apple's through xcrun on macOS."""
+    if IS_MACOS:
+        return xcrun_find("llvm-profdata") or "llvm-profdata"
+    return shutil.which("llvm-profdata", path=env.get("PATH")) or "llvm-profdata"
 
 
 # ---- Linux packages ---------------------------------------------------------------------------------------------
@@ -1384,6 +1481,8 @@ def _fedora_ffmpeg_devel(quiet=False):
 def linux_missing(env, deps=None, quiet=False):
     """The missing Linux build dependencies: a list of (label, packages for this distro). deps: LINUX_DEPS (the game,
     the default) or LAUNCHER_LINUX_DEPS. CMake / Ninja / LLVM are checked with the game's list only."""
+    if IS_MACOS:
+        return macos_missing() if deps is None else []
     family = _linux_family()
     missing = []
     for label, check, packages in (LINUX_DEPS if deps is None else deps):
@@ -1463,7 +1562,7 @@ def launcher_compiler_defines(env):
     """The launcher's compiler: clang when there is one (any version: the launcher needs C++20, not the game's clang
     19), else the system's default (GCC); Windows: clang-cl as the game. A release's launcher is built on an old
     distribution on purpose (glibc), where only an older clang or GCC exists."""
-    if IS_WINDOWS:
+    if IS_WINDOWS or IS_MACOS:
         return compiler_defines(env)
     defines = ["-DCMAKE_MAKE_PROGRAM=" + build_tools(env)["ninja"].replace(os.sep, "/")]
     clang, clangxx = _which("clang", env), _which("clang++", env)
@@ -1491,6 +1590,13 @@ def linux_install_command(packages, sudo="sudo"):
 def check_linux_deps(env, deps=None):
     """Missing build dependencies on Linux, with the install command for this distro; True when nothing is missing."""
     missing = linux_missing(env, deps)
+    if IS_MACOS:
+        if not missing:
+            print("[deps] all build dependencies found (%s)" % macos_developer_dir())
+            return True
+        for label, command in missing:
+            print("[deps] missing: %s\n[deps] install it with:\n    %s" % (label, command))
+        return False
     if not missing:
         llvm = _linux_llvm_bin(env) if deps is None else None
         print("[deps] all build dependencies found" + (" (LLVM: %s)" % llvm if llvm else ""))

@@ -58,6 +58,11 @@ if(PS2X_IS_ARM_TARGET)
 
     include_directories(${sse2neon_SOURCE_DIR})
     add_compile_definitions(USE_SSE2NEON)
+    # [gta-recomp] The x86 results bit for bit (docs/MACOS.md): PS2 floats with an all-ones exponent are NaN on the
+    # host and go through minps / maxps (VMINI / VMAX), which return the second operand on NaN on x86 only with this;
+    # division and square root exact instead of NEON's estimates.
+    add_compile_definitions(SSE2NEON_PRECISE_MINMAX=1 SSE2NEON_PRECISE_DIV=1 SSE2NEON_PRECISE_SQRT=1
+                            SSE2NEON_PRECISE_DP=1)
 
     if(PS2X_IS_AARCH64_TARGET AND APPLE)
         # macOS ARM64 already uses optimal defaults

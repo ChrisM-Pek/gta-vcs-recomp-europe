@@ -2158,10 +2158,10 @@ void PS2Runtime::executeVU0Microprogram(uint8_t *rdram, R5900Context *ctx, uint3
     {
         // [gta-recomp] native replacement (see runtime/ps2_vu0_native.h), run in the VU's rounding mode: toward zero
         // in MXCSR alone (fesetround also reprograms the x87 unit, unused on x64 - ~0.5% of the game thread)
-        const unsigned csr = _mm_getcsr();
-        _mm_setcsr((csr & ~0x6000u) | 0x6000u);
+        const ps2x::FpControl csr = ps2x::fpControl(); // [gta-recomp] MXCSR / FPCR (ps2_host_std.h)
+        ps2x::setFpControl(ps2x::towardZero(csr));
         native->fn(ctx, vu0Data, PS2_VU0_DATA_SIZE);
-        _mm_setcsr(csr);
+        ps2x::setFpControl(csr);
     }
     else
     {
@@ -3153,7 +3153,7 @@ void PS2Runtime::run()
 
     std::atomic<bool> gameThreadFinished{false};
 
-    std::thread gameThread([&]()
+    ps2x::Thread gameThread(ps2x::kGuestThreadStack, true, [&]()
                            {
         ThreadNaming::SetCurrentThreadName("GameThread");
         try

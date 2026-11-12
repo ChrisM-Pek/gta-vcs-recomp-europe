@@ -14,6 +14,7 @@ namespace rhi
         case Backend::D3D11: return "D3D11";
         case Backend::Vulkan: return "Vulkan";
         case Backend::Null: return "null";
+        case Backend::Metal: return "Metal";
         }
         return "?";
     }
@@ -31,6 +32,8 @@ namespace rhi
             out = Backend::Vulkan;
         else if (std::strcmp(lower, "null") == 0)
             out = Backend::Null;
+        else if (std::strcmp(lower, "metal") == 0)
+            out = Backend::Metal;
         else
             return false;
         return true;
@@ -46,6 +49,9 @@ namespace rhi
 #if defined(VCS_HAVE_VULKAN)
         case Backend::Vulkan: return true;
 #endif
+#if defined(VCS_HAVE_METAL)
+        case Backend::Metal: return true;
+#endif
         case Backend::Null: return true;
         default: return false;
         }
@@ -55,6 +61,8 @@ namespace rhi
     {
 #if defined(VCS_HAVE_D3D11)
         return Backend::D3D11;
+#elif defined(VCS_HAVE_METAL)
+        return Backend::Metal;
 #elif defined(VCS_HAVE_VULKAN)
         return Backend::Vulkan;
 #else
@@ -91,6 +99,8 @@ namespace rhi
     {
 #if defined(VCS_HAVE_D3D11)
         return listD3D11Gpus();
+#elif defined(VCS_HAVE_METAL)
+        return listMetalGpus();
 #elif defined(VCS_HAVE_VULKAN)
         return listVulkanGpus();
 #else
@@ -107,6 +117,9 @@ namespace rhi
 #endif
 #if defined(VCS_HAVE_VULKAN)
         case Backend::Vulkan: return createVulkanDevice(desc, error);
+#endif
+#if defined(VCS_HAVE_METAL)
+        case Backend::Metal: return createMetalDevice(desc, error);
 #endif
         case Backend::Null: return createNullDevice(desc, error);
         default: break;

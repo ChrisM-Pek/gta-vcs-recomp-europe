@@ -1,15 +1,17 @@
-# Render hardware interface (rhi.h) and its backends. Only rhi/d3d11 sees D3D11 / DXGI, only rhi/vulkan sees Vulkan.
+# Render hardware interface (rhi.h) and its backends. Only rhi/d3d11 sees D3D11 / DXGI, only rhi/vulkan sees Vulkan,
+# only rhi/metal sees Metal (macOS, its only one).
 # D3D11: Windows (its default). Vulkan: Linux (the only one there), opt-in on Windows to compare with D3D11 on the same
 # machine. The null backend (VCS_RHI=null) is always there: no GPU work, for bring-up and tests of the CPU side.
 include(FetchContent)
 
-if(WIN32)
+if(WIN32 OR APPLE)  # macOS draws with Metal (rhi/metal, docs/MACOS.md)
     set(_vcs_vulkan_default OFF)
 else()
     set(_vcs_vulkan_default ON)
 endif()
 option(VCS_RHI_VULKAN "Build the Vulkan RHI backend" ${_vcs_vulkan_default})
 set(VCS_RHI_D3D11 ${WIN32} CACHE INTERNAL "")
+set(VCS_RHI_METAL ${APPLE} CACHE INTERNAL "")
 
 add_library(vcs_rhi STATIC rhi.cpp null/rhi_null.cpp)
 target_include_directories(vcs_rhi PUBLIC "${CMAKE_SOURCE_DIR}/src" PRIVATE "${VCS_IMGUI_BACKENDS_DIR}")
@@ -19,6 +21,14 @@ if(VCS_RHI_D3D11)
     target_sources(vcs_rhi PRIVATE d3d11/rhi_d3d11.cpp "${VCS_IMGUI_BACKENDS_DIR}/imgui_impl_dx11.cpp")
     target_compile_definitions(vcs_rhi PUBLIC VCS_HAVE_D3D11=1)
     target_link_libraries(vcs_rhi PRIVATE d3d11 dxgi d3dcompiler dxguid)
+endif()
+
+if(VCS_RHI_METAL)
+    # Objective-C++ with ARC; the MSL shaders are compiled by the device at run time (rhi_metal.mm)
+    target_sources(vcs_rhi PRIVATE metal/rhi_metal.mm)
+    set_source_files_properties(metal/rhi_metal.mm PROPERTIES COMPILE_OPTIONS "-fobjc-arc")
+    target_compile_definitions(vcs_rhi PUBLIC VCS_HAVE_METAL=1)
+    target_link_libraries(vcs_rhi PRIVATE "-framework Metal" "-framework QuartzCore" "-framework Foundation")
 endif()
 
 if(VCS_RHI_VULKAN)

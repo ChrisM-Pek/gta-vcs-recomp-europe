@@ -209,6 +209,64 @@ option(PS2X_ENABLE_FFMPEG "Enable FFmpeg-backed MPEG video decoding" ${PS2X_ENAB
 if(NOT PS2X_ENABLE_FFMPEG)
     message(STATUS "FFmpeg disabled; MPEG video decode falls back to stub frames")
     add_library(ffmpeg INTERFACE)
+elseif(APPLE AND NOT VCS_FFMPEG STREQUAL "system")
+    # [gta-recomp] macOS (docs/MACOS.md): FFmpeg built from a pinned source release with only what the movies use
+    # (the MPEG-2 video decoder, its parser, swscale) - static, LGPL, no Homebrew. A minute on an M1, once per build
+    # tree. -DFFMPEG_SOURCE_URL=<local .tar.xz>: a release's bundled copy (deps/, tools/deps.py). VCS_FFMPEG=system
+    # takes pkg-config's (e.g. Homebrew's) instead.
+    include(ExternalProject)
+    include(ProcessorCount)
+    ProcessorCount(_ffmpeg_jobs)
+    if(_ffmpeg_jobs EQUAL 0)
+        set(_ffmpeg_jobs 4)
+    endif()
+    set(FFMPEG_SOURCE_VERSION "7.1.2")
+    if(NOT FFMPEG_SOURCE_URL)
+        set(FFMPEG_SOURCE_URL "https://ffmpeg.org/releases/ffmpeg-${FFMPEG_SOURCE_VERSION}.tar.xz")
+    endif()
+    set(FFMPEG_PREFIX_DIR "${CMAKE_BINARY_DIR}/ThirdParty/ffmpeg-prefix")
+    set(FFMPEG_INSTALL_DIR "${FFMPEG_PREFIX_DIR}/install")
+    set(FFMPEG_INCLUDE_DIR "${FFMPEG_INSTALL_DIR}/include")
+    set(FFMPEG_LIB_DIR "${FFMPEG_INSTALL_DIR}/lib")
+    file(MAKE_DIRECTORY "${FFMPEG_INCLUDE_DIR}")
+    # the compiler by full path (not xcrun's shim) needs the SDK spelled out (CMake 4 leaves CMAKE_OSX_SYSROOT empty);
+    # SDKROOT for FFmpeg's host-compiler checks too
+    set(_ffmpeg_sdk "${CMAKE_OSX_SYSROOT}")
+    if(NOT _ffmpeg_sdk)
+        execute_process(COMMAND xcrun --show-sdk-path OUTPUT_VARIABLE _ffmpeg_sdk OUTPUT_STRIP_TRAILING_WHITESPACE)
+    endif()
+    set(_ffmpeg_flags "-arch arm64 -mmacosx-version-min=${CMAKE_OSX_DEPLOYMENT_TARGET} -isysroot ${_ffmpeg_sdk}")
+    ExternalProject_Add(ffmpeg_external
+        URL "${FFMPEG_SOURCE_URL}"
+        URL_HASH SHA256=089bc60fb59d6aecc5d994ff530fd0dcb3ee39aa55867849a2bbc4e555f9c304
+        DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+        PREFIX "${FFMPEG_PREFIX_DIR}"
+        CONFIGURE_COMMAND ${CMAKE_COMMAND} -E env SDKROOT=${_ffmpeg_sdk} <SOURCE_DIR>/configure --prefix=${FFMPEG_INSTALL_DIR} --cc=${CMAKE_C_COMPILER}
+            --arch=aarch64 --enable-static --disable-shared --enable-pic
+            --disable-everything --enable-decoder=mpeg2video --enable-parser=mpegvideo --enable-swscale
+            --disable-avformat --disable-avdevice --disable-avfilter --disable-swresample
+            --disable-programs --disable-doc --disable-network --disable-autodetect --disable-debug
+            --extra-cflags=${_ffmpeg_flags} --extra-ldflags=${_ffmpeg_flags}
+        BUILD_COMMAND ${CMAKE_COMMAND} -E env SDKROOT=${_ffmpeg_sdk} make -j${_ffmpeg_jobs}
+        INSTALL_COMMAND ${CMAKE_COMMAND} -E env SDKROOT=${_ffmpeg_sdk} make install
+        BUILD_BYPRODUCTS
+            "${FFMPEG_LIB_DIR}/libavcodec.a"
+            "${FFMPEG_LIB_DIR}/libavutil.a"
+            "${FFMPEG_LIB_DIR}/libswscale.a"
+        LOG_CONFIGURE TRUE
+        LOG_BUILD TRUE
+        LOG_INSTALL TRUE
+        LOG_OUTPUT_ON_FAILURE TRUE
+    )
+    add_library(ffmpeg INTERFACE)
+    foreach(_lib avcodec swscale avutil)  # in link order
+        add_library(ffmpeg_${_lib} STATIC IMPORTED GLOBAL)
+        set_target_properties(ffmpeg_${_lib} PROPERTIES
+            IMPORTED_LOCATION "${FFMPEG_LIB_DIR}/lib${_lib}.a"
+            INTERFACE_INCLUDE_DIRECTORIES "${FFMPEG_INCLUDE_DIR}")
+        add_dependencies(ffmpeg_${_lib} ffmpeg_external)
+        target_link_libraries(ffmpeg INTERFACE ffmpeg_${_lib})
+    endforeach()
 elseif(WIN32)
     include(ExternalProject)
 

@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """The open-source libraries the build downloads, bundled so a release builds without git or internet.
 
-    python tools/deps.py list [--platform windows|linux]   what that build fetches (read from the CMake files)
+    python tools/deps.py list [--platform windows|linux|macos]   what that build fetches (read from the CMake files)
     python tools/deps.py fetch [DIR] [--platform P]        each one into DIR (default deps/): a shallow clone at its
                                          pin without .git, on Windows the FFmpeg archive; DIR/manifest.json records the
                                          pins and the platform
     python tools/deps.py check [DIR] [--platform P]        is DIR complete and at this source's pins? (exit 0 / 1)
 The platform is this machine's unless given: Linux adds the Vulkan backend's (headers, volk, VMA) and takes FFmpeg from
-the system instead of the prebuilt Windows archive.
+the system instead of the prebuilt Windows archive; macOS adds sse2neon and FFmpeg's source release (built by CMake).
 
 With deps/ in the repository root, toolchain.configure points CMake at it (FETCHCONTENT_SOURCE_DIR_<NAME>, the FFmpeg
 URL, FETCHCONTENT_FULLY_DISCONNECTED): nothing is downloaded. tools/release.py runs `fetch` into the release.
@@ -37,11 +37,18 @@ CMAKE_FILES = [
 ]
 # ... and on Linux the Vulkan backend's too (src/rhi: Vulkan-Headers, volk, VMA)
 CMAKE_FILES_LINUX = CMAKE_FILES + ["src/rhi/CMakeLists.txt"]
-PLATFORMS = ("windows", "linux")
+# ... and on macOS sse2neon (Apple Silicon: the SSE code through NEON) and the Metal shaders' compilers (glslang,
+# SPIRV-Cross: tools/shader_tools.py); FFmpeg's source release, built by CMake
+CMAKE_FILES_MACOS = CMAKE_FILES + ["third_party/PS2Recomp/CMakeLists.txt", "tools/shader_tools/CMakeLists.txt"]
+PLATFORMS = ("windows", "linux", "macos")
 
 
 def this_platform():
-    return "windows" if tc.IS_WINDOWS else "linux"
+    return "windows" if tc.IS_WINDOWS else "macos" if tc.IS_MACOS else "linux"
+
+
+def cmake_files(platform):
+    return {"linux": CMAKE_FILES_LINUX, "macos": CMAKE_FILES_MACOS}.get(platform, CMAKE_FILES)
 FFMPEG_CMAKE = "third_party/PS2Recomp/ps2xRuntime/CMakeLists.txt"
 # a release archive instead of the repository where the repository carries far more than the build needs
 ARCHIVES = {
@@ -54,7 +61,7 @@ def declared(platform=None):
     {name, url} (None on Linux: the system's FFmpeg)."""
     platform = platform or this_platform()
     deps = {}
-    for rel in (CMAKE_FILES_LINUX if platform == "linux" else CMAKE_FILES):
+    for rel in cmake_files(platform):
         with open(os.path.join(tc.ROOT, rel), encoding="utf-8") as f:
             text = re.sub(r"#[^\n]*", "", f.read())  # comments may hold parentheses
         for m in re.finditer(r"FetchContent_Declare\(\s*(\w+)([^)]*)\)", text):
@@ -74,6 +81,10 @@ def declared(platform=None):
     tag = re.search(r'set\(FFMPEG_PREBUILT_TAG "([^"]+)"\)', text).group(1)
     url = re.search(r'"(https://[^"]*ffmpeg[^"]*\.zip)"', text).group(1).replace("${FFMPEG_PREBUILT_TAG}", tag)
     ffmpeg = {"name": "ffmpeg", "url": url, "file": url.rsplit("/", 1)[1]} if platform == "windows" else None
+    if platform == "macos":
+        version = re.search(r'set\(FFMPEG_SOURCE_VERSION "([^"]+)"\)', text).group(1)
+        url = "https://ffmpeg.org/releases/ffmpeg-%s.tar.xz" % version
+        ffmpeg = {"name": "ffmpeg", "url": url, "file": url.rsplit("/", 1)[1]}
     return sorted(deps.values(), key=lambda d: d["name"].lower()), ffmpeg
 
 

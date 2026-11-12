@@ -42,6 +42,13 @@ struct VSIn
     float fog : TEXCOORD1;  // 0..1 (1 = no fog)
 };
 
+// The point size output: Vulkan's, and Metal's vertex stage only (tools/hlsl_msl.py)
+#if VCS_SPIRV && (!VCS_MSL || VCS_MSL_VERTEX)
+#define VCS_POINT_SIZE 1
+#else
+#define VCS_POINT_SIZE 0
+#endif
+
 struct VSOut
 {
     float4 pos : SV_Position;
@@ -51,8 +58,10 @@ struct VSOut
     noperspective float fog : TEXCOORD1;
     noperspective float depth : TEXCOORD2;
     float2 clip : SV_ClipDistance0; // native draws: the PS2 clip test's near / far planes
-#if VCS_SPIRV
-    [[vk::builtin("PointSize")]] float psize : PSIZE; // Vulkan points need one (D3D11's are always 1 pixel)
+#if VCS_POINT_SIZE
+    // Vulkan and Metal points need one (D3D11's are always 1 pixel). Metal: the vertex stage's output only - a pixel
+    // shader input the vertex shader doesn't write ([[point_size]] is not a varying) fails the pipeline
+    [[vk::builtin("PointSize")]] float psize : PSIZE;
 #endif
 };
 
@@ -67,7 +76,7 @@ VSOut vs_main(VSIn i)
     o.colFlat = i.col;
     o.fog = i.fog;
     o.clip = float2(1.0, 1.0);
-#if VCS_SPIRV
+#if VCS_POINT_SIZE
     o.psize = 1.0;
 #endif
     return o;
@@ -100,7 +109,7 @@ void nativePosition(float4 S, float4 C, float3 st, inout VSOut o)
     o.depth = depth;
     o.clip = float2(C.z + C.w, C.w - C.z); // the PS2 clip test's near / far planes
     o.stq = st * q;
-#if VCS_SPIRV
+#if VCS_POINT_SIZE
     o.psize = 1.0;
 #endif
 }

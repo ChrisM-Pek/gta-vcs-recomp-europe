@@ -10,12 +10,10 @@
 #include <cstdio>
 #include <cstdlib>
 #include <deque>
-#include <immintrin.h>
 #include <new>
 #include <exception>
 #include <mutex>
 #include <thread>
-#include <xmmintrin.h>
 #include <cstring>  // [gta-recomp] libstdc++ (Linux) does not bring it in
 #include "runtime/ps2_host_std.h"
 
@@ -31,7 +29,7 @@ namespace ps2_render_worker
         {
             std::function<void()> work;
             bool frameEnd = false;
-            unsigned csr = 0u; // the game thread's MXCSR (rounding, flush-to-zero): VU1 and GS work runs in it
+            ps2x::FpControl csr = 0u; // the game thread's MXCSR / FPCR (rounding, flush-to-zero): VU1 and GS work runs in it
         };
 
         struct State
@@ -43,7 +41,7 @@ namespace ps2_render_worker
             bool busy = false, stopping = false, started = false;
             uint32_t framesQueued = 0u; // frameEnd items not finished yet
             uint32_t waiters = 0u;      // game-thread waits in progress (doneCv is only signalled for them)
-            std::thread thread;
+            ps2x::Thread thread; // [gta-recomp] a guest-sized stack (ps2_host_std.h)
 
             std::mutex poolMutex;
             std::vector<std::vector<uint8_t>> pool;
@@ -103,7 +101,7 @@ namespace ps2_render_worker
             std::mutex mutex;
             std::condition_variable workCv, spaceCv, doneCv;
             bool started = false, stopping = false;
-            std::thread thread;
+            ps2x::Thread thread; // [gta-recomp] a guest-sized stack (ps2_host_std.h)
             GsHandler handler = nullptr;
         };
 
@@ -143,7 +141,7 @@ namespace ps2_render_worker
                     bool more = false;
                     for (int i = 0; i < 4000 && !more; ++i) // the next command is usually microseconds away
                     {
-                        _mm_pause();
+                        ps2x::cpuRelax();
                         more = g.tail.load(std::memory_order_acquire) != head;
                     }
                     if (!more)
@@ -165,8 +163,8 @@ namespace ps2_render_worker
                 const uint64_t size = kGsHeaderBytes + ((c.bytes + kGsAlign - 1u) & ~(kGsAlign - 1u));
                 if (c.type != kGsSkip)
                 {
-                    if (_mm_getcsr() != c.csr)
-                        _mm_setcsr(c.csr);
+                    if (ps2x::fpControl() != c.csr)
+                        ps2x::setFpControl(c.csr);
                     try
                     {
                         if (c.type == kGsRun)
@@ -207,7 +205,7 @@ namespace ps2_render_worker
             {
                 if (ready())
                     return;
-                _mm_pause();
+                ps2x::cpuRelax();
             }
             std::unique_lock<std::mutex> lock(g.mutex);
             g.producerWaiting.store(true, std::memory_order_seq_cst);
@@ -221,7 +219,7 @@ namespace ps2_render_worker
                 return;
             g.started = true;
             g.ring = static_cast<uint8_t *>(::operator new(static_cast<size_t>(kGsRingBytes), std::align_val_t(64)));
-            g.thread = std::thread(gsRun);
+            g.thread = ps2x::Thread(ps2x::kGuestThreadStack, true, gsRun);
         }
 
         void run()
@@ -239,8 +237,8 @@ namespace ps2_render_worker
                 s.queue.pop_front();
                 s.busy = true;
                 lock.unlock();
-                if (_mm_getcsr() != item.csr)
-                    _mm_setcsr(item.csr);
+                if (ps2x::fpControl() != item.csr)
+                    ps2x::setFpControl(item.csr);
                 const uint64_t start = nowNs();
                 try
                 {
@@ -331,7 +329,7 @@ namespace ps2_render_worker
         if (!s.started)
         {
             s.started = true;
-            s.thread = std::thread(run);
+            s.thread = ps2x::Thread(ps2x::kGuestThreadStack, true, run);
         }
         auto full = [&] { return s.queue.size() >= kMaxItems || (frameEnd && s.framesQueued >= framesAhead()); };
         if (full())
@@ -343,7 +341,7 @@ namespace ps2_render_worker
             ++s.postWaits;
             s.postWaitNs += nowNs() - start;
         }
-        s.queue.push_back({std::move(work), frameEnd, _mm_getcsr()});
+        s.queue.push_back({std::move(work), frameEnd, ps2x::fpControl()});
         if (frameEnd)
         {
             ++s.framesQueued;
@@ -429,7 +427,7 @@ namespace ps2_render_worker
             at += toEnd;
         }
         GsCommand header = command;
-        header.csr = _mm_getcsr();
+        header.csr = ps2x::fpControl();
         uint8_t *record = g.ring + (at & (kGsRingBytes - 1u));
         std::memcpy(record, &header, sizeof(header));
         g.reserved = at + need;
@@ -488,7 +486,7 @@ namespace ps2_render_worker
         {
             if (done())
                 return;
-            _mm_pause();
+            ps2x::cpuRelax();
         }
         std::unique_lock<std::mutex> lock(g.mutex);
         g.drainWaiters.fetch_add(1u, std::memory_order_seq_cst);

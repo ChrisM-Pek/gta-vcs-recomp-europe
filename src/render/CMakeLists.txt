@@ -2,8 +2,9 @@
 # One HLSL source per shader, compiled at build time into headers for each backend that is built:
 #   D3D11: DXBC from D3DCompile (tools/hlsl_dxbc.py) -> shaders/dxbc/<header>, array <name>
 #   Vulkan: SPIR-V from glslang (tools/hlsl_spirv.py) -> shaders/spirv/<header>, array <name>_spv
+#   Metal: MSL text from glslang + SPIRV-Cross (tools/hlsl_msl.py) -> shaders/msl/<header>, array <name>_msl
 set(VCS_SHADER_OUT "${CMAKE_CURRENT_BINARY_DIR}/shaders")
-file(MAKE_DIRECTORY "${VCS_SHADER_OUT}/dxbc" "${VCS_SHADER_OUT}/spirv")
+file(MAKE_DIRECTORY "${VCS_SHADER_OUT}/dxbc" "${VCS_SHADER_OUT}/spirv" "${VCS_SHADER_OUT}/msl")
 
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
 # D3D11: Windows' own d3dcompiler_47.dll through tools/hlsl_dxbc.py, the same DXBC as the SDK's fxc (checked
@@ -15,6 +16,17 @@ if(VCS_RHI_VULKAN)
     if(NOT VCS_GLSLANG)
         message(FATAL_ERROR "glslangValidator not found (Vulkan shaders): install glslang-tools (Debian / Ubuntu), "
                             "glslang (Fedora / Arch) or the Vulkan SDK - docs/LINUX.md")
+    endif()
+endif()
+# macOS: glslang and SPIRV-Cross built from pinned sources by tools/shader_tools.py (toolchain.configure passes them)
+if(VCS_RHI_METAL)
+    if(NOT VCS_GLSLANG)
+        find_program(VCS_GLSLANG NAMES glslang glslangValidator)
+    endif()
+    find_program(VCS_SPIRV_CROSS NAMES spirv-cross)
+    if(NOT VCS_GLSLANG OR NOT VCS_SPIRV_CROSS)
+        message(FATAL_ERROR "glslang / spirv-cross not found (Metal shaders): python3 tools/shader_tools.py builds them "
+                            "(python3 tools/build.py does it for you) - docs/MACOS.md")
     endif()
 endif()
 
@@ -59,6 +71,28 @@ function(vcs_shader source entry profile name header)
                     --stage ${stage} --entry ${entry} --name ${name}_spv --out "${out}" ${defines} "${src}"
             DEPENDS "${src}" "${CMAKE_SOURCE_DIR}/tools/hlsl_spirv.py"
             COMMENT "glslang ${source} ${entry}"
+            VERBATIM)
+        list(APPEND VCS_SHADER_HEADERS "${out}")
+    endif()
+    if(VCS_RHI_METAL)
+        set(out "${VCS_SHADER_OUT}/msl/${header}")
+        string(SUBSTRING "${profile}" 0 2 kind)
+        if(kind STREQUAL "vs")
+            set(stage vert)
+        else()
+            set(stage frag)
+        endif()
+        set(defines "")
+        foreach(d IN LISTS ARGN)
+            list(APPEND defines -D ${d})
+        endforeach()
+        add_custom_command(
+            OUTPUT "${out}"
+            COMMAND "${Python3_EXECUTABLE}" -I "${CMAKE_SOURCE_DIR}/tools/hlsl_msl.py" --glslang "${VCS_GLSLANG}"
+                    --spirv-cross "${VCS_SPIRV_CROSS}" --stage ${stage} --entry ${entry} --name ${name}_msl --out "${out}"
+                    ${defines} "${src}"
+            DEPENDS "${src}" "${CMAKE_SOURCE_DIR}/tools/hlsl_msl.py" "${CMAKE_SOURCE_DIR}/tools/hlsl_spirv.py"
+            COMMENT "msl ${source} ${entry}"
             VERBATIM)
         list(APPEND VCS_SHADER_HEADERS "${out}")
     endif()

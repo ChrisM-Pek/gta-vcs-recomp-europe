@@ -42,6 +42,10 @@
 
 #include "imgui.h"
 
+#if defined(__APPLE__)
+#include <mach-o/dyld.h> // _NSGetExecutablePath
+#endif
+
 #include <algorithm>
 #include <cfloat>
 #include <chrono>
@@ -128,6 +132,17 @@ namespace
         const fs::path self = fs::read_symlink("/proc/self/exe", ec);
         if (!ec && !self.empty())
             return self.parent_path();
+#elif defined(__APPLE__)
+        uint32_t size = 0;
+        _NSGetExecutablePath(nullptr, &size);
+        std::string buffer(size, '\0');
+        if (_NSGetExecutablePath(buffer.data(), &size) == 0)
+        {
+            std::error_code ec;
+            const fs::path self = fs::canonical(fs::path(buffer.c_str()), ec);
+            if (!ec && !self.empty())
+                return self.parent_path();
+        }
 #endif
         return fs::current_path();
     }
@@ -140,6 +155,9 @@ namespace
 #if defined(_WIN32)
         if (const char *local = std::getenv("LOCALAPPDATA"))
             return fs::path(local) / "VCSRecomp";
+#elif defined(__APPLE__)
+        if (const char *home = std::getenv("HOME"); home && *home == '/')
+            return fs::path(home) / "Library/Application Support/VCSRecomp";
 #endif
         if (const char *xdg = std::getenv("XDG_DATA_HOME"); xdg && *xdg == '/') // absolute only (the XDG spec)
             return fs::path(xdg) / "VCSRecomp";
@@ -683,7 +701,7 @@ namespace
         s.label = "Graphics API";
         s.help = "The graphics API the game draws with. D3D11 is the reference on Windows; Vulkan is the one on Linux.";
         s.type = Type::Choice;
-        for (rhi::Backend b : {rhi::Backend::D3D11, rhi::Backend::Vulkan})
+        for (rhi::Backend b : {rhi::Backend::D3D11, rhi::Backend::Vulkan, rhi::Backend::Metal})
             if (rhi::backendBuilt(b))
                 s.choices.push_back({rhi::backendName(b), static_cast<int>(b)});
         s.defaultValue = static_cast<int>(rhi::defaultBackend());

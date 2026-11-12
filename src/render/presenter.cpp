@@ -54,7 +54,7 @@ namespace present
             if (env && *env)
             {
                 if (!rhi::backendFromName(env, b))
-                    std::fprintf(stderr, "[present] VCS_RHI=%s not understood (d3d11, vulkan or null)\n", env);
+                    std::fprintf(stderr, "[present] VCS_RHI=%s not understood (d3d11, vulkan, metal or null)\n", env);
             }
             else if (g_backendSetting >= 0)
                 b = static_cast<rhi::Backend>(g_backendSetting);
@@ -108,6 +108,8 @@ namespace present
         desc.vulkan.instanceExtensions = platform::vulkanInstanceExtensions;
         desc.vulkan.createSurface = platform::vulkanCreateSurface;
         desc.offscreen = platform::windowHidden();
+        if (desc.backend == rhi::Backend::Metal && !desc.offscreen)
+            desc.metalLayer = platform::metalLayer();
         desc.width = static_cast<uint32_t>(std::max(width, 1));
         desc.height = static_cast<uint32_t>(std::max(height, 1));
         // the API's validation layer: D3D11 debug layer (Graphics Tools), Vulkan's Khronos layer

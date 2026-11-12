@@ -4369,12 +4369,14 @@ namespace
                 return false;
             // [gta-recomp] PS2X_HW_EARLY_TEXTURES: 0 off, 1 on; unset: on with D3D11, off with Vulkan - its main thread
             // only records a copy per new texture (~8 ms a 350-texture burst, D3D11's creation was 52), and on a
-            // 2-core CPU the helpers slowed the GS stage's decode more than they saved there (PERFORMANCE.md 25)
+            // 2-core CPU the helpers slowed the GS stage's decode more than they saved there (PERFORMANCE.md 25). Metal
+            // (macOS): on, as D3D11 - a new texture's contents are written in place on the helper thread
             static const int early = [] {
                 const char *e = std::getenv("PS2X_HW_EARLY_TEXTURES");
                 return e && *e ? (*e == '0' ? 0 : 1) : -1;
             }();
-            const bool earlyOn = early == 1 || (early < 0 && device.backend() == rhi::Backend::D3D11);
+            const bool earlyOn = early == 1 || (early < 0 && (device.backend() == rhi::Backend::D3D11 ||
+                                                              device.backend() == rhi::Backend::Metal));
             if (earlyOn && !m_earlyDevice.load(std::memory_order_relaxed) && device.freeThreadedCreation())
                 m_earlyDevice.store(&device, std::memory_order_release);
             if (m_nativeFrame) // [gta-recomp] the picture's targets follow the window (gsHwSetFrameSize)

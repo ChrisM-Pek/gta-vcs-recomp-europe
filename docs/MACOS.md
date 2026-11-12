@@ -57,7 +57,12 @@ fetched or built by the build itself, pinned, and bundled by `tools/deps.py --pl
 - **Crashes**: SIGSEGV / SIGBUS / SIGILL / SIGFPE print `[crash]` lines with each frame as `module+offset (symbol)` and
   an `atos -o <module> -l <load address> <addresses>` line that gives files and lines (`src/debug/crash.cpp`). Or
   `lldb -- build/vcs <iso>`.
-- **Profiler**: `VCS_PROFILE` is not on macOS yet (a stub; Instruments' Time Profiler covers it).
+- **Profiler**: `VCS_PROFILE=5` works as on Linux (`src/debug/profiler.cpp`): the sampler suspends each sampled thread
+  through its Mach port, reads its PC and resumes it; `VCS_PROFILE_THREAD`, `VCS_PROFILE_SPIKES`,
+  `VCS_PROFILE_GUEST_FILE` too. Mach-O's `dladdr` has no symbol sizes, so a generated function reaches up to the next
+  one. `VCS_PROFILE_CALLERS` / `LINES`: Instruments' Time Profiler instead.
+- **ThreadSanitizer**: a build of its own (`-fsanitize=thread` on every target, `PS2X_LTO=OFF`, in `build/tsan`); run it
+  with `TSAN_OPTIONS=log_path=...`.
 
 ## The launcher
 
@@ -90,10 +95,14 @@ title bar. Its Build tools step installs the Command Line Tools (`build.py --ins
 | Metal RHI backend | runs: title, flyover and intro cutscene draw right, 60 fps at a 60 cap on an M1 (~1,500 draws, 28 passes, 1 suspended pass a frame); validation shows no errors |
 | The launcher: Cocoa, Metal, Core Text | done: self-test, screenshots, the window |
 | ThinLTO build (`--opt lto`) with ld64 | done: 3.5 min for the whole game on an M1 (8 cores, 16 GB); plays (intro cutscene: game 4.1 ms a frame) |
-| Picture: Windows D3D11 reference vs macOS Metal (`scenes.py compare`) | to do (needs a reference capture from Windows) |
+| Picture: Windows D3D11 reference vs macOS Metal (`scenes.py compare`) | Metal's capture made (`build/scenes/mac_metal`: loading, flyover, office cutscene, gameplay with the HUD, the pause map - all right by eye); the compare needs a reference capture from Windows |
 | `--iop-tests` on macOS | done: 0 failures |
-| The rig on macOS: regress, tour, saves, trainer, controls, hud, menu, shakedown, haze, soundcheck, soak | to do |
-| ARM memory ordering: a ThreadSanitizer run and a review of the relaxed atomics on cross-thread paths | to do |
-| Performance: `bench.py`, `cruise.py`; NEON path for `vu1v`; `preserve_none` on arm64 (measure); fewer suspends | to do |
-| Profiler (Mach thread sampling) | to do |
-| Release: `release.py --platform macos` (an ad-hoc signed `VCSLauncher.app` in a zip), `update.py`, a CI job | to do |
+| The rig on macOS: regress, tour, saves, trainer, controls, hud, menu, shakedown, haze, soundcheck, soak | waiting for a card: they start from `build/rig/saves/fortbaxter` (a save in the barracks safehouse), which this Mac doesn't have - copy it from the Windows PC. A card made here by `VCS_TEST_SAVE` during the first mission doesn't do: the save carries the mission's script, which starts again on load. Saving itself works on macOS (the game's own card code, `[mc-test] save done`) |
+| ARM memory ordering: a ThreadSanitizer run | done (200 s: boot, flyover, intro): one report - the pause menu reading a guest byte on the main thread (`vcs_frontend.cpp:92`) while the game thread writes it, an intended peek (one byte can't tear; at worst a frame late). Nothing on the render worker / GS stage handoffs. Gameplay not covered (no card) |
+| Performance: `bench.py` | done (ThinLTO, M1, new game - no card): 60 fps at a 60 cap at every spot and on the drive; game thread 3.7-4.5 ms, render worker 2.3-3.6 ms, GS stage 2.1-3.9 ms a frame |
+| `preserve_none` on arm64 | measured, left off: exceptions unwind through it on Darwin, but the game thread was 4.28 ms against 4.05 without (`ps2_guest_cc.h`) |
+| NEON path for `vu1v` | not needed now: `vu1_programs=0` in play (the native draws replace them) |
+| `cruise.py` (stutter), fewer pass suspends | to do (cruise needs a card) |
+| Profiler (Mach thread sampling) | done |
+| Release: `release.py --platform macos` (an ad-hoc signed `VCSLauncher.app` in a zip), `update.py`, a CI job | done here: the zip (66 MB) made and self-tested as a player starts it; `update.py apply` replaces the bundle in place (not run against a real GitHub release yet); the CI job is written but hasn't run on GitHub |
+| The tools on macOS' own Python (3.9.6, the Command Line Tools') | every tool parses; doctor.py runs |

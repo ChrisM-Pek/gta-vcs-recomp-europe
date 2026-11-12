@@ -320,8 +320,14 @@ repository root, ~1 MB stripped, 27 s from scratch on the dev laptop.
 - **Build tools step**: Apple's Command Line Tools - "Install the Command Line Tools" runs `build.py --install-deps`
   (`xcode-select --install`: macOS' own installer), then Check again. They are checked before `python3` is probed:
   without them `/usr/bin/python3` is a stub that opens that installer.
-- **A release** (to do): `VCSLauncher.app` with the release's files in `Contents/Resources/release`, installed into
-  `~/Library/Application Support/VCSRecomp/install` at first start as the AppImage's (`tasks.cpp` already finds them).
+- **A release** (`python3 tools/release.py --platform macos`): `VCS-Recomp-<v>-macos-arm64.zip` holding
+  `VCSLauncher.app`, signed ad-hoc (DECISIONS.md 2026-11-12), the release's files in `Contents/Resources/release`
+  (the source, `deps/` for macOS, licences; no Python: the Command Line Tools' is used). At first start the launcher
+  copies them into `~/Library/Application Support/VCSRecomp/install` and builds the game there, as from an AppImage.
+  Update (`update.py apply`) downloads the new zip, unzips it with `ditto` and puts the new bundle where the old one is
+  (`VCS_APP_BUNDLE`, which the launcher passes to its tools); an app macOS runs from a quarantined download in place
+  (App Translocation) is refused with "move it to Applications". The first start of an unsigned download needs
+  System Settings > Privacy & Security > Open Anyway. CI: the `macos` job (macos-15), which `publish` waits for.
 
 ## How it fits together
 

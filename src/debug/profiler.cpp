@@ -31,6 +31,12 @@
 #include <ucontext.h>
 #include <unistd.h>
 #include <sys/syscall.h>
+#elif defined(__APPLE__)
+#include <cxxabi.h>
+#include <dlfcn.h>
+#include <mach/mach.h>
+#include <pthread.h>
+#include <unistd.h>
 #endif
 
 namespace vcs
@@ -511,12 +517,18 @@ namespace vcs
             g_spikeToNs.store(now, std::memory_order_release);
         }
     }
-#elif defined(__linux__)
-    // Linux: the sampler thread sends SIGPROF to each sampled thread (tgkill); the handler hands its RIP back. Same reports
-    // as on Windows (guest functions, host symbols, [spike] frames, VCS_PROFILE_GUEST_FILE); VCS_PROFILE_CALLERS and
-    // VCS_PROFILE_LINES are Windows only - `perf record -g` covers them here (docs/LINUX.md).
+#elif defined(__linux__) || defined(__APPLE__)
+    // Linux: the sampler thread sends SIGPROF to each sampled thread (tgkill); the handler hands its RIP back. macOS: the
+    // sampler suspends each sampled thread (a Mach thread port), reads its PC and resumes it. Same reports as on Windows
+    // (guest functions, host symbols, [spike] frames, VCS_PROFILE_GUEST_FILE); VCS_PROFILE_CALLERS and
+    // VCS_PROFILE_LINES are Windows only - `perf record -g` / Instruments cover them here (docs/LINUX.md, MACOS.md).
     namespace
     {
+#if defined(__APPLE__)
+        using SampledThread = thread_act_t;
+#else
+        using SampledThread = pid_t;
+#endif
         std::atomic<int64_t> g_lastFrameNs{0}, g_spikeFromNs{0}, g_spikeToNs{0};
         int64_t g_spikeMs = 0;
         std::atomic<uintptr_t> g_sampledRip{0};
@@ -527,11 +539,44 @@ namespace vcs
             return std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
         }
 
+#if defined(__linux__)
         void onSample(int, siginfo_t *, void *context)
         {
             const ucontext_t *uc = static_cast<const ucontext_t *>(context);
             g_sampledRip.store(static_cast<uintptr_t>(uc->uc_mcontext.gregs[REG_RIP]), std::memory_order_relaxed);
             g_sampleReady.store(true, std::memory_order_release);
+        }
+#endif
+
+        // one sample of a thread's PC; false when the thread is gone
+        bool samplePc(SampledThread thread, uintptr_t &pc, bool &got)
+        {
+            got = false;
+#if defined(__APPLE__)
+            if (thread_suspend(thread) != KERN_SUCCESS)
+                return false;
+            arm_thread_state64_t state{};
+            mach_msg_type_number_t count = ARM_THREAD_STATE64_COUNT;
+            if (thread_get_state(thread, ARM_THREAD_STATE64, reinterpret_cast<thread_state_t>(&state), &count) == KERN_SUCCESS)
+            {
+                pc = static_cast<uintptr_t>(arm_thread_state64_get_pc(state));
+                got = true;
+            }
+            thread_resume(thread);
+            return true;
+#else
+            g_sampleReady.store(false, std::memory_order_relaxed);
+            if (syscall(SYS_tgkill, getpid(), thread, SIGPROF) != 0)
+                return false;
+            const int64_t deadline = nowNs() + 2000000;
+            while (!g_sampleReady.load(std::memory_order_acquire) && nowNs() < deadline)
+                std::this_thread::yield();
+            if (!g_sampleReady.load(std::memory_order_acquire))
+                return true;
+            pc = g_sampledRip.load(std::memory_order_relaxed);
+            got = true;
+            return true;
+#endif
         }
 
         struct HostFn
@@ -559,8 +604,9 @@ namespace vcs
             return map;
         }
 
-        // the threads named in VCS_PROFILE_THREAD (default GameThread), by /proc/self/task/*/comm
-        std::vector<std::pair<pid_t, std::string>> findThreads()
+        // the threads named in VCS_PROFILE_THREAD (default GameThread): Linux by /proc/self/task/*/comm, macOS by the
+        // task's threads' pthread names
+        std::vector<std::pair<SampledThread, std::string>> findThreads()
         {
             std::vector<std::string> wanted{"GameThread"};
             if (const char *thread = std::getenv("VCS_PROFILE_THREAD"))
@@ -574,7 +620,30 @@ namespace vcs
                     p = comma ? comma + 1 : e;
                 }
             }
-            std::vector<std::pair<pid_t, std::string>> out;
+            std::vector<std::pair<SampledThread, std::string>> out;
+#if defined(__APPLE__)
+            thread_act_array_t list = nullptr;
+            mach_msg_type_number_t n = 0;
+            if (task_threads(mach_task_self(), &list, &n) != KERN_SUCCESS)
+                return out;
+            for (mach_msg_type_number_t i = 0; i < n; ++i)
+            {
+                char name[64] = {};
+                bool keep = false;
+                if (pthread_t pt = pthread_from_mach_thread_np(list[i]))
+                {
+                    pthread_getname_np(pt, name, sizeof(name));
+                    for (const std::string &w : wanted)
+                        keep = keep || w == name;
+                }
+                if (keep)
+                    out.emplace_back(list[i], name); // the send right is kept: sampled until the run ends
+                else
+                    mach_port_deallocate(mach_task_self(), list[i]);
+            }
+            vm_deallocate(mach_task_self(), reinterpret_cast<vm_address_t>(list), n * sizeof(thread_act_t));
+            return out;
+#else
             DIR *dir = opendir("/proc/self/task");
             if (!dir)
                 return out;
@@ -596,16 +665,27 @@ namespace vcs
             }
             closedir(dir);
             return out;
+#endif
         }
 
         // A host address's symbol (demangled) and its function's size, from the exe's dynamic symbols (-rdynamic)
         bool hostSymbol(uintptr_t addr, std::string *name, uintptr_t *start, uint64_t *size)
         {
             Dl_info info{};
+#if defined(__APPLE__)
+            // Mach-O's dladdr has no symbol size: the caller bounds a generated function by the next one (0 here)
+            if (!dladdr(reinterpret_cast<void *>(addr), &info) || !info.dli_sname)
+                return false;
+            const struct
+            {
+                uint64_t st_size;
+            } *sym = nullptr;
+#else
             void *entry = nullptr;
             if (!dladdr1(reinterpret_cast<void *>(addr), &info, &entry, RTLD_DL_SYMENT) || !info.dli_sname)
                 return false;
             const ElfW(Sym) *sym = static_cast<const ElfW(Sym) *>(entry);
+#endif
             if (name)
             {
                 int status = 0;
@@ -631,15 +711,16 @@ namespace vcs
             g_spikeMs = std::atoll(spikes);
         if (std::getenv("VCS_PROFILE_CALLERS") || std::getenv("VCS_PROFILE_LINES"))
             std::fprintf(stderr, "[profile] VCS_PROFILE_CALLERS / VCS_PROFILE_LINES are Windows only: use perf record -g on Linux\n");
+#if defined(__linux__)
         struct sigaction sa{};
         sa.sa_sigaction = &onSample;
         sa.sa_flags = SA_SIGINFO | SA_RESTART;
         sigemptyset(&sa.sa_mask);
         sigaction(SIGPROF, &sa, nullptr);
+#endif
 
         std::thread([&runtime, reportSeconds]() {
             const std::vector<HostFn> map = buildHostMap();
-            const pid_t pid = getpid();
             // is the host function at `host` generated code (FUN_*, not a hook), and how long is it (symbol size)
             struct GeneratedInfo
             {
@@ -647,7 +728,8 @@ namespace vcs
                 uint64_t size = 0x100000u; // unknown size: a 1 MB window
             };
             std::unordered_map<uintptr_t, GeneratedInfo> generatedCache;
-            auto withinGenerated = [&generatedCache](uintptr_t host, uintptr_t pc) {
+            auto withinGenerated = [&generatedCache, &map](uintptr_t host, uintptr_t pc) {
+                (void)map; // macOS bounds a function by the next one
                 auto found = generatedCache.find(host);
                 if (found == generatedCache.end())
                 {
@@ -662,6 +744,15 @@ namespace vcs
                     info.generated = known && name.find("FUN_") != std::string::npos;
                     if (known && size && start == host)
                         info.size = size;
+#if defined(__APPLE__)
+                    // no symbol sizes in Mach-O's dladdr: up to the next generated function
+                    if (known && start == host)
+                    {
+                        auto next = std::upper_bound(map.begin(), map.end(), host, [](uintptr_t v, const HostFn &f) { return v < f.host; });
+                        if (next != map.end())
+                            info.size = std::min<uint64_t>(info.size, next->host - host);
+                    }
+#endif
                     found = generatedCache.emplace(host, info).first;
                 }
                 return found->second.generated && pc - host < found->second.size;
@@ -678,7 +769,7 @@ namespace vcs
                 }
                 return std::string("?");
             };
-            std::vector<std::pair<pid_t, std::string>> threads;
+            std::vector<std::pair<SampledThread, std::string>> threads;
             std::unordered_map<uint32_t, uint64_t> hits;   // guest function -> samples
             std::unordered_map<uintptr_t, uint64_t> other; // host RIP -> samples
             uint64_t total = 0;
@@ -705,18 +796,15 @@ namespace vcs
                 }
                 for (size_t ti = 0; ti < threads.size(); ++ti)
                 {
-                    g_sampleReady.store(false, std::memory_order_relaxed);
-                    if (syscall(SYS_tgkill, pid, threads[ti].first, SIGPROF) != 0)
+                    uintptr_t rip = 0;
+                    bool got = false;
+                    if (!samplePc(threads[ti].first, rip, got))
                     {
                         threads.clear(); // gone: looked for again
                         break;
                     }
-                    const int64_t deadline = nowNs() + 2000000;
-                    while (!g_sampleReady.load(std::memory_order_acquire) && nowNs() < deadline)
-                        std::this_thread::yield();
-                    if (!g_sampleReady.load(std::memory_order_acquire))
+                    if (!got)
                         continue;
-                    const uintptr_t rip = g_sampledRip.load(std::memory_order_relaxed);
                     ++total;
                     auto it = std::upper_bound(map.begin(), map.end(), rip, [](uintptr_t v, const HostFn &f) { return v < f.host; });
                     const bool generated = it != map.begin() && it != map.end() && withinGenerated(std::prev(it)->host, rip);

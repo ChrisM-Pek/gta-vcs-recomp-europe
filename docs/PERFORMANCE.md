@@ -927,6 +927,28 @@ use): a leaner layout would hold more recordings per MB - how many more was not 
 beyond the recordings and the 300 MB without them (meshes and textures made for replays, both LRU-bounded; the heap's
 own) was not taken apart.
 
+### 32. macOS: an M1 on Metal (2026-11-12)
+
+The first numbers on Apple Silicon (docs/MACOS.md): an M1 (8 cores, 16 GB), ThinLTO with Apple's linker, Metal, a
+Retina window. `tools/bench.py` from a new game (this Mac has no Fort Baxter card), at a 60 fps cap:
+
+| spot | fps | game | worker | gs | render | draws |
+|---|---|---|---|---|---|---|
+| fortbaxter | 60.0 | 4.2 | 3.0 | 3.1 | 0.6 | 1246 |
+| city_575_175 | 60.0 | 4.3 | 2.3 | 2.2 | 0.4 | 660 |
+| city_-675_1425 | 60.0 | 4.5 | 3.6 | 3.9 | 0.6 | 1502 |
+| city_1325_-325 | 60.0 | 3.7 | 2.3 | 2.1 | 0.3 | 680 |
+| city_-1425_-575 | 60.0 | 3.9 | 2.6 | 2.5 | 0.4 | 964 |
+| drive | 60.0 | 3.7 | 2.6 | 2.6 | 0.6 | 951 |
+
+- **Metal**: `PS2X_RHI_STATS` on the intro: ~1,500 draws, 28 passes and 1 suspended pass a frame (a tile store and
+  reload each); the 39 shaders compile in ~50 ms at start.
+- **`preserve_none` on arm64: no gain** - the game thread at 4.28 ms against 4.05 with the platform's convention (the
+  same six spots), so it stays x86-only (`ps2_guest_cc.h`). arm64 saves its callee-saved registers in pairs.
+- **Profiler** (Mach thread sampling): the flyover's game thread ~15% in generated code, most of the rest waiting for
+  the frame.
+- Not measured yet: `cruise.py` (needs a card), uncapped frame rates, a quick (no LTO) build.
+
 ## Next
 
 - **The heavy views (~120 fps)**: the game thread's chain submission there (1.4-1.6 ms: the VIF1 chain copy, the walker

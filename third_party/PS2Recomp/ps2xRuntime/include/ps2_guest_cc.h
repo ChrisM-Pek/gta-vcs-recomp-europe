@@ -6,6 +6,10 @@
 // a guest call (the guest's state lives in R5900Context). Host code calling a guest function pays for the saves at that
 // one boundary instead (the scheduler, an override calling the original), which is rare against guest-to-guest calls.
 // docs/PERFORMANCE.md 8. PS2X_GUEST_CC_DEFAULT=1 (a define) keeps the platform's convention.
+//
+// [gta-recomp] Not on arm64 (macOS): exceptions unwind through preserve_none frames there (checked), but tools/bench.py
+// measured no gain on an M1 - game thread 4.05 ms a frame with the platform's convention, 4.28 with preserve_none
+// (docs/MACOS.md, 2026-11-12). arm64 saves its callee-saved registers in pairs (stp / ldp).
 #pragma once
 
 #if defined(__clang__) && (defined(__x86_64__) || defined(_M_X64)) && !defined(PS2X_GUEST_CC_DEFAULT)

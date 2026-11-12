@@ -164,6 +164,10 @@ namespace launcher
             {"install_failed", {"The Command Line Tools didn't install",
                                 "Install them from developer.apple.com/download (Command Line Tools for Xcode), or "
                                 "install Xcode, then choose Check again."}},
+            {"app_translocated", {"Move the launcher to Applications first",
+                                  "macOS runs an app straight from a download in a read-only copy, which can't be "
+                                  "updated. Drag VCSLauncher.app to Applications in Finder, start it from there, then "
+                                  "update again."}},
             {"cpu_unsupported", {"This Mac has an Intel processor",
                                  "The macOS version of the game is for Apple Silicon Macs (M1 and newer)."}},
         };
@@ -622,6 +626,11 @@ namespace launcher
         options.cwd = root;
         options.env = {{"VCS_PROGRESS", "json"}, {"PYTHONUTF8", "1"}, {"PYTHONIOENCODING", "utf-8"},
                        {"PYTHONUNBUFFERED", "1"}};
+#if defined(__APPLE__)
+        // a release's app bundle (Contents/MacOS/VCSLauncher): update.py apply replaces it
+        if (!payload.empty())
+            options.env.push_back({"VCS_APP_BUNDLE", pathText(exePath().parent_path().parent_path().parent_path())});
+#endif
         task->process = std::make_unique<Process>();
         std::string error;
         if (!task->process->start(argv, options, error))

@@ -4,8 +4,11 @@
     python tools/update.py check               the newest release vs this one (RELEASE.json's version)
     python tools/update.py apply [--zip FILE]  download the newest release's zip (or use FILE) and put it in place
     python3 tools/update.py apply [--appimage FILE]   Linux: the newest AppImage (or FILE) in place of the running one
-    python3 tools/update.py install --from DIR --to FOLDER   Linux: an AppImage's release files into the folder the
-                                               game is built in (the launcher runs it at start when they differ)
+    python3 tools/update.py install --from DIR --to FOLDER   Linux / macOS: an AppImage's (or VCSLauncher.app's)
+                                               release files into the folder the game is built in (the launcher runs it
+                                               at start when they differ)
+    python3 tools/update.py apply [--zip FILE]   macOS: the newest release's VCSLauncher.app in place of the running
+                                               one ($VCS_APP_BUNDLE, set by the launcher)
 
 apply replaces the release's files with the new release's, removes the files the old release had and the new one
 doesn't (RELEASE.json lists them), and keeps everything else: build/ (the built game, vcs.ini, the launcher's
@@ -17,6 +20,12 @@ The game is built in a folder of its own ($XDG_DATA_HOME/VCSRecomp/install, VCS_
 from the image with `install` - only files whose bytes changed are written, so a rebuild after an update stays
 incremental. `apply` there replaces the AppImage file itself ($APPIMAGE, set by the AppImage runtime); the next start
 of the launcher puts the new files in place.
+
+macOS releases are a zip holding VCSLauncher.app, whose Contents/Resources/release has the release's files; the game is
+built in ~/Library/Application Support/VCSRecomp/install, filled with `install` as from an AppImage. `apply` replaces
+the app bundle where it is (the old one moved aside first, then removed), unzipped with ditto so its signature and
+modes stay; the next start puts the new files in place. An app macOS runs from a quarantined download in place
+(App Translocation, a read-only copy) can't be replaced: it has to be moved to Applications first.
 """
 import argparse
 import filecmp
@@ -37,7 +46,7 @@ import toolchain as tc  # noqa: E402
 RELEASE_JSON = os.path.join(tc.ROOT, "RELEASE.json")
 UPDATE_DIR = os.path.join(tc.BUILD, "update")
 KEEP = ("build/", "generated/")  # never replaced or removed
-ASSET_SUFFIX = "-windows.zip" if tc.IS_WINDOWS else "-x86_64.AppImage"
+ASSET_SUFFIX = "-windows.zip" if tc.IS_WINDOWS else "-macos-arm64.zip" if tc.IS_MACOS else "-x86_64.AppImage"
 
 
 def this_release():
@@ -196,6 +205,59 @@ def apply_appimage(mine, appimage_path=None):
     tc.event(result="ok", version=version, restart=True)  # the launcher offers Restart (the new AppImage)
 
 
+def apply_app(mine, zip_path=None):
+    """macOS: the new release's VCSLauncher.app in place of the running one ($VCS_APP_BUNDLE). Its files go into the
+    install folder when the launcher next starts (install below)."""
+    import subprocess
+    bundle = os.environ.get("VCS_APP_BUNDLE", "")
+    if not bundle or not os.path.isdir(os.path.join(bundle, "Contents")):
+        tc.fail("not started from VCSLauncher.app ($VCS_APP_BUNDLE isn't set): a git clone updates with git pull",
+                "git_checkout")
+    if "/AppTranslocation/" in bundle:
+        tc.fail("macOS runs the launcher from a read-only copy of the download: move VCSLauncher.app to Applications "
+                "(drag it there in Finder), start it from there, then update again", "app_translocated")
+    version = None
+    if not zip_path:
+        found = latest(mine.get("repository", ""))
+        if not found or not found["zip"]:
+            tc.fail("no macOS release found on GitHub", "network")
+        if version_key(found["version"]) <= version_key(mine["version"]):
+            print("[update] already the newest (%s)" % mine["version"])
+            tc.event(result="ok", version=mine["version"])
+            return
+        zip_path = os.path.join(UPDATE_DIR, found["zip"].rsplit("/", 1)[1])
+        verified_download(found, zip_path)
+        version = found["version"]
+    tc.stage("apply", "Putting the new release in place")
+    unpacked = os.path.join(UPDATE_DIR, "app")
+    shutil.rmtree(unpacked, ignore_errors=True)
+    os.makedirs(unpacked)
+    if subprocess.run(["/usr/bin/ditto", "-x", "-k", zip_path, unpacked]).returncode != 0:
+        tc.fail("could not unzip " + zip_path, "error")
+    found_apps = [os.path.join(d, n) for d, ns, _ in os.walk(unpacked) for n in ns if n == "VCSLauncher.app"]
+    new = found_apps[0] if found_apps else ""
+    release = os.path.join(new, "Contents", "Resources", "release", "RELEASE.json")
+    if not os.path.isfile(release):
+        tc.fail("not a macOS release (no VCSLauncher.app with its files): " + zip_path, "error")
+    with open(release, encoding="utf-8") as f:
+        version = version or json.load(f).get("version", "?")
+    old = bundle.rstrip("/") + ".old"
+    shutil.rmtree(old, ignore_errors=True)
+    try:
+        os.rename(bundle, old)  # the running launcher keeps its open files
+        shutil.move(new, bundle)
+    except OSError as e:
+        if os.path.isdir(old) and not os.path.isdir(bundle):
+            os.rename(old, bundle)
+        tc.fail("could not replace %s (%s): move it to a folder you can write to (Applications), or download the new "
+                "release yourself" % (bundle, e), "update_incomplete")
+    shutil.rmtree(old, ignore_errors=True)
+    shutil.rmtree(unpacked, ignore_errors=True)
+    print("[update] %s -> %s: %s. Start the launcher again; it puts the new files in place, then build the game again."
+          % (mine["version"], version, bundle))
+    tc.event(result="ok", version=version, restart=True)
+
+
 def install(source, target):
     """An AppImage's release files (source: its usr/share/vcs-recomp/release) into the install folder: the files whose
     bytes differ written, the ones the previous release had and this one doesn't removed (RELEASE.json lists them),
@@ -249,6 +311,9 @@ def apply(zip_path=None, appimage_path=None):
     mine = this_release()
     if not mine:
         tc.fail("not a release folder (no RELEASE.json): a git clone updates with git pull", "git_checkout")
+    if tc.IS_MACOS:
+        apply_app(mine, zip_path)
+        return
     if not tc.IS_WINDOWS:
         apply_appimage(mine, appimage_path)
         return

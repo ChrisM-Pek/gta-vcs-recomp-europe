@@ -25,6 +25,14 @@ ubuntu-22.04 - or the release refuses it, --allow-new-glibc for a test). Inside 
 desktop entry and icon, and usr/share/vcs-recomp/release/ - the same files as the zip but Python and FFmpeg (the
 system's) - which the launcher copies at start to the folder the game is built in (tools/update.py install). Made by
 appimagetool with the type 2 runtime (static: no libfuse2 needed), both pinned below by version and SHA-256.
+
+    python3 tools/release.py --platform macos [--ref TAG | --worktree] [--launcher APP]
+
+Writes build/dist/VCS-Recomp-<version>-macos-arm64.zip and its .sha256 (docs/MACOS.md): VCSLauncher.app, signed
+ad-hoc (DECISIONS.md 2026-11-12), with the release's files in Contents/Resources/release - the source, VERSION,
+RELEASE.json, deps/ for macOS (FFmpeg's source and the shader compilers' included), licences; no Python (the Command
+Line Tools' is used). The launcher copies them at start to ~/Library/Application Support/VCSRecomp/install, as the
+AppImage does. Zipped with ditto, which keeps the bundle's modes and signature.
 """
 import argparse
 import hashlib
@@ -87,7 +95,7 @@ def copy_source(stage, ref, worktree):
 
 
 def build_launcher():
-    exe = os.path.join(tc.ROOT, "VCSLauncher.exe" if tc.IS_WINDOWS else "VCSLauncher")
+    exe = os.path.join(tc.ROOT, "VCSLauncher.exe" if tc.IS_WINDOWS else "VCSLauncher.app" if tc.IS_MACOS else "VCSLauncher")
     if subprocess.run([sys.executable, tc.tool("build.py"), "--launcher"]).returncode != 0:
         tc.fail("the launcher didn't build")
     return exe
@@ -367,6 +375,75 @@ def release_linux(a, ref, version):
     tc.event(result="ok", path=out, version=version)
 
 
+def self_test_app(app):
+    """The app as a player starts it: it copies its files into a fresh install folder, then checks itself (the scripts
+    there, the Command Line Tools' Python running them, doctor.py's answer, Metal offscreen)."""
+    folder = os.path.join(DIST, "selftest-install")
+    shutil.rmtree(folder, ignore_errors=True)
+    out = os.path.join(DIST, "selftest.txt")
+    env = dict(os.environ, VCS_INSTALL_DIR=folder)
+    code = subprocess.run([os.path.join(app, "Contents", "MacOS", "VCSLauncher"), "--self-test", "--out", out],
+                          env=env).returncode
+    report = "(no output)"
+    if os.path.isfile(out):
+        with open(out, encoding="utf-8", errors="replace") as f:
+            report = f.read()
+        os.remove(out)
+    for line in report.splitlines():
+        print("[release]   " + line)
+    shutil.rmtree(folder, ignore_errors=True)
+    if code != 0:
+        tc.fail("the app failed its self-test (above): nothing was written", "release_selftest")
+
+
+def release_macos(a, ref, version):
+    name = "VCS-Recomp-%s-macos-arm64" % version
+    stage = os.path.join(DIST, name)
+    if os.path.isdir(stage):
+        shutil.rmtree(stage)
+    launcher = a.launcher or build_launcher()
+    if not os.path.isfile(os.path.join(launcher, "Contents", "MacOS", "VCSLauncher")):
+        tc.fail("not an app bundle: " + launcher, "release_failed")
+    app = os.path.join(stage, "VCSLauncher.app")
+    shutil.copytree(launcher, app, symlinks=True)
+    payload = os.path.join(app, "Contents", "Resources", "release")
+    shutil.rmtree(payload, ignore_errors=True)  # a launcher that was packaged before
+    os.makedirs(payload)
+    print("[release] %s: source %s" % (name, "working tree" if a.worktree else ref))
+    copy_source(payload, ref, a.worktree)
+    with open(os.path.join(payload, "VERSION"), "w", encoding="utf-8") as f:
+        f.write(version + "\n")
+    print("[release] libraries (deps/, macOS: with sse2neon, the shader compilers and FFmpeg's source)")
+    bundle_deps(payload, "macos")
+    licenses(payload)
+    files = sorted(os.path.relpath(os.path.join(d, f), payload).replace(os.sep, "/")
+                   for d, _, fs in os.walk(payload) for f in fs)
+    commit = "" if a.worktree else git("rev-parse", ref, text=True).strip()
+    with open(os.path.join(payload, "RELEASE.json"), "w", encoding="utf-8") as f:
+        json.dump({"version": version, "repository": repository(), "commit": commit, "platform": "macos",
+                   "files": files + ["RELEASE.json"]}, f, indent=0)
+    guard(payload)
+    # ad-hoc: no Apple Developer ID yet (players allow the app once in System Settings > Privacy & Security)
+    if subprocess.run(["/usr/bin/codesign", "--force", "--deep", "--sign", "-", "--timestamp=none", app]).returncode != 0:
+        tc.fail("codesign failed (above)", "release_failed")
+    if subprocess.run(["/usr/bin/codesign", "--verify", "--deep", "--strict", app]).returncode != 0:
+        tc.fail("the app's signature doesn't verify (above)", "release_failed")
+    self_test_app(app)
+    os.makedirs(a.out, exist_ok=True)
+    out = os.path.join(a.out, name + ".zip")
+    if os.path.exists(out):
+        os.remove(out)
+    print("[release] zipping %d files" % (len(files) + 1))
+    if subprocess.run(["/usr/bin/ditto", "-c", "-k", "--sequesterRsrc", "--keepParent", app, out]).returncode != 0:
+        tc.fail("ditto failed (above)", "release_failed")
+    shutil.rmtree(stage)
+    digest = hashlib.sha256(open(out, "rb").read()).hexdigest()
+    with open(out + ".sha256", "w", encoding="utf-8") as f:
+        f.write("%s  %s\n" % (digest, os.path.basename(out)))
+    print("[release] ok: %s (%.0f MB, sha256 %s)" % (out, os.path.getsize(out) / (1 << 20), digest[:16]))
+    tc.event(result="ok", path=out, version=version)
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     src = ap.add_mutually_exclusive_group()
@@ -377,10 +454,11 @@ def main():
     ap.add_argument("--python", default="%d.%d.%d" % sys.version_info[:3])
     ap.add_argument("--allow-dirty", action="store_true", help="package --ref even with uncommitted changes")
     ap.add_argument("--out", default=DIST)
-    ap.add_argument("--platform", choices=("windows", "linux"), default="windows" if tc.IS_WINDOWS else "linux")
+    ap.add_argument("--platform", choices=("windows", "linux", "macos"),
+                    default="windows" if tc.IS_WINDOWS else "macos" if tc.IS_MACOS else "linux")
     ap.add_argument("--allow-new-glibc", action="store_true", help="Linux: a launcher built on a newer system (tests)")
     a = ap.parse_args()
-    if (a.platform == "windows") != tc.IS_WINDOWS:
+    if (a.platform == "windows") != tc.IS_WINDOWS or (a.platform == "macos") != tc.IS_MACOS:
         tc.fail("a %s release is made on %s (its launcher is built here)" % (a.platform, a.platform), "release_platform")
 
     ref = a.ref or "HEAD"
@@ -412,6 +490,9 @@ def main():
     version = a.version or tag_version or repo_version or "0.0.0-dev"
     if a.platform == "linux":
         release_linux(a, ref, version)
+        return
+    if a.platform == "macos":
+        release_macos(a, ref, version)
         return
     name = "VCS-Recomp-%s-windows" % version
     stage = os.path.join(DIST, name)

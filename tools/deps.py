@@ -131,7 +131,10 @@ def fetch(out_dir, platform=None):
             tmp = target + ".tar.xz"
             download(url, tmp)
             with tarfile.open(tmp) as t:
-                t.extractall(target + ".x", filter="data")
+                if hasattr(tarfile, "data_filter"):  # Python 3.12 / backports; macOS' own python3 is 3.9
+                    t.extractall(target + ".x", filter="data")
+                else:
+                    t.extractall(target + ".x")
             os.remove(tmp)
             inner = os.listdir(target + ".x")  # the archive holds one folder
             _move(os.path.join(target + ".x", inner[0]) if len(inner) == 1 else target + ".x", target)

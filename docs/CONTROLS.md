@@ -82,8 +82,10 @@ game-internals.md 12c):
 
 **In the scopes** (sniper rifles, rocket launcher, M16 view, camera, binoculars) the mouse turns the view itself, 1:1,
 with Mouse camera on (zoomed in it turns slower). **Mouse wheel** (Keyboard page, on by default): on foot down is the
-next weapon and up the previous one (R2 / L2, one per notch); in the sniper scope, the camera and binoculars it zooms.
-It does nothing of this while a control is bound to the wheel, while driving or while aiming.
+next weapon and up the previous one (R2 / L2, one per notch); in the sniper scope, the camera and binoculars it zooms;
+while driving down is the next radio station and up the one before (the game's own L1 steps forwards only: a step back
+is the station written two back and L1 - game-internals.md 12a; nothing happens while the radio plays an announcement,
+as with L1). It does nothing of this while a control is bound to the wheel or while aiming.
 
 ## Keyboard page
 
@@ -101,7 +103,9 @@ It does nothing of this while a control is bound to the wheel, while driving or 
   in the menus and when the window is in the background). **On foot** it turns the camera itself, as in a PC game:
   every movement turns it by the same angle at any speed and frame rate (100%: 400 counts - half an inch at 800 DPI -
   a radian), moving the mouse forward looks up. Looking up / down goes through the game's own stick pitch, which has a
-  top speed (about 1.5 rad/s at 100%); a faster movement still arrives, a few frames later. **In the scopes and free
+  top speed (about 1.5 rad/s at 100%); a faster movement still arrives, a few frames later. Turned toward a wall, the
+  camera is pulled in toward the player, as the gamepad's is (`VCS_FOOT_WALL=0`: it stops at the wall's edge, as
+  before 2026-11-11). **In the scopes and free
   aim** it turns the view itself too (above). **Behind a car, bike or boat** it turns the camera itself as well, and
   while the mouse moves the camera stays where it is put - the car neither drags it along nor pulls it back; **Car
   camera return** (1.5 s; 0.5-5 s or Never) after the mouse stops it eases back behind the vehicle (about 2 s) and the
@@ -188,7 +192,7 @@ held is not Cross in the pause menu (nor a binding). Game > **In the background*
 |---|---|
 | F3 | performance overlay: game fps and frame-time percentiles, EE thread time per phase (game / render / IOP / wait), GS and DMA counters, host frame and GPU submit times, audio buffer, and a frame-time graph; under it (beside it on a short screen) the game's state: the player's position, heading, state, health, armour, money and weapons, the vehicle (model, position, heading, health, speed), the camera (mode, position, heading, pitch, FOV), the clock, area, world level, game time, time step, pauses, pool use and the running scripts (the mission's with its IP). The same lines answer `python tools/gamectl.py gameinfo` |
 | F4 | start / stop recording one CSV row per game frame to `perf_<date>_<time>.csv` (working directory); summarise with `python tools/perf_report.py <file>` |
-| F12 | (hardware renderer) list the next frame's draws on stderr and dump its render targets |
+| F12 | (hardware renderer, only with `PS2X_HW_DUMP_KEY=1`: F12 is Steam's and Bandicam's key) list the next frame's draws on stderr and dump its render targets |
 
 ## Test runs without a window
 `python tools/run.py 600 test --hidden` starts the game with no window on the desktop, no sound, and the physical

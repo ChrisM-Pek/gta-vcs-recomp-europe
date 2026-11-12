@@ -236,7 +236,7 @@ Result:
   17.7-18.6 game fps over four runs (baseline 17.9-18.2); main-thread GPU submit
   0.4 ms (GL execution was 3.2 ms; 3.7-3.9 with the stage 2 readback). The extra
   frame of display latency from stage 2 is gone.
-- Checked: `PS2X_HW_SCALE=2`, `PS2X_HW_DUMP` / F12 (render targets and display as
+- Checked: `PS2X_HW_SCALE=2`, `PS2X_HW_DUMP` / F12 (with `PS2X_HW_DUMP_KEY=1` since 2026-11-10; render targets and display as
   PPM), hidden runs, resize. vcs.exe no longer imports opengl32.dll.
 
 At this point the game runs on D3D11 with no OpenGL or raylib left. Frame rate is

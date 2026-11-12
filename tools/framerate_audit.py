@@ -27,6 +27,8 @@ Scenarios (each from a fresh teleport, so earlier ones don't leak into later one
   bikebrake the PCJ-600 there at full throttle for 6 s (36 m/s), then the brake: deceleration, nose dip, the heading's
           swing (fishtailing: 11 degrees at 30 fps, 58 at 144 and spun round onto its side at 240 before the brake
           wobble was put on the step), lean, roll at the end (up z), whether the rider came off
+  rotor   a Maverick standing in an alley narrower than its rotor: the health its blades cost per second (per frame
+          before 2026-11-10: 382 a second at 30 fps, 1590 at 144 - on fire within a second)
   carwater the car dropped into the sea at 15 m/s: its speed 1 s after it reaches the water (the water's drag)
   bikewater the PCJ-600 dropped into the sea: how deep it settles
   ferris  the player in a ferris wheel carriage for 10 s: how long he stays where he stood in it, how far he drifts
@@ -452,6 +454,41 @@ def scenario_bikewater(s):
     return {"depth_m": water - sum(zs) / len(zs)}
 
 
+ROTOR_ALLEY = (306.0, -648.0)  # an alley downtown, 8 m between its walls: a helicopter's main rotor is in both
+MAVERICK = 213
+VEHICLE_HEALTH = 0x27C  # float, 1000 new (found 2026-11-10: the float that falls while the blades are in the walls)
+
+
+def scenario_rotor(s):
+    """CVehicle's blade test (FUN_003EE308) sets a damage impulse on every frame a blade touches something, and the
+    vehicle loses the same health for it each frame (12.75 for the Maverick against a wall) - 4.8 times as fast at 144
+    fps (GitHub issue 102). vcs_physics_timing.cpp lets the blades count once per 1/30 s."""
+    g, S = s.g, rig.Scm
+    leave_vehicle(s)
+    g.teleport(ROTOR_ALLEY[0], ROTOR_ALLEY[1], -100.0)
+    s.wait_sim(2.0)
+    x, y, z = s.pos()
+    ints, _ = g.scm_outputs(S.op(S.REQUEST_MODEL, S.i(MAVERICK)) + S.op(S.LOAD_ALL_MODELS_NOW) +
+                            S.op(S.CREATE_CAR, S.i(MAVERICK), S.f(x), S.f(y), S.f(-100.0), S.LOCAL0) +
+                            S.op(S.WARP_CHAR_INTO_CAR, S.PLAYER, S.LOCAL0), 1)
+    vehicle = g.u32(g.u32(0x487A98)) + (ints[0] >> 8) * 0x8C0
+    rows, t0 = [], s.clock()
+    while s.clock() - t0 < 4.0:
+        rows.append((s.clock() - t0, g.peekf(vehicle + VEHICLE_HEALTH, 1)[0]))
+        time.sleep(0.005)
+    # between 900 and 300: the rotor has spun up, and the helicopter is not burning yet (below 250 it loses more)
+    a = next((r for r in rows if r[1] < 900.0), None)
+    b = next((r for r in rows if r[1] < 300.0), rows[-1])
+    S2 = rig.Scm
+    g.scm(S2.op(0x0216, S2.PLAYER, S2.f(x), S2.f(y + 12.0), S2.f(z)) + S2.op(DELETE_CAR, S2.i(ints[0])))  # WARP_CHAR_FROM_CAR_TO_COORD
+    s.wait_sim(1.0)
+    fx, fy, h = FOOT_SPOT
+    s.place(fx, fy, heading=h)
+    if not a or b[0] <= a[0]:
+        return {"health_per_s": 0.0, "health_after_4s": rows[-1][1]}
+    return {"health_per_s": (a[1] - b[1]) / (b[0] - a[0]), "seconds_900_to_300": b[0] - a[0], "health_after_4s": rows[-1][1]}
+
+
 OBJECT_POOL = 0x487AA4  # CPool of objects: 475 entries of 0x220 bytes (game-internals.md 12)
 FERRIS_CARRIAGE = 7069  # the model of the ferris wheel's 12 carriages, which turn in the plane x = 342.19
 FERRIS_SPOT = (342.0, -250.0)  # on the ground beside the wheel
@@ -645,6 +682,7 @@ SCENARIOS = {
     "bikelean": scenario_bikelean,
     "brake": scenario_brake,
     "bikebrake": scenario_bikebrake,
+    "rotor": scenario_rotor,
     "carwater": scenario_carwater,
     "bikewater": scenario_bikewater,
     "ferris": scenario_ferris,

@@ -28,6 +28,7 @@
 #include "game/vcs_aim.h"
 #include "game/vcs_framerate.h"
 #include "game/vcs_physics_timing.h"
+#include "game/vcs_script_fixes.h"
 #include "game/vcs_movie.h"
 #include "game/vcs_hud.h"
 #include "game/vcs_input.h"
@@ -710,6 +711,29 @@ namespace
         if (s.choices.size() > 1)
             settings::add(s);
 
+        // The graphics card, on a PC with more than one (GitHub issue 112: a laptop started the game on its integrated
+        // chip): the cards this PC has, by name, the fastest first and the default. vcs.ini keeps the card's id (rhi::Gpu);
+        // a card no longer there falls back to the fastest. The log's "[rhi] graphics cards" line names them with their
+        // ids (VCS_GPU=<id> for one run), "[present] ... on ..." the one in use.
+        if (const std::vector<rhi::Gpu> gpus = rhi::listGpus(); !gpus.empty())
+        {
+            s = {};
+            s.key = "display.gpu";
+            s.page = "Graphics";
+            s.section = "Renderer";
+            s.label = "Graphics card";
+            s.help = "The graphics card the game draws with, on a PC with more than one (most gaming laptops). The first "
+                     "is the fastest, and the default.";
+            s.type = Type::Choice;
+            for (const rhi::Gpu &g : gpus)
+                s.choices.push_back({g.name + (g.integrated ? " (integrated)" : ""), g.id});
+            s.defaultValue = gpus[0].id;
+            s.apply = Apply::Restart;
+            s.env = "VCS_GPU";
+            s.onChange = [](int v) { present::setGpu(v); };
+            settings::add(s);
+        }
+
         vcs::input::registerSettings(); // the Keyboard & mouse and Gamepad pages (game/vcs_input.h)
         vcs::prompts::registerSettings(); // the Enhancements page: button prompts by device (game/vcs_prompts.h)
         vcs::world::registerSettings();   // Enhancements > World: density, draw distance (game/vcs_world_detail.h)
@@ -937,6 +961,7 @@ int main(int argc, char *argv[])
 #ifdef VCS_EXPERIMENTAL_PAL
         vcs::installFrameRateHooks(runtime);
         vcs::installPhysicsTimingHooks(runtime);
+        vcs::installScriptFixHooks(runtime);
         vcs::installDisplayHooks(runtime);
         vcs::installHudHooks(runtime);
         vcs::installMovieHooks(runtime);

@@ -64,8 +64,16 @@ prompt) or opens a terminal with the command. `VCS_LAUNCHER_VIDEO=x11|wayland`, 
 ## Running
 
 - The renderer is Vulkan (`[present] Vulkan on <GPU>` in the log). `VCS_RHI=null` draws nothing: the null backend,
-  for checking the CPU side on its own. `VCS_VK_DEVICE=<number | part of the name>` picks the GPU when there are
-  several.
+  for checking the CPU side on its own.
+- **Which graphics card**: Graphics > **Graphics card** lists the cards by name, a dedicated card before an integrated
+  one ("(integrated)" after its name), the first the default (since 2026-11-12, DECISIONS.md; `VCS_GPU=<id>` for one
+  run). The log's `[rhi] graphics cards, fastest first:` line has the same list, each card with its id and, when it
+  cannot be used, what it lacks; after "not in the list:" the devices the menu leaves out (software renderers, Vulkan
+  older than 1.3); after "using" the one taken. On the laptop: `Intel(R) HD Graphics 520 (SKL GT2) (integrated)
+  [364574466]; not in the list: llvmpipe (LLVM 20.1.2, 256 bits) (software); using Intel(R) HD Graphics 520 (SKL
+  GT2)`. `VCS_VK_DEVICE=<number | part of the name>` picks one whatever the setting says ("(VCS_VK_DEVICE)" after the
+  name). Mesa's software renderer (llvmpipe) is only taken when nothing else can be used, and the log then says so
+  (`[rhi] Vulkan: drawing with the software renderer`): a few frames a second.
 - **Hidden test runs** (`PS2X_HIDDEN=1`, everything in `tools/` uses it) make no swapchain at all: the back buffer is
   a texture. Presenting to a hidden window can block forever under Wayland (FIFO waits for a frame callback that never
   comes), and screenshots come from off-screen captures anyway.
@@ -89,6 +97,14 @@ prompt) or opens a terminal with the command. `VCS_LAUNCHER_VIDEO=x11|wayland`, 
   descriptor writes, passes, suspended passes, barriers, upload volume and the CPU's waits (fence, acquire, submit,
   present) per frame every 5 s. `PS2X_GPU_TIMING=1` gives GPU time per marker as on D3D11 (gs_hw breaks the pass at
   every draw for it); `PS2X_RHI_GPU_TIME=1` times the passes as they are and the whole frame.
+- **A locked desktop** (the greeter on another VT; found 2026-11-10): logind takes the card's device nodes
+  (`/dev/dri/*`, an ACL for the active session's user) away, so Vulkan finds only llvmpipe (`vulkaninfo --summary`:
+  "Unable to open device /dev/dri/renderD128: Permission denied") and the game draws on the processor at ~6 fps; and
+  the window manager maps no window, so a shown window waits in `SDL_ShowWindow` for ever (the log ends at
+  `[platform] full screen`). Neither is the game's: test with the desktop unlocked. What still works behind the lock,
+  from a shell without `DISPLAY`: `DISPLAY=:0 XAUTHORITY=~/.Xauthority VCS_RHI=null` and hidden runs (the tools'
+  default) - the game at full speed without a picture, which is enough for every check that reads the game's memory
+  or the log (`controls_check.py` then fails its "screenshot key": the PNG is black).
 - **Benchmarks**: run without the control channel (`PS2X_PERF_LOG` gives the [perf] lines): the control channel turns
   on the brightness probe, a full GPU wait every frame (PERFORMANCE.md 16).
 
@@ -126,4 +142,5 @@ prompt) or opens a terminal with the command. `VCS_LAUNCHER_VIDEO=x11|wayland`, 
 | The launcher: X11 + Wayland, Vulkan, FreeType, portal dialogs, `--install-deps`; CI job on Ubuntu 24.04 (lavapipe) | done (2026-11-01): checked in nested Xephyr / weston (docs/LAUNCHER.md "Checked (Linux)"); GNOME / KDE by hand to do; a Linux release to do |
 | The Windows stutter work (PERFORMANCE.md 21-24) on Linux | done (2026-11-02, PERFORMANCE.md 25): portable, in; Vulkan's free-threaded texture creation added, off by default (no gain on the laptop; `PS2X_HW_EARLY_TEXTURES=1`); `cruise.py` from a copy of the player's card |
 | Hitches driving in the city on the laptop (PERFORMANCE.md 26) | measured: the main thread's driver CPU per draw and the GPU, both at the 60 Hz budget in dense views. Done: no shader depth on Vulkan (early Z), constants written only when they change, redundant Vulkan state not recorded (GPU -10%, main thread -10-15%); then (PERFORMANCE.md 27) depth as dynamic state (pipeline binds -60 to -70%) and vertex uploads of the written bytes only: main thread -12 to -16%, its frames over 20 ms 61 -> 24 |
+| The GitHub issues round of 2026-11-10 (0.2.5's changes: Purple Haze, the radio wheel, rotor damage, F12, the graphics card) | done (2026-11-10; PROGRESS.md milestone 9 has the numbers): first behind a locked desktop on the null renderer, then on the HD 520 with the window shown - all pass (`haze_check.py` with its picture, `controls_check.py` 75 of 75, `shakedown.py`), 57.5 fps at a 60 cap as before; the Vulkan backend got its `[rhi] graphics cards` line. 2026-11-12: merged with the setting's list of cards by name; the list, the "(integrated)" mark and the one log line seen on the HD 520. Not checked: a ThinLTO build, two cards |
 | Performance on this laptop (i5 Skylake, HD 520: the "modest hardware" target) in PERFORMANCE.md | 30 locked (original timing), 60 locked at a 60 cap, ~83 shown fps uncapped (frame-rate independent; PERFORMANCE.md 16-18) |

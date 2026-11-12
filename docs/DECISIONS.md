@@ -1255,3 +1255,172 @@ on the Enhancements page.
   skipping the whole update would also hold back its burst gate and animation, so bursts would end late.
 - **The next shot is due one interval after the last was due**, not after it came, with 2 ms tolerance: the rate is
   exact whatever the frame length, and at 30 fps every frame (33 / 34 ms) still fires - identical to the original.
+
+## 2026-11-10 - A round of GitHub issues: 41, 89, 90, 91, 93, 102, 112 (the user's request; the choices below are Claude's)
+
+The user asked for the most common GitHub issues to be gathered and the first two steps of the plan done: a triage
+sweep and the small fixes with clear causes. No choice below was put to the user first; they are for review.
+
+- **Purple Haze (41): the softlock is fixed at every frame rate, the cutscene only above 30 fps.** The main script's
+  wait for an audio line that never ends once the line's slot is freed is a hang on a PS2 too, whenever a speaker dies
+  between "load" and "loaded"; ending it changes nothing else, so it has no option and applies at 30 fps as well
+  (`VCS_SCRIPT_FIXES=0` is the reference, rule 1). The truck is parked early only while the frame is not the PS2's:
+  at 30 fps the original plays as it always did. Parking it - with the mission's own commands, behind the fade, half a
+  second before the mission does - was chosen over making the thugs unhurtable (they would still be knocked down and
+  the scene would fade in on a man getting up) and over chasing the collision itself (the hit differs with the step
+  inside the engine's collision response; noted as open in game-internals.md 13).
+- **Rotor blades (102) count once per 1/30 s rather than being scaled.** The blade test hands a damage impulse to
+  VehicleDamage, which has a threshold: an impulse scaled by the step would fall under it at high frame rates and do
+  nothing at all. Letting it through on one frame per PS2 frame keeps each hit what it was and the rate what it was on
+  the PS2; the sparks and the push off the wall stay every frame. Under `VCS_PHYSICS_TIMESTEP`, with the other
+  per-frame vehicle physics.
+- **The haze (93) is a screen effect in every HUD mode**: stretched across the picture with the HUD at Keep 4:3 too,
+  as fades and the scope's mask are. `VCS_HAZE_FILL=0` is the old behaviour.
+- **The radio on the mouse wheel (90) is part of Keyboard > Mouse wheel**, not a setting of its own: the wheel did
+  nothing in a vehicle, the option is on by default and a wheel bound to a control still wins. Down is next, as for
+  weapons. The step back goes through the game's own retune (its click, the station's name, its 30-frame wait) rather
+  than a stream switched behind its back: one byte written, and written back when the game did not take the press.
+  Nine quick presses of L1 would also land one station back, but click nine times.
+- **F12 (89) needs `PS2X_HW_DUMP_KEY=1`** rather than a setting or another key: the frame dump is a developer's tool
+  (hundreds of lines on stderr, the render targets as files next to the game), and every free F key is somebody's
+  screenshot key. `PS2X_HW_DUMP=<frame>` works as before.
+- **The graphics card (112): Fastest by default, a setting to change it.** A game should start on the dedicated card;
+  Graphics > Graphics card offers Power saving (the integrated one) and System default (what it was: Windows' default
+  adapter, which follows Windows' own Graphics settings and the driver's panel). Chosen through DXGI
+  (`EnumAdapterByGpuPreference`, Windows 10 1803+) with the default adapter as the fall-back, not through the
+  `NvOptimusEnablement` / `AmdPowerXpressRequestHighPerformance` exports: those cannot be turned off by a setting. The
+  launcher stays on the default adapter (it idles; no reason to wake the big card). Not checked on a PC with two cards -
+  the dev machine has one; the log's `[rhi] graphics cards` line is there for the reporter's answer.
+- **vcs.exe's icon and details (91)** are the launcher's icon and the release's VERSION. The version reaches the
+  resource file through a generated header, not compile definitions: a definition on the target would be on every
+  generated file's command line and rebuild the whole game at each release.
+
+## 2026-11-10 - The issues round checked on Linux (the user's request; the choices below are Claude's)
+
+The user asked for the latest changes to be reviewed and made sure of on Linux. The laptop's desktop was locked while
+this ran. No choice below was put to the user first; they are for review.
+
+- **The lock is not worked around.** Locked, the user's session has neither the graphics card (logind hands
+  `/dev/dri/*` to the greeter) nor a window manager that maps windows. No VT switch, no unlock, no change to the
+  device's permissions: the checks that read the game's memory or its log ran on the null renderer (the game at full
+  speed, no picture), one picture came from llvmpipe, and what needs the card is listed as not checked (PROGRESS.md
+  milestone 9, LINUX.md "A locked desktop").
+- **Hidden runs, against the laptop's rule of shown test windows** (2026-10-30): a locked desktop shows none - a shown
+  window never leaves `SDL_ShowWindow`. The rule stands for an unlocked desktop.
+- **The Vulkan backend prints `[rhi] graphics cards` too**, as D3D11 does since issue 112: the setting's comment,
+  PROGRESS.md and the entry above name that line as the answer to "which card did it take?", and on Linux there was
+  none. Each device comes with its kind (Vulkan's device type: dedicated, integrated, virtual, software) and, when it
+  cannot be used, what it lacks. A second line says when only Mesa's software renderer is left: found here by
+  accident (the locked desktop), it is also what a player without a Vulkan driver gets - a few frames a second, and
+  until now nothing in the log to say why. (2026-11-12: made one line with the one the cards-by-name change brought;
+  that entry's last point.)
+- **No window icon for the game on Linux - left to the user.** Issue 91 was Explorer's blank vcs.exe; its fix (the
+  exe's resources) also gives the Windows window its icon, and Linux has no counterpart: the game's window shows the
+  desktop's generic one. `SDL_SetWindowIcon` with the pixels `launcher/make_icon.py --header` already makes for the
+  launcher would do it on X11 (and on Wayland where the compositor has xdg-toplevel-icon). Not asked for, so not added.
+- **0.2.5's draft notes**: the graphics card bullet says what Linux gets (it already took the dedicated card; Fastest
+  and Power saving), and the vcs.exe bullet is prefixed `Windows:`, as AGENTS.md asks of one-platform bullets.
+
+## 2026-11-10 - The RSL recordings get a memory limit (GitHub issue 115; the user's go-ahead, the choices are Claude's)
+
+The user asked for issue 115 (vcs.exe at 5.3 GB) to be looked into and, shown the cause and a plan, said: implement
+the recording cap "as long as it doesn't reduce your ability or prevent you from working on the game". The numbers
+are in PERFORMANCE.md 31; the choices:
+
+- **A limit in bytes, least recently used first** - not a count (recordings run from a few hundred bytes to hundreds
+  of KB), not an age (standing still for an hour must cost nothing), and not recordings keyed by what the block holds
+  instead of where it is. That last one would remove the cause - the same model at a new address would find its
+  recording - but every block would have to be hashed to be looked up, which is the work step 4's skip was made to
+  avoid, and it changes what the verify tools compare. The limit changes nothing about a recording while it lives.
+- **256 MB by default.** One place needs 12-36 MB of recordings, so 256 MB is several districts: driving back and
+  forth across town replays what it replayed before (on the check's route about as many blocks are recorded as with
+  no limit at all). The game then levels off at 650-700 MB on the dev machine at 3x, against 300-350 MB with no
+  recordings and 842 MB and rising after 15 minutes without the limit. With 64 MB it levels off at ~470 MB and
+  records about twice as many world blocks. At a 60 fps cap that costs nothing that shows (the stutter rig at 24
+  MB against no limit: the same); above 100 fps, where the render worker is the limit and a replay is what saves its
+  time, it was not measured - so the default is the size at which hardly more is recorded than before, and about
+  200 MB is what a smaller one could still give back.
+- **Not a setting in the menu**: nothing a player should have to choose. `VCS_RSL_RECORDINGS_MB` for a run (0: no
+  limit - the behaviour before, rule 1's switch back).
+- **A recording is dropped in two steps** (its confirmation withdrawn first, freed when the game thread has applied
+  that) rather than leaving it to the worker's existing fall-back, which reads the block from guest RAM: that
+  fall-back was written for a case that never happens (0 of 12 million skipped blocks) and reads memory the game
+  thread may be writing by then. With the two steps it still never happens, and `VCS_RSL_SKIP_VERIFY` keeps meaning
+  what it meant: a skip decided for a block whose recording is gone would be reported as wrong.
+- **The condition - nothing taken from the tools.** Recordings, replays and both verify modes work as before; a
+  recording that is gone is one that was never made. `VCS_RSL_WORLD_LOG=1` gained a `memory:` line (held, dropped,
+  recorded again, the slowest sweep) and `tools/memcheck.py` is the check that it stays fixed. Tests that pin
+  `VCS_TIMING=0 VCS_FPS=30` are untouched; none of the rig's runs reaches 256 MB of recordings.
+- **Not done**: an `Op` is 104 bytes for every UNPACK because each carries a mesh and a raster name it does not use;
+  a leaner layout would hold more per MB (not measured). Left, as the limit makes it a question of tuning.
+
+## 2026-11-11 - A mouse camera of its own on foot: built in three rounds, then taken out (the user's decision)
+
+The user asked for the on-foot mouse controls to be upgraded as the vehicle camera had been: the camera free of the
+player, back behind him while he moves, the gamepad as before, the camera no longer stopping at a building, and all
+of it feeling like PC controls rather than a pretend gamepad. Three builds the same day, each played by the user:
+
+1. The movement keys kept the direction they were pressed at whatever the camera did (the user's own choice among
+   three); the mouse only looked. Verdict: "it would be better for the player character to always be moving in the
+   general direction of the camera. Being disconnected feels bad."
+2. The keys followed the camera again; the camera held still after the mouse or a change of keys, then turned behind
+   him slowly. Verdict: a good direction, but the camera should follow where he travels more actively, "a bit closer
+   to the gamepad camera" - travelling east or south it stayed where it was.
+3. The camera came round behind where he travels at once, the keys keeping their heading through that turn only.
+   Then: "revert all changes that have been made today related to the camera while walking."
+
+So all of it is out again - the module, its setting (Walking camera return), its checks, the notes - by one revert of
+the three commits (6948b7a, 993d670, ea5628e stay in the history). On foot the mouse turns the game's own camera at
+the pad read and steers the player, as since 2026-10-29. **The wall stop is back with it** (the mouse's camera
+standing at a building's edge): its fix was part of the module. Kept, as the rules of this repository ask: what was
+found out about the game (game-internals.md 12b "On foot: the stick, the camera on its string, walls"), the open item
+in PROGRESS.md, and this entry. Not kept: the `--only` option of `tools/controls_check.py` and the gamepad-driven
+`framerate_audit.py` footcam scenario, which came with those commits.
+
+For another attempt: every build was exact to its specification in the checks and still wrong in the hand - the
+question was never the mechanism. Worth settling by playing, before anything is built to completion: whether the
+camera should turn by itself at all on the keyboard and mouse, and what a key should mean once it has.
+
+## 2026-11-11 - The wall fix alone, on the mouse look as it was (the user's go-ahead)
+
+After the revert above the user was asked whether the wall fix should come back by itself and said: "Yes, wall fix
+only." So it is the smallest thing that does it, in the pad read where the mouse already turns the camera - no hook,
+no camera of its own: while the mouse turns the on-foot camera the update is told to take the path it takes for a
+turned stick (the pull-in toward the player), through the game's own switch for it (`0x487E58`). Claude's choices:
+
+- **A tail of 300 ms after the mouse's last turn.** A slow hand, or a high frame rate, leaves frames without a count
+  between frames with one; on those the game's own turn away from a wall he walks along would have worked against
+  the mouse. Standing, where the user saw the fault, it makes no difference.
+- **Nothing else of the on-foot camera changes**: the game's swing behind him, its string, the keys following the
+  camera are as they were. With the mouse at rest the game's own handling of walls is back.
+- `VCS_FOOT_WALL=0` is the switch back (rule 1); not a setting - there is nothing to choose.
+
+## 2026-11-12 - Graphics > Graphics card lists the cards by name (the user's request)
+
+- **The cards, not "Fastest / Power saving / System default"**: the user asked for the list of cards the game can see,
+  with "(integrated)" after the CPU's own chip. The first is the fastest (DXGI's high-performance ranking; Vulkan:
+  discrete before integrated) and the default, so nothing changes for a player who never opens the setting. "System
+  default" (Windows' default adapter) went with the old choices; Windows' own Graphics settings no longer steer vcs.exe.
+- **vcs.ini keeps a card id, not a place in the list**: settings are ints, and a list's order changes when a card is
+  added, removed or ranked differently. The id is a hash of the PCI vendor and device ids and which of several identical
+  cards it is (`rhi::gpuId`): the same every start and under D3D11 and Vulkan (the list comes from D3D11 where it is
+  built - its names are Windows' -, the Vulkan backend matches the id against its own cards). A card no longer there is
+  an id no choice has: the setting falls back to the fastest. The old values 0 / 1 / 2 are ignored the same way (never in a
+  release).
+- **"(integrated)" from DXCore** (`dxcore.dll`, Windows 10 2004+, `IsIntegrated` looked up by the DXGI adapter's LUID):
+  DXGI has no such flag, and a guess from the dedicated memory size fails on AMD APUs with a large carve-out. DXCore's
+  header isn't in llvm-mingw, so the two interfaces' first methods are declared in rhi_d3d11.cpp; checked on the dev
+  machine with a scratch program: IsHardware 1 for the GTX 1080 Ti, 0 for Microsoft Basic Render Driver, IsIntegrated 0.
+  An integrated chip itself is not checked (none here). Vulkan: the device type. Older Windows: no mark.
+- Software renderers stay out of the list (Microsoft Basic Render Driver, llvmpipe), as do Vulkan cards older than 1.3.
+- **Merged with the Linux check of 2026-11-10** (2026-11-12, on the laptop; these choices are Claude's and were not put
+  to the user - for review): that check had given the Vulkan backend a `[rhi] graphics cards` line of its own (every
+  device with its kind, "(choice: fastest / power saving)"), and this change gave it another. One line is kept, in
+  D3D11's form - the menu's list with the ids, "; using <card>" - plus what only the Linux one said: what a listed card
+  that cannot be used lacks, and after "; not in the list:" the devices the menu leaves out (llvmpipe, Vulkan older
+  than 1.3), so a log still shows that only the software renderer was there. "(VCS_VK_DEVICE)" follows the card's name
+  when that switch chose it. The software renderer's warning line stays as it was.
+  Seen on the laptop's HD 520 (PROGRESS.md milestone 9): the "(integrated)" mark in the log and in the menu - where the
+  closed row cuts it to "(integr", Mesa's name being longer than the box; left as it is, for the user to decide.
+  0.2.5's draft notes: the graphics card bullet describes the list by name, for both systems (it still said Fastest /
+  Power saving / System default, which no release ever had).

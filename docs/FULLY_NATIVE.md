@@ -219,6 +219,23 @@ construction (a small chain walker for CALLed packets). Results:
     drive game thread 19.3 / 18.7 -> 22.7 / 20.6 ms and fps 43.5 / 44.9 -> 40.7 / 44.9 - within this machine's noise,
     not a measured loss; a profile of the drive puts the walker's work and `skippable` at ~1-2% of the game thread.
     Measure again on a quiet machine.
+- **The recordings' memory (2026-11-10, GitHub issue 115).** Nothing ever dropped a recording, and their keys never
+  stop coming: a model streamed back in sits at another address, the game's own packets at other places in its buffer
+  (PERFORMANCE.md 31: 2.3 GB an hour on a route across the map). They now have a limit - `VCS_RSL_RECORDINGS_MB`, 256;
+  the least recently used go first; 0 is no limit, as before. The skip makes dropping one a matter between the two
+  threads: the game thread may skip a block on the strength of a confirmation it holds, and the worker's fall-back
+  for a block without a recording reads guest RAM while the game thread is already in the next frame. So the worker
+  first withdraws its confirmation (an entry with the chain `kWithdrawn` in what it hands over at each chain's end);
+  the game thread applies it at its next kick, before that kick's skip decisions, and names the batch in the chain's
+  table (`ChainTable::withdrawn`); the worker frees the recording at the end of that chain - unless a chain from
+  before the withdrawal used it meanwhile: then it stays and is confirmed again. The game thread's maps go with it
+  (the confirmation erased; page snapshots and "flattenable" notes no chain asked for in 1,800 chains dropped once
+  there are more than 16,384).
+  - A skipped block still always finds its recording: 12.3M / 15.5M blocks skipped in 15 minutes with the limit at
+    256 / 64 MB (8,792 / 30,827 recordings dropped), none rebuilt from guest RAM.
+  - With the limit at 24 MB - less than one place in the city needs, so recordings are dropped all the time (19,527
+    and 16,553 in 6 minutes): `VCS_RSL_SKIP_VERIFY=1` 4.87M decisions, 0 wrong; `VCS_RSL_WORLD_VERIFY=1` 7.32M
+    recordings the same as the packet path, 0 differ.
 
 **4c - draw calls as items (done 2026-10-25).** The world / model draw functions (`FUN_002F7EB0`, `FUN_002F7D58`,
 `FUN_002F80A0`) are replaced whole when their state flush is native (game/vcs_rsl_native.h): the flush (when it is all

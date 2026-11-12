@@ -110,6 +110,10 @@ namespace vcs::input
         constexpr uint32_t kPlayerPed = 0x004E4910u + kRegionOffset;   // CWorld::Players[0].m_pPed
         constexpr uint32_t kPedVehicle = 0x480u;       // the vehicle it is in (0 on foot)
         constexpr uint32_t kPedState = 0x8C4u;         // 0x37 driving
+        constexpr uint32_t kVehicleRadio = 0x2BAu;     // the vehicle's radio station (u8): 0..8 the stations, 9 off
+        constexpr uint32_t kRadioPositions = 10u;      // L1 steps through them and round (game-internals.md 12a)
+        constexpr int kRadioRetuneFrames = 40;         // the game adds its L1 presses to the station 30 frames after the
+                                                       // last one; by now it has
         constexpr uint32_t kTheCamera = 0x006F44D0u + kRegionOffset;
         constexpr uint32_t kLooksAtPlayer = kTheCamera + 0x888u; // 0 under a script camera
         constexpr uint32_t kCam = kTheCamera + 0x70u;  // the active CCam: +0 mode, +0x78 alpha (pitch), +0x7C beta (heading),
@@ -143,6 +147,12 @@ namespace vcs::input
             return v;
         }
         void wrf(uint32_t a, float v) { std::memcpy(g_rdram + (a & kRamMask), &v, 4); }
+        void wr32(uint32_t a, uint32_t v) { std::memcpy(g_rdram + (a & kRamMask), &v, 4); }
+        // Walls (game-internals.md 12b): the on-foot camera's update pulls the camera in toward the player at a wall
+        // only for a turned stick, or while this is > 0 (it sets it to 2 after a pull-in and counts it down).
+        constexpr uint32_t kCamWallSkip = 0x00487E58u + kRegionOffset;
+        constexpr uint32_t kGameClock = 0x004CD104u + kRegionOffset; // CTimer::m_snTimeInMilliseconds
+        constexpr uint32_t kWallTailMs = 300;        // ... kept so this long after the mouse's last turn
 
         struct GameState
         {
@@ -319,8 +329,14 @@ namespace vcs::input
             std::chrono::steady_clock::time_point hipUntil{}; // free aim held this long after the last shot from the hip
             bool aimHeld = false;      // the target button was held at the last game frame
             bool wheelWas[2] = {};     // a wheel notch (up, down) was down at the last game frame
-            int wheelSteps = 0;        // weapon changes still to press (+ next / R2, - previous / L2), one a frame
+            int wheelSteps = 0;        // weapon changes still to press (+ next / R2, - previous / L2), one a frame;
+                                       // driving: radio stations (+ next, - previous: L1 either way)
             uint16_t wheelButton = 0;  // the button the wheel presses for this frame
+            uint32_t radioVehicle = 0; // steps back on the radio the game has not added yet: the vehicle (0: none), ...
+            uint8_t radioWas = 0, radioSet = 0; // ... its station before them, and where it was put for the L1s
+            int radioFrames = 0;       // ... and the game frames since the last press
+            bool footTurn = false;     // the mouse is turning the on-foot camera (walls: the stick's path, below)
+            uint32_t footTurned = 0;   // ... last at this game time, ms
         } g_mouse;
 
         std::mutex g_injectedMutex;
@@ -565,6 +581,27 @@ namespace vcs::input
                             wrf(at + 8, tz - d * std::sin(e));
                         }
                     }
+                    // Walls. The camera's update pulls the camera in toward the player at a wall only while its stick
+                    // turns the camera; with the stick at rest it puts the camera at its full distance, inside the
+                    // wall, and then keeps the last place that fitted. So a mouse's turn toward a building left the
+                    // camera standing at the wall's edge while its heading turned on behind the wall (the user's
+                    // report). While the mouse turns it, and a moment after (so a slow hand's frames without a count
+                    // are not the game's own turn away from a wall), the update is told to take the stick's path.
+                    // VCS_FOOT_WALL=0: as before.
+                    static const bool wallFix = [] {
+                        const char *e = std::getenv("VCS_FOOT_WALL");
+                        return !(e && e[0] == '0');
+                    }();
+                    const uint32_t clock = rd32(kGameClock);
+                    if (turn != 0.0f || tilt != 0.0f)
+                    {
+                        g_mouse.footTurn = true;
+                        g_mouse.footTurned = clock;
+                    }
+                    else if (clock - g_mouse.footTurned > kWallTailMs)
+                        g_mouse.footTurn = false;
+                    if (wallFix && g_mouse.footTurn && rd32(kCamWallSkip) == 0)
+                        wr32(kCamWallSkip, 1);
                 }
                 else if (on && game.driving && carcam::turns(mode))
                 {
@@ -601,8 +638,51 @@ namespace vcs::input
                 for (size_t i = 0; i < kControlCount; ++i)
                     for (int k : m.keys[i])
                         wheelBound = wheelBound || k == KEY_WHEEL_UP || k == KEY_WHEEL_DOWN;
-                if (!m.mouseWheel || wheelBound || game.driving || g_mouse.aim.camera || aim::aiming())
+                // Steps back on the radio waiting for the game (below): it counts the L1 presses and adds them to the
+                // vehicle's station 30 frames after the last one. Past that, a station still where it was put means the
+                // presses were not taken (an announcement is on, the vehicle has no radio): it goes back to what it
+                // was, so a notch then does nothing, as L1 itself.
+                if (g_mouse.radioVehicle)
+                {
+                    const uint32_t ped = rd32(kPlayerPed);
+                    const uint32_t at = (g_mouse.radioVehicle + kVehicleRadio) & kRamMask;
+                    if (!ped || rd32(ped + kPedVehicle) != g_mouse.radioVehicle)
+                        g_mouse.radioVehicle = 0;
+                    else if (++g_mouse.radioFrames >= kRadioRetuneFrames)
+                    {
+                        if (g_rdram[at] == g_mouse.radioSet)
+                            g_rdram[at] = g_mouse.radioWas;
+                        g_mouse.radioVehicle = 0;
+                    }
+                }
+                if (!m.mouseWheel || wheelBound || g_mouse.aim.camera || aim::aiming())
                     g_mouse.wheelSteps = 0;
+                else if (game.driving)
+                {
+                    // the radio (GitHub issue 90): a notch down is the next station - the game's own L1 - and a notch up
+                    // the one before. The game only steps forwards: each L1 clicks and counts, and 30 frames after the
+                    // last one the count is added to the vehicle's station (+0x2BA: 0..8 the stations, 9 off, then 0
+                    // again) and the radio retunes - the name, the stream. So a step back puts the station two back
+                    // and presses L1: one forward from there. One press, a frame up, then the next.
+                    g_mouse.wheelSteps = game.paused ? 0 : std::clamp(g_mouse.wheelSteps + (notch[1] ? 1 : 0) - (notch[0] ? 1 : 0), -3, 3);
+                    if (g_mouse.wheelSteps && !pressedLast)
+                    {
+                        const uint32_t vehicle = rd32(rd32(kPlayerPed) + kPedVehicle);
+                        const uint32_t at = (vehicle + kVehicleRadio) & kRamMask;
+                        // (a vehicle whose station is none of these has no radio to step back: the plain L1)
+                        if (g_mouse.wheelSteps < 0 && g_rdram[at] < kRadioPositions)
+                        {
+                            if (g_mouse.radioVehicle != vehicle || g_rdram[at] != g_mouse.radioSet)
+                                g_mouse.radioWas = g_rdram[at]; // the first step back since the game last retuned
+                            g_mouse.radioVehicle = vehicle;
+                            g_mouse.radioSet = static_cast<uint8_t>((g_rdram[at] + kRadioPositions - 2u) % kRadioPositions);
+                            g_rdram[at] = g_mouse.radioSet;
+                        }
+                        g_mouse.radioFrames = 0; // any press starts the game's 30 frames again
+                        g_mouse.wheelButton = kL1;
+                        g_mouse.wheelSteps += g_mouse.wheelSteps > 0 ? -1 : 1;
+                    }
+                }
                 else if (zoomMode(mode))
                 {
                     // the zoom the scope eases its FOV toward (0x487E2C, FUN_00297cb8), in the game's own limits: 70
@@ -815,7 +895,8 @@ namespace vcs::input
                 s.section = "Mouse";
                 s.label = "Mouse wheel";
                 s.help = "On foot the wheel changes weapon (down: next, up: previous); in a sniper scope, the camera and "
-                         "binoculars it zooms. Off, or with the wheel bound to a control, it does only that.";
+                         "binoculars it zooms; while you drive it changes the radio station (down: next, up: previous). "
+                         "Off, or with the wheel bound to a control, it does only that.";
                 s.type = Type::Toggle;
                 s.defaultValue = 1;
                 s.onChange = onChange;

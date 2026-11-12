@@ -2412,6 +2412,90 @@ timing at 60 fps; independent timing at 60 / 144 fps got through, by luck (below
   at once. The stick could not turn it while held or returning: its term goes through +0x140, zeroed there every
   update and smoothed from 0 (about a fifth of its speed), and steps below `0x487E94` are snapped back (the user's
   report: the gamepad did nothing until the camera was back behind the car).
+- **On foot: the stick, the camera on its string, walls** (2026-11-11; found for a mouse camera of its own on
+  foot, which was built and taken out again the same day - the last point, and DECISIONS.md. By reading the decompile
+  of FUN_0029dab0 again - `build/analysis/decomp/followped.c` - and the disassembly listing for the callers of the
+  pad's stick getters and the readers of `0x6F4CB8`, then measured in hidden runs with the rig's `trace`).
+  - **How the stick becomes his heading.** The player's control **FUN_00232DE8** (called from CPlayerPed::
+    ProcessControl **FUN_00230640**, a0 the ped, at 0x231494 / 0x231550 / 0x2315A8 / 0x2315C0) reads the left stick
+    through FUN_00285690 (x) and FUN_002857E8 (y) and sets **ped +0x8E4 (the heading he turns to; +0x8E0 the current
+    one) = LimitRadianAngle(atan2(-x, -y) - `*(float *)0x6F4CB8`)** (the load at 0x232E34, atan2 at 0x232F3C).
+    **`0x6F4CB8` = TheCamera +0x7E8 is the camera's heading** (VC's `Orientation`): written by FUN_0037B2C8 (called
+    by CCamera::Process at 0x37ADC0, after the CCam's update) as atan2 of the frame camera's forward, then + pi by
+    CCamera::Process for a look behind (0x37B1B4 / 0x37B284). Its other readers: the fight control FUN_00233728
+    (0x2337CC), CPed::ProcessControl FUN_001F4BF0 (0x1F7760 / 0x1F7944), FUN_002339D0 (0x233A00; reached only with
+    `0x488EB4` set), and three that place things around the camera: FUN_0018CD88 (0x18CD98), FUN_003E4270 /
+    FUN_003E4528 (0x3E4430 / 0x3E46D8), FUN_0036AFD0 (0x36B118). The order in CGame::Process (FUN_003BA8D8): the pad
+    0x3BA93C, FUN_003E3720 0x3BAAB8, FUN_0018CD88 0x3BAB98, **CWorld::Process 0x3BABD0** (the player's control, with
+    the heading the last frame's camera left), **FUN_0036AFD0 0x3BABF4**, **CCamera::Process 0x3BAC38**. So the mouse
+    steers him: whatever turns the camera turns the stick's meaning. The stick's size: `sqrt(x^2 + y^2) / 60`, a walk
+    below 1, a run from 2 (120 units) - read in the listing (FUN_00231C20), not measured: a diagonal is no faster.
+  - **The game's own turn behind a walking player** (followped.c 396-435): a share `min(his speed x table +0x28 x
+    step, 1)` of the gap between the camera's heading and behind his nose, capped at **table +0x2C x step**
+    (`0x487B5C` outdoors, `0x487B98` indoors; 0.02: 1 rad/s), none when the gap is over 2.967 (170 degrees: running at
+    the camera leaves it in front of him). `0x487E10` set makes it a fixed turn instead (x `0x487E64` / `0x487E68`):
+    **L1** (FUN_00286630 = CPad +0xA: "camera behind him", which also levels the pitch) and a shot from the hip with
+    some guns (x 2.5; seen with the AK, type 28: the camera 1 rad off came behind him while he fired; not with the
+    Micro SMG, 24, or the pistol, 19) latch it until he moves or the camera is there. All of it goes through the one cap, so
+    0 there switches every automatic turn off (the table has no other reader). Not through the table: while he runs
+    at a camera more than 90 degrees off, the pitch is eased toward a limit that shrinks to 0.349 rad with the camera
+    right in front (453-469).
+  - **Walls, and why the mouse's camera stopped at a building** (the user's report; fixed, the end of this point).
+    The update first asks whether
+    the camera stick is in use: CPad +6 / +8 (the right stick) or +0xA (L1) non-zero. **Stick at rest** and
+    `0x487E58` 0: five lines (FUN_001908C0, buildings only) from beside the player - 0.3 behind the point looked at,
+    0.17 apart across the view - to the camera's Source; while he moves, each blocked one adds `(i - 2) x 0.03` to
+    **`0x487E54`**, which is added to beta every frame and falls by 5% a frame (the camera turns away from a wall he
+    walks along; per frame, not per time step). **The line of sight that pulls Source in toward him (followped.c
+    635) runs only when the stick is in use, when all five lines are blocked, or while `0x487E58` > 0** - the game
+    sets it to 2 after a pull-in and counts it down, so a pulled-in camera stays pulled in. A mouse turn is none of
+    these: Source is put at the full distance inside the wall, and FUN_002A4EC8 - the near plane's fit, as read in
+    the listing: a sphere at Source + Front x near against the world, pushed out up to four times, the near clip
+    shrunk to 0.15, else **the last good position kept** (CCam +0x90, `0x487E14` set) - leaves the camera where it
+    last fitted. Measured at the Fort Baxter barracks door (-1648.87, -261.0; a wall behind him: the stick's camera
+    is pulled in from 4.5 m to 2.3-3.4 m between 240 and 300 degrees): standing, 400 counts of mouse toward the wall
+    turned beta the whole radian
+    (3.690 -> 4.690) while the camera stood still from 3.945 on, 0.744 rad behind its heading, at 4.41 m; `0x487E54`
+    stayed 0 (a standing ped's move speed is exactly 0) and `0x487E58` 0. The other calls of the update change
+    neither beta nor the source points: FUN_002A4D38 (the pull-in's offset from the wall: tan(FOV / 2) x near x
+    1.15), FUN_002A5590 (Source kept 0.5 above water), FUN_0029F960 (a ped the camera is inside), read in the
+    listing. Nothing outside FUN_0029DAB0 reads `0x487E54` / `0x487E58` / `0x487E10`. **The fix** (2026-11-11,
+    src/game/vcs_input.cpp, where the mouse turns the camera at the pad read): while the mouse turns the on-foot
+    camera, and for 300 ms of game time after its last turn, `0x487E58` is set to 1 when it is 0 - before the
+    camera's update of the same frame, which then takes the stick's path: no five lines, the pull-in. The 300 ms
+    are for a slow hand: frames without a mouse count between frames with one would otherwise be the game's own turn
+    away from a wall he walks along. Measured at the same wall at 30 / 60 / 144 fps, 400 counts toward it at 10 a
+    frame, 2 a frame and 1 every third frame: the camera 0.001 rad from its heading, pulled in to 3.19 m, and still
+    there 2 s later (the game keeps a pulled-in camera pulled in). `VCS_FOOT_WALL=0`: 0.744 rad behind its heading
+    at 4.41 m, as before. Check: `tools/controls_check.py` ("at a wall the camera follows the mouse and is pulled
+    in"; the stick's camera at the same wall is its reference).
+  - **The update starts afresh** (beta from his heading, the source points rebuilt) while CCam +0xAC (its first
+    update), `0x6F4528` (TheCamera +0x58: "behind him") or `0x6F4D28` (+0x858: "in front of him") is set; all three
+    are 32-bit. After a teleport from far away it also starts at its lowest pitch (-1.483, above him looking down:
+    0.39 m from him across the ground); L1 puts it level behind him (-0.056).
+  - **A camera on a string, and why a sideways runner circles.** The update measures its heading and pitch from
+    where the camera stood (the source points, placed around him at the end of the last update) to where he is now,
+    and eases beta toward that. So when he moves across the view the camera pivots after him at his speed over its
+    distance - a run's 4.5-5 m/s at 4.5 m - and since the stick follows the camera he runs a circle about it:
+    measured with the gamepad's stick held to the right, 2.7-2.8 rad in 2 s (1.4 rad/s) at 30 / 60 / 144 fps. The
+    capped turn above adds little to that. Source points moved along with him each frame (and the cap at 0, the speed
+    +0x140 cleared) take the string away: the heading then stays where it is, to 0.000.
+  - **Tried and taken out the same day** (the user's decision; three commits, 6948b7a / 993d670 / ea5628e, and their
+    revert): a module that was the camera's heading on foot for the keyboard and mouse, by a pre-hook on FUN_0029DAB0.
+    What it showed about the game: (1) **`0x487E58` set to 1 before the update gives the mouse's turn the stick's
+    path** - no five lines, the pull-in: at the barracks door the camera then stood 0.001 rad from its heading,
+    pulled in to 3.2 of 4.5 m, where it had stood 0.744 rad behind it (this part came back on its own: the fix
+    above). (2) The cap at 0 in both table rows, the
+    source points moved with him and the speeds +0x140 / +0x130 cleared before every update hold the heading exactly
+    where it is put (as behind a vehicle); `0x487E60` / `0x487E5C` are the last update's beta / alpha, and a change
+    under 0.0001 from them is undone. (3) **Replacing `0x6F4CB8` before FUN_00230640 and putting the camera's own
+    back before FUN_0036AFD0 gives his control any heading for the stick** without touching the pad report: his
+    heading held to +0.000 through a radian of camera turn. It falls as beta rises (4.713 - beta with the camera
+    behind him). (4) `0x487E10` set means the game is turning the camera behind him itself (L1; the AK fired from the
+    hip); with the cap at 0 that turn does nothing. (5) Three ways to use these were played and none kept: the keys
+    keeping one direction through every turn of the camera (the mouse then did not steer: "disconnected"), the keys
+    following a camera that held still and then turned slowly, and the camera coming round behind where he travels
+    with the keys keeping their heading through that turn only.
 - **The camera update** (2026-10-30, for the trainer's free camera; FUN_00378dd8 decompiled with `tools/eedecomp.py`):
   FUN_00378dd8 = CCamera::Process. At `0x378FC0` it calls **FUN_00294540 = CCam::Process** on the active CCam
   (`TheCamera + 0x70 + ActiveCam x 0x270`, ActiveCam = byte `TheCamera + 0x50`; the only caller), then
@@ -2601,6 +2685,25 @@ hidden run (rig `peek` / `poke`, snapshots diffed).
     Fire, does not check it). The NPC path was left with Fire's on-foot "no delay" and no animation to pace it, and
     its burst lengths are in milliseconds, so at the PS2's fixed 30 fps the number of shots in a burst came out as
     "a frame each". Above 30 fps it gets worse with the frame rate.
+  - **On foot the attack animation is the pace** (found 2026-11-09: CWeapon::Fire's callers by `jal` scan, then
+    `tools/eedecomp.py`). **FUN_001D26C8** (the ped attack, CPed::Attack; called from FUN_001F4BF0) reads the gun's
+    animation times from weapon info **+0x44 loop start, +0x48 loop end, +0x4C fire point** (+0x50..+0x58 the crouched
+    set; seconds), calls Fire on the frame the attack animation's time (assoc + 0x28; + 0xC the frame's step) passes
+    the fire point, and once it passes the loop end, with the trigger held and ammo left, sets it back to the loop start
+    (FUN_0018EB70, SetCurrentTime). One shot per loop. Read in the game: SMG / Scorpion / Mac 10 (25-27) loop
+    0.3667-0.4667 s, fire 0.4333 - 0.1 s a loop, ~10 shots/s (rate +0xC says 90 ms); Micro SMG (24) 0.3667-0.5000 s,
+    ~7.5/s (+0xC 120 ms). NPCs on foot go through the same function.
+  - **The player's drive-by skips the reload** (an original-game bug, found 2026-11-10 from a player's report that
+    drive-bys fire faster than on foot). FireFromCar (FUN_002C1BB0), on the last round of the clip, sets state 2 and
+    the timer to `now + reload time` (weapon info + 0x10), but its caller then sets the timer again - FUN_002CEBE0 to
+    `now + rate`, FUN_002CF078 / FUN_002CF4A8 to `now + 70` - so the reload ends one shot gap later and the clip is
+    full again. Measured (Vic with an SMG, Circle held through the injected gamepad, driver looking left with L2;
+    scratch script, `gamepad` control command): the gap between shots is the same as on foot at 30 fps (99 ms:
+    the 90 ms rate, rounded up to the frame - 10.1 shots/s; on foot the animation loop gives 99 ms too), but on foot
+    the reload is 2.3 s and in the car 0.1 s - 6.9 against 10.1 shots a second overall. At 144 fps: on foot 104 ms
+    (9.6/s), driver 91-97 ms (10.5/s; the 90 ms is rounded up to a shorter frame). The NPC drive-by hook
+    (vcs_driveby.cpp) does not touch the player's paths. The passenger path was not measured (L2 + Circle in an
+    autodriven car fired nothing).
   - **Fixed as an option** (Enhancements > Combat: **Drive-by fire rate**; `src/game/vcs_driveby.cpp`): a hook on
     CWeapon::Fire for the two NPC calls (return addresses **0x2168B4** in FUN_00216768, **0x2169D4** in FUN_002168E8)
     lets a call through only when the shooter's next shot is due and otherwise returns 0, so the burst gate and the

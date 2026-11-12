@@ -103,7 +103,9 @@ as with L1). It does nothing of this while a control is bound to the wheel or wh
   in the menus and when the window is in the background). **On foot** it turns the camera itself, as in a PC game:
   every movement turns it by the same angle at any speed and frame rate (100%: 400 counts - half an inch at 800 DPI -
   a radian), moving the mouse forward looks up. Looking up / down goes through the game's own stick pitch, which has a
-  top speed (about 1.5 rad/s at 100%); a faster movement still arrives, a few frames later. **In the scopes and free
+  top speed (about 1.5 rad/s at 100%); a faster movement still arrives, a few frames later. Turned toward a wall, the
+  camera is pulled in toward the player, as the gamepad's is (`VCS_FOOT_WALL=0`: it stops at the wall's edge, as
+  before 2026-11-11). **In the scopes and free
   aim** it turns the view itself too (above). **Behind a car, bike or boat** it turns the camera itself as well, and
   while the mouse moves the camera stays where it is put - the car neither drags it along nor pulls it back; **Car
   camera return** (1.5 s; 0.5-5 s or Never) after the mouse stops it eases back behind the vehicle (about 2 s) and the

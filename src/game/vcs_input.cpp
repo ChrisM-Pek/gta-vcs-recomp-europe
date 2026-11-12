@@ -142,6 +142,12 @@ namespace vcs::input
             return v;
         }
         void wrf(uint32_t a, float v) { std::memcpy(g_rdram + (a & kRamMask), &v, 4); }
+        void wr32(uint32_t a, uint32_t v) { std::memcpy(g_rdram + (a & kRamMask), &v, 4); }
+        // Walls (game-internals.md 12b): the on-foot camera's update pulls the camera in toward the player at a wall
+        // only for a turned stick, or while this is > 0 (it sets it to 2 after a pull-in and counts it down).
+        constexpr uint32_t kCamWallSkip = 0x00487E58u;
+        constexpr uint32_t kGameClock = 0x004CD104u; // CTimer::m_snTimeInMilliseconds
+        constexpr uint32_t kWallTailMs = 300;        // ... kept so this long after the mouse's last turn
 
         struct GameState
         {
@@ -324,6 +330,8 @@ namespace vcs::input
             uint32_t radioVehicle = 0; // steps back on the radio the game has not added yet: the vehicle (0: none), ...
             uint8_t radioWas = 0, radioSet = 0; // ... its station before them, and where it was put for the L1s
             int radioFrames = 0;       // ... and the game frames since the last press
+            bool footTurn = false;     // the mouse is turning the on-foot camera (walls: the stick's path, below)
+            uint32_t footTurned = 0;   // ... last at this game time, ms
         } g_mouse;
 
         std::mutex g_injectedMutex;
@@ -568,6 +576,27 @@ namespace vcs::input
                             wrf(at + 8, tz - d * std::sin(e));
                         }
                     }
+                    // Walls. The camera's update pulls the camera in toward the player at a wall only while its stick
+                    // turns the camera; with the stick at rest it puts the camera at its full distance, inside the
+                    // wall, and then keeps the last place that fitted. So a mouse's turn toward a building left the
+                    // camera standing at the wall's edge while its heading turned on behind the wall (the user's
+                    // report). While the mouse turns it, and a moment after (so a slow hand's frames without a count
+                    // are not the game's own turn away from a wall), the update is told to take the stick's path.
+                    // VCS_FOOT_WALL=0: as before.
+                    static const bool wallFix = [] {
+                        const char *e = std::getenv("VCS_FOOT_WALL");
+                        return !(e && e[0] == '0');
+                    }();
+                    const uint32_t clock = rd32(kGameClock);
+                    if (turn != 0.0f || tilt != 0.0f)
+                    {
+                        g_mouse.footTurn = true;
+                        g_mouse.footTurned = clock;
+                    }
+                    else if (clock - g_mouse.footTurned > kWallTailMs)
+                        g_mouse.footTurn = false;
+                    if (wallFix && g_mouse.footTurn && rd32(kCamWallSkip) == 0)
+                        wr32(kCamWallSkip, 1);
                 }
                 else if (on && game.driving && carcam::turns(mode))
                 {

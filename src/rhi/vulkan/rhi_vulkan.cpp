@@ -467,6 +467,42 @@ namespace rhi
             return VK_FALSE;
         }
 
+        // The cards as rhi::listGpus lists them: discrete first, then integrated, virtual, others (enumeration order
+        // within a kind), software renderers (llvmpipe) and cards older than Vulkan 1.3 left out. `index`: each one's
+        // place in vkEnumeratePhysicalDevices. pickDevice numbers its cards the same way, so the ids agree.
+        std::vector<Gpu> orderGpus(const std::vector<VkPhysicalDevice> &devices, std::vector<uint32_t> &index)
+        {
+            auto kind = [](VkPhysicalDeviceType t) {
+                return t == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU ? 0 : t == VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU ? 1
+                                                                     : t == VK_PHYSICAL_DEVICE_TYPE_VIRTUAL_GPU    ? 2
+                                                                                                                   : 3;
+            };
+            std::vector<std::pair<int, uint32_t>> order; // kind, index
+            std::vector<VkPhysicalDeviceProperties> props(devices.size());
+            for (uint32_t i = 0; i < devices.size(); ++i)
+            {
+                vkGetPhysicalDeviceProperties(devices[i], &props[i]);
+                if (props[i].deviceType != VK_PHYSICAL_DEVICE_TYPE_CPU && props[i].apiVersion >= VK_API_VERSION_1_3)
+                    order.push_back({kind(props[i].deviceType), i});
+            }
+            std::stable_sort(order.begin(), order.end(), [](const auto &a, const auto &b) { return a.first < b.first; });
+            std::vector<Gpu> gpus;
+            index.clear();
+            for (const auto &o : order)
+            {
+                const VkPhysicalDeviceProperties &p = props[o.second];
+                Gpu g;
+                g.name = p.deviceName;
+                g.vendorId = p.vendorID;
+                g.deviceId = p.deviceID;
+                g.integrated = p.deviceType == VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU;
+                gpus.push_back(g);
+                index.push_back(o.second);
+            }
+            numberGpus(gpus);
+            return gpus;
+        }
+
         class VulkanDevice final : public Device
         {
         public:
@@ -1299,12 +1335,18 @@ namespace rhi
                 vkEnumeratePhysicalDevices(m_core->instance, &count, nullptr);
                 std::vector<VkPhysicalDevice> devices(count);
                 vkEnumeratePhysicalDevices(m_core->instance, &count, devices.data());
-                // VCS_VK_DEVICE=<number or part of the name>: that one; else the best kind (discrete > integrated > ...;
-                // integrated first for Graphics > Graphics card: Power saving)
+                // VCS_VK_DEVICE=<number or part of the name>: that one; else the card chosen in Graphics > Graphics card
+                // (desc.gpu, an rhi::Gpu id); else the best kind (discrete > integrated > ...)
                 const char *wanted = std::getenv("VCS_VK_DEVICE");
-                const bool frugal = desc.gpu == GpuPreference::PowerSaving;
+                std::vector<uint32_t> listed;
+                const std::vector<Gpu> gpus = orderGpus(devices, listed);
+                std::vector<int> ids(count, 0);
+                for (size_t k = 0; k < gpus.size(); ++k)
+                    ids[listed[k]] = gpus[k].id;
                 int best = -1, bestScore = -1;
-                std::string why, names; // names: every card for the log, as D3D11's "[rhi] graphics cards" line
+                std::string why;
+                std::vector<std::string> lacks(count); // what a device that cannot be used is missing (for the log)
+                std::string others; // devices the setting's list leaves out: software renderers, Vulkan older than 1.3
                 for (uint32_t i = 0; i < count; ++i)
                 {
                     VkPhysicalDeviceProperties props{};
@@ -1312,23 +1354,23 @@ namespace rhi
                     uint32_t family = 0;
                     std::string missing;
                     const bool ok = usable(devices[i], props, family, missing);
-                    const char *kind = props.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU     ? "dedicated"
-                                       : props.deviceType == VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU ? "integrated"
-                                       : props.deviceType == VK_PHYSICAL_DEVICE_TYPE_VIRTUAL_GPU    ? "virtual"
-                                       : props.deviceType == VK_PHYSICAL_DEVICE_TYPE_CPU            ? "software"
-                                                                                                    : "other";
-                    names += (names.empty() ? "" : ", ") + std::string(props.deviceName) + " (" + kind +
-                             (ok ? "" : ", not usable: needs " + missing) + ")";
+                    if (!ids[i])
+                        others += (others.empty() ? "" : ", ") + std::string(props.deviceName) +
+                                  (props.deviceType == VK_PHYSICAL_DEVICE_TYPE_CPU ? " (software)" : "") +
+                                  (ok ? "" : " (not usable: needs " + missing + ")");
                     if (!ok)
                     {
                         why += std::string("; ") + props.deviceName + ": " + missing;
+                        lacks[i] = missing;
                         continue;
                     }
-                    int score = props.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU     ? (frugal ? 3 : 4)
-                                : props.deviceType == VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU ? (frugal ? 4 : 3)
+                    int score = props.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU     ? 4
+                                : props.deviceType == VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU ? 3
                                 : props.deviceType == VK_PHYSICAL_DEVICE_TYPE_VIRTUAL_GPU    ? 2
                                 : props.deviceType == VK_PHYSICAL_DEVICE_TYPE_CPU            ? 0
                                                                                              : 1;
+                    if (desc.gpu && ids[i] == desc.gpu)
+                        score = 50;
                     if (wanted && *wanted &&
                         (std::to_string(i) == wanted || std::strstr(props.deviceName, wanted) != nullptr))
                         score = 100;
@@ -1339,8 +1381,25 @@ namespace rhi
                         m_queueFamily = family;
                     }
                 }
-                std::fprintf(stderr, "[rhi] graphics cards: %s (choice: %s%s)\n", names.empty() ? "none" : names.c_str(),
-                             frugal ? "power saving" : "fastest", wanted && *wanted ? ", VCS_VK_DEVICE set" : "");
+                // The log's line, as D3D11's: the cards as Graphics > Graphics card lists them, with their ids (VCS_GPU) -
+                // and here what a card that cannot be used lacks, then the devices that are not in the list.
+                std::string names;
+                for (size_t k = 0; k < gpus.size(); ++k)
+                {
+                    const std::string &lack = lacks[listed[k]];
+                    names += (names.empty() ? "" : ", ") + gpus[k].name + (gpus[k].integrated ? " (integrated)" : "") + " [" +
+                             std::to_string(gpus[k].id) + "]" + (lack.empty() ? "" : " (not usable: needs " + lack + ")");
+                }
+                std::string using_ = "none";
+                if (best >= 0)
+                {
+                    VkPhysicalDeviceProperties props{};
+                    vkGetPhysicalDeviceProperties(devices[best], &props);
+                    using_ = std::string(props.deviceName) + (bestScore == 100 ? " (VCS_VK_DEVICE)" : "");
+                }
+                std::fprintf(stderr, "[rhi] graphics cards, fastest first: %s%s%s; using %s\n",
+                             names.empty() ? "none" : names.c_str(), others.empty() ? "" : "; not in the list: ", others.c_str(),
+                             using_.c_str());
                 if (best < 0)
                 {
                     error = "no GPU with Vulkan 1.3, dynamic rendering, push descriptors and dual-source blending" + why;
@@ -3039,5 +3098,30 @@ namespace rhi
         if (!device->create(desc, error))
             return nullptr;
         return device;
+    }
+
+    std::vector<Gpu> listVulkanGpus()
+    {
+        // an instance of its own, only to list the cards (before the settings load, so before the device exists)
+        if (volkInitialize() != VK_SUCCESS || volkGetInstanceVersion() < VK_API_VERSION_1_3)
+            return {};
+        VkApplicationInfo app{VK_STRUCTURE_TYPE_APPLICATION_INFO};
+        app.pApplicationName = "Vice City Stories";
+        app.apiVersion = VK_API_VERSION_1_3;
+        VkInstanceCreateInfo ci{VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO};
+        ci.pApplicationInfo = &app;
+        VkInstance instance = VK_NULL_HANDLE;
+        if (vkCreateInstance(&ci, nullptr, &instance) != VK_SUCCESS)
+            return {};
+        volkLoadInstanceOnly(instance);
+        uint32_t count = 0;
+        vkEnumeratePhysicalDevices(instance, &count, nullptr);
+        std::vector<VkPhysicalDevice> devices(count);
+        vkEnumeratePhysicalDevices(instance, &count, devices.data());
+        devices.resize(count);
+        std::vector<uint32_t> index;
+        std::vector<Gpu> gpus = orderGpus(devices, index);
+        vkDestroyInstance(instance, nullptr);
+        return gpus;
     }
 }

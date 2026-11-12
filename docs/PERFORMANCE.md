@@ -21,8 +21,8 @@ Before this work the game could not run above 100 fps in any setting (independen
 did not hold 60 in original timing. Original timing (30 / 60) is unchanged: reference scenes identical throughout.
 Where the slowest frames are now: heavy views (~1,950 draws: a rooftop facing the city) at ~120 fps, the game thread
 (6.2 ms + 1.6 ms submitting the chain) and the render worker (6.2 ms) both near the limit. Memory: the RSL replay's
-recordings grow with the blocks seen (~1.3 GB private after 15 minutes of driving, then flat - keyed by address, so
-bounded by the world; predates this work).
+recordings grew with the blocks seen (~1.3 GB private after 15 minutes of driving) - and, other than was written here
+("then flat - keyed by address, so bounded by the world"), never stopped: section 31, bounded since 2026-11-10.
 
 ## How it is measured
 
@@ -289,7 +289,8 @@ city (1325, -325) 196 / 203 -> 216 / 222 (render worker 5.0 -> 3.3 ms), the othe
   frame-rate-independent timing a smaller charge (1/16 instead of 1/4) changed nothing measurable.
 - Memory grows while new places are visited (529 -> 1,587 MB over the 24-minute soak) and converges when they repeat
   (three rounds of the same 8 spots: +260, +89, +45 MB): caches filling (texture and mesh caches are LRU-bounded; the
-  RSL recordings ~115 MB of it), not a leak.
+  RSL recordings ~115 MB of it), not a leak. (Wrong for the recordings, as GitHub issue 115 showed: over 16 spots
+  moved between every 30 s they grew by as much on the second round as on the first - section 31.)
 
 ### 15. The helicopter's dust at high internal resolutions (2026-10-30)
 
@@ -834,6 +835,98 @@ one-second readings). The numbers move with what walks past, so read them as a s
   of 921 KB (the game drops sectors below 74 KB free), so the setting is applied as it is, with no step back.
 - Not measured yet: the cost with the optimised (`lto`) build and at 144 fps (bench.py with `VCS_DRAW_DISTANCE=300`).
 
+### 31. Memory: the RSL recordings get a limit (GitHub issue 115, 2026-11-10)
+
+**The report.** Task Manager showing `vcs.exe` at 5,291 MB on a PC with 8 GB and an Intel HD 4000 (which takes its
+video memory from the same 8 GB); a screenshot only - no log, and not how long the game had run.
+
+**The cause.** The RSL replay's recordings (FULLY_NATIVE.md steps 3-5: a marked world / model block processed once,
+its UNPACKs, MSCALs with their meshes and DIRECTs kept and replayed) are keyed by the block's guest address and
+length, and nothing ever dropped one. The summary at the top and section 14 took them for bounded by the world. They
+are not: the game streams a model back in at another address, and the packets it builds itself land at other places
+in the packet buffer, so new keys keep coming for as long as the player moves about. `g_recordings` only grew; the
+game thread's maps for the skip test (a page snapshot and a confirmation per key, the "flattenable" notes) with it.
+
+**Measured** with `tools/memcheck.py` (new): the Fort Baxter card, hidden, 60 fps frame-rate independent timing, an
+AI-driven car moved to the next of 16 spots across the map every 30 s; two games side by side; quick build, the dev
+machine's `build/vcs.ini` (3x). The figure is the private working set, Task Manager's Memory column, in MB:
+
+| run | start | 5 min | 10 min | 15 min | trend over the second half |
+|---|---|---|---|---|---|
+| no limit (as it was) | 245 | 525 | 630 | 842 | +39.9 MB a minute |
+| recordings off (`VCS_RSL_WORLD=0 VCS_RSL_MODELS=0`) | 205 | 298 | 295 | 316 | +0.2 |
+| limit 256 MB (the default now) | 241 | 442 | 587 | 631 | +5.1 (the limit was reached after about 8 minutes) |
+| limit 64 MB | 243 | 445 | 423 | 451 | +3.2 |
+
+Without a limit: 23,872 recordings after 15 minutes, ~23 KB of the process's memory each (14 KB of it their own
+data as the heap holds it), and no sign of settling: the second round over the same 16 spots added 85% as many as the
+first. 2.3 GB an hour on this route; a player's own
+driving streams less than a move every 30 s, so 5.3 GB is a session of a few hours.
+
+**The limit** (`src/game/vcs_rsl_world.cpp`, `trimRecordings`). Each recording knows its bytes (as the heap holds
+them) and the chain that last used it. At the end of a chain, when the recordings hold more than
+`VCS_RSL_RECORDINGS_MB` (256; 0: no limit, as before), the least recently used are chosen until three quarters of the
+limit are left - none that was used in the last 120 chains, so a limit smaller than what one place needs (~36 MB
+standing in the city) does not drop and record the same blocks every frame.
+
+Dropping takes two steps, because of step 4's skip: the game thread sends a block without its bytes when its pages
+are unchanged since a copy the worker confirmed its recording for, and the worker's fall-back without a recording
+reads the block from guest RAM - while the game thread runs on. So the worker first takes its confirmation back (an
+entry in the confirmations it hands over at each chain's end); the game thread applies it at its next kick, before
+any skip decision, and names the batch in that chain's table. From that chain on nothing skips the block unless the
+worker confirmed it again, which is a use - and a use keeps the recording. At the end of that chain the ones still
+marked are freed, 0.2 ms of them a chain (thousands of recordings, each as many frees as it has ops: 256 at once
+took up to 10 ms in a quick build). The game thread's own maps are bounded with it: a withdrawn confirmation is erased
+(`FlatMap` got an erase that moves the run back), and past 16,384 page snapshots those no chain asked for in 1,800
+chains go, with their "flattenable" note - such a block is copied once and drawn by the packet path once when it
+comes back, as on its first frame.
+
+**What it costs.** A dropped recording that is needed again is recorded again (one pass through the VIF interpreter
+instead of a replay); `VCS_RSL_WORLD_LOG=1`'s new `memory:` line counts them.
+- At 256 MB on the route: 8,792 dropped in 3 sweeps over 15 minutes, and as many blocks recorded as with no limit
+  (world 11.7k against 10.8k, model 10.4k / 12.4k, other calls 4.8k / 5.2k - the AI never drives the same way twice).
+- At 64 MB: 30,827 dropped in 28 sweeps, twice the world blocks recorded (20.4k). At 24 MB, less than one place in the
+  city needs: 19,527 dropped in 6 minutes, 44% of them recorded again.
+- On the worker, at a chain's end, with the game alone on the machine (the stutter rig at 24 MB, 10,119 dropped in 23
+  sweeps): the slowest sweep (the scan and the sort) 0.31 ms, the slowest slice of frees 0.34 ms, the slowest single
+  recording 0.23 ms (2,628 ops, 2 MB). With two or three games side by side the worst were 0.5-2.8 ms and 17-31 ms -
+  and in the scenes run 1.4 ms for a recording of 10 ops: the thread waiting (the scheduler, the heap's lock), not
+  the work.
+- The stutter rig (`tools/cruise.py`, section 21: the fixed route at 144 km/h, 60 fps cap), no limit against 24 MB:
+  p50 16.7 / 16.7, p95 16.9 / 17.0, p99 17.7 / 17.7, p99.9 33.5 / 32.7, longest 75.5 / 70.0 ms; hitches 12 / 7; frames
+  over 25 / 33 / 50 ms 25 / 14 / 3 against 19 / 8 / 1 (a second run at 24 MB: 21 / 11 / 0, hitches 8, longest 44.3).
+  The same within what two runs differ by; the hitches are the known ones (the level swap's 40 ms on the game thread,
+  texture bursts). Not measured: uncapped, above 100 fps, where the worker is the limit.
+
+**Checked.**
+- No skipped block was ever rebuilt from guest RAM: 12.3M / 15.5M skipped blocks in the 15 minutes at 256 / 64 MB.
+- With the limit at 24 MB, 6 minutes of the route each: `VCS_RSL_SKIP_VERIFY=1` 4,872,657 skip decisions, 0 wrong
+  (13 recordings kept because they were used again before they were freed); `VCS_RSL_WORLD_VERIFY=1` 7,322,903
+  recordings the same as the packet path, 0 differ.
+- 40 minutes of the route, three games side by side (so ~50 fps each), MB every five minutes and the trend over the
+  second half:
+
+  | run | 5 | 10 | 15 | 20 | 25 | 30 | 35 | 40 min | trend |
+  |---|---|---|---|---|---|---|---|---|---|
+  | limit 64 MB | 387 | 453 | 480 | 461 | 459 | 470 | 461 | 484 | +0.02 MB a minute |
+  | limit 256 MB (the default) | 397 | 559 | 623 | 644 | 672 | 695 | 675 | 687 | +1.45 |
+  | recordings off | 315 | 295 | 339 | 331 | 336 | 349 | 336 | 355 | +0.78 |
+
+  At 64 MB 78,504 recordings were dropped on the way (1.3 GB of them; 43% recorded again), at 256 MB 33,167 in 10
+  sweeps (14% recorded again); 29.4M / 26.4M blocks skipped, none rebuilt from guest RAM. (No limit was 842 MB after
+  15 minutes and rising by 40 a minute.)
+- Pictures: the reference scenes captured with the default and with a 4 MB limit (7,056 recordings dropped during
+  the capture): the static scenes the same (0.03, 0.13), the moving ones within what two captures differ by, every
+  scene complete on the contact sheet. Against `build/scenes/reference` only the two known differences (the loading
+  screen's art, the pause map's prompts).
+- `tools/memcheck.py` fails a run whose memory still rises by more than 8 MB a minute over its second half, or that
+  read a skipped block from guest RAM. It runs with a 64 MB limit unless told otherwise, so most of a run is plateau.
+
+**Left.** An `Op` is 104 bytes even for an UNPACK of one qword (each carries a mesh and a raster name it does not
+use): a leaner layout would hold more recordings per MB - how many more was not measured. What else the process holds at its plateau
+beyond the recordings and the 300 MB without them (meshes and textures made for replays, both LRU-bounded; the heap's
+own) was not taken apart.
+
 ## Next
 
 - **The heavy views (~120 fps)**: the game thread's chain submission there (1.4-1.6 ms: the VIF1 chain copy, the walker
@@ -859,4 +952,3 @@ one-second readings). The numbers move with what walks past, so read them as a s
   original sign-extends the handler's byte result after `jalr` - the tail call skips that, so it needs a return through
   the original's tail (0x256164) or proof that every handler returns a clean byte.
 - Playtest missions above 100 fps; sprint at 1/240 s (-11%).
-- The RSL recordings' memory (an LRU bound).

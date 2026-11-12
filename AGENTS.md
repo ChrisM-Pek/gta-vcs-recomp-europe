@@ -95,6 +95,8 @@ python tools/rig.py player|scripts|peekf 0x4e4910 1|scm <hex>  # inspect / drive
 python tools/tour.py OUT [--every 9 --limit 18]               # world tour (quick subset with --every/--limit)
 python tools/saves.py [OUT]                                   # save / Load Game / Delete Game through the menus
 python tools/soak.py [OUT] --hours 3                          # hours of autodrive: crash / hang / leak / falling
+python tools/memcheck.py [OUT] [--minutes 15]                 # memory over a route that streams a lot must level off
+                                                              # (the RSL recordings' limit, GitHub issue 115)
 python tools/shakedown.py [OUT]                               # mission 50: cutscene + shop entry (the "Loading..." hang)
 python tools/haze_check.py [OUT] [--timing 1 --fps 144]       # mission 94 at 60 fps: the cutscene that stuck on "Loading...",
                                                               # the haze across a 16:9 picture
@@ -240,6 +242,10 @@ itself ("GTA Vice City Stories Launcher vX"), so the file has no heading. Follow
 - `Could NOT find Python3` in configure.log: CMake left to find a Python of its own (a release's is in `python/`,
   not on PATH); the build passes its own (`toolchain.python_defines`, DECISIONS.md 2026-11-05). A build that stops
   with no log in a long folder (Quiver's): MAX_PATH while unpacking a tool (`toolchain.long_path`).
+- Memory growing by gigabytes over hours of play (GitHub issue 115): a cache keyed by guest address with no bound - the
+  game streams the same model in at another address, so such keys never stop coming. The RSL recordings were one
+  (bounded since 2026-11-10, `VCS_RSL_RECORDINGS_MB`); `VCS_RSL_WORLD_LOG=1` prints what they hold, `tools/memcheck.py`
+  is the check (PERFORMANCE.md 31).
 - First things to grep in a log: `[ee] thread N -> dormant`, `[guest-branch:unlisted-resume]`.
 
 ## Working style for long autonomous runs

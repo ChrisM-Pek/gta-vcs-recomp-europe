@@ -693,27 +693,27 @@ namespace
             settings::add(s);
 
         // The graphics card, on a PC with more than one (GitHub issue 112: a laptop started the game on its integrated
-        // chip). The log's "[rhi] graphics cards" line names them (both backends), "[present] ... on ..." the one in use.
-        s = {};
-        s.key = "display.gpu";
-        s.page = "Graphics";
-        s.section = "Renderer";
-        s.label = "Graphics card";
-        s.help = "On a PC with two graphics cards (most gaming laptops): Fastest uses the dedicated card, Power saving the "
-                 "integrated one (slower, cooler, longer on battery).";
-        s.type = Type::Choice;
-        s.choices = {{"Fastest", 0}, {"Power saving", 1}};
-        if (rhi::backendBuilt(rhi::Backend::D3D11))
+        // chip): the cards this PC has, by name, the fastest first and the default. vcs.ini keeps the card's id (rhi::Gpu);
+        // a card no longer there falls back to the fastest. The log's "[rhi] graphics cards" line names them with their
+        // ids (VCS_GPU=<id> for one run), "[present] ... on ..." the one in use.
+        if (const std::vector<rhi::Gpu> gpus = rhi::listGpus(); !gpus.empty())
         {
-            s.help += " System default leaves it to Windows' Graphics settings and the driver's control panel.";
-            s.choices.push_back({"System default", 2});
+            s = {};
+            s.key = "display.gpu";
+            s.page = "Graphics";
+            s.section = "Renderer";
+            s.label = "Graphics card";
+            s.help = "The graphics card the game draws with, on a PC with more than one (most gaming laptops). The first "
+                     "is the fastest, and the default.";
+            s.type = Type::Choice;
+            for (const rhi::Gpu &g : gpus)
+                s.choices.push_back({g.name + (g.integrated ? " (integrated)" : ""), g.id});
+            s.defaultValue = gpus[0].id;
+            s.apply = Apply::Restart;
+            s.env = "VCS_GPU";
+            s.onChange = [](int v) { present::setGpu(v); };
+            settings::add(s);
         }
-        s.help += " With one card they are all the same.";
-        s.defaultValue = 0;
-        s.apply = Apply::Restart;
-        s.env = "VCS_GPU";
-        s.onChange = [](int v) { present::setGpuPreference(v); };
-        settings::add(s);
 
         vcs::input::registerSettings(); // the Keyboard & mouse and Gamepad pages (game/vcs_input.h)
         vcs::prompts::registerSettings(); // the Enhancements page: button prompts by device (game/vcs_prompts.h)

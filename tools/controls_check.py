@@ -7,7 +7,8 @@ report they make and in the game, plus the settings registry's presets and reset
 Loads the Fort Baxter rig save (a copy, hidden), then: every default key binding (both slots, either Shift / Ctrl,
 Keypad Enter, the mouse buttons) gives its PS2 button or stick direction, Alt+Enter is not Start; a rebound key moves
 Vic and the old one no longer does; the walk key holds the stick at walking speed; the mouse turns the on-foot camera
-by the amount asked (heading and pitch, inverted, off), right click locks on to a ped, the Driving keys (W / S / Space
+by the amount asked (heading and pitch, inverted, off) and is pulled in at a wall as the stick's camera is, right click
+locks on to a ped, the Driving keys (W / S / Space
 accelerate, brake, handbrake in a car, and nothing else there), the mouse on the vehicle camera (turned 1:1, held while
 the mouse moves, standing and driving, then back behind the car; the right stick takes it back at once), on foot again after
 leaving the car; free aim (src/game/vcs_aim.cpp: the right button enters the game's free aim, the mouse turns it, a shot
@@ -350,6 +351,87 @@ class Check:
         p = self.held("w")
         self.ok("on foot again", self.cam()[0] == 4 and abs(turn + 0.75) < 0.03 and p["ly"] == 0 and p["buttons"] == 0,
                 "mode %d heading %+.3f, W %s" % (self.cam()[0], turn, p))
+
+    # ---- the mouse's turn at a wall on foot (src/game/vcs_input.cpp, game-internals.md 12b) ----
+    BARRACKS_DOOR = (-1648.87, -261.0)  # a wall right behind Vic here (rig.Game.BARRACKS_DOOR)
+
+    def foot_wall(self):
+        """At a wall the game pulls the on-foot camera in toward Vic only for a turned stick; the mouse's turn takes
+        that path too. Where the stick's camera is pulled in (the reference), the mouse's is, and it stands where its
+        heading says - not at the wall's edge while the heading turns on behind the wall (the user's report)."""
+        g = self.g
+
+        def angle(a, b):
+            return (b - a + math.pi) % (2 * math.pi) - math.pi
+
+        def beta():
+            return g.peekf(self.CAM + 0x7C, 1)[0]
+
+        def stands():
+            """(where the camera really stands seen from the point it looks at, how far from it)"""
+            s, t = g.peekf(self.CAM + 0x20, 3), g.peekf(self.CAM + 0x1A0, 3)
+            return math.atan2(s[1] - t[1], s[0] - t[0]), math.dist(s, t)
+
+        def level(x, y):
+            """Vic there, the camera level behind him: after a teleport from far away it looks straight down from above
+            him (L1 is the game's "camera behind him")."""
+            g.teleport(x, y, -100.0, 0.0)
+            time.sleep(3.0)
+            g.cmd("press q 1000")
+            time.sleep(2.0)
+
+        # the game's far view (Select steps through three; the near one, 2 m, does not reach this wall), taken on
+        # open ground where nothing pulls the camera in
+        level(575.0, 175.0)
+        zoom, steps = stands()[1], 0
+        while stands()[1] < 4.0 and steps < 3:
+            g.cmd("press backspace 150")
+            time.sleep(1.5)
+            steps += 1
+        level(*self.BARRACKS_DOOR)
+        path = os.path.join(self.out, "wall_orbit.txt").replace("\\", "/")
+        g.cmd("trace %s 0x%x 1 0x%x 3 0x%x 3" % (path, self.CAM + 0x7C, self.CAM + 0x20, self.CAM + 0x1A0))
+        g.cmd("gamepad on")
+        g.cmd("gamepad rx 1")
+        time.sleep(4.0)
+        g.cmd("gamepad rx 0")
+        g.cmd("gamepad off")
+        g.wait_frames(5)
+        g.cmd("trace off")
+        orbit = [[float(v) for v in line.split()][3:] for line in open(path)]
+        orbit = [(r[0], math.dist(r[1:4], r[4:7])) for r in orbit]
+        full = max(d for _, d in orbit)
+        near = [b for b, d in orbit if d < 0.8 * full]
+        found = self.ok("a wall pulls the stick's camera in", len(near) > 5,
+                        "%d of %d frames under %.2f m" % (len(near), len(orbit), 0.8 * full))
+        wall = math.atan2(sum(math.sin(b) for b in near), sum(math.cos(b) for b in near)) if found else 0.0
+        half = max(abs(angle(wall, b)) for b in near) if found else 0.0
+        got = []
+        for side in ((-1, 1) if found else ()):
+            want = wall + side * (half + 0.5)  # outside the arc, then a radian across it
+            for _ in range(6):
+                d = angle(beta(), want)
+                if abs(d) < 0.004:
+                    break
+                g.cmd("mouse %d 0" % max(-400, min(400, int(round(-d / 0.0025)))))
+                g.wait_frames(8)
+            time.sleep(0.6)
+            b0 = beta()
+            for _ in range(40):  # as a hand moves it: a few counts every game frame
+                g.cmd("mouse %d 0" % (side * 10))
+                g.wait_frames(1)
+            g.wait_frames(10)
+            at, dist = stands()
+            got.append((angle(b0, beta()) + side * 1.0, angle(beta(), at), dist))
+        self.ok("at a wall the camera follows the mouse and is pulled in",
+                found and all(abs(t) < 0.01 and abs(o) < 0.02 and d < 0.9 * full for t, o, d in got),
+                "; ".join("turn off by %+.3f, the camera %+.3f from its heading, %.2f of %.2f m" % (t, o, d, full)
+                          for t, o, d in got))
+        level(575.0, 175.0)
+        while abs(stands()[1] - zoom) > 0.2 and steps < 6:  # the view as it was
+            g.cmd("press backspace 150")
+            time.sleep(1.5)
+            steps += 1
 
     # ---- free aim (src/game/vcs_aim.cpp, game-internals.md 12c) ----
     PED_POOL, PED_SIZE = 0x487A94, 0xD20
@@ -1046,6 +1128,11 @@ class Check:
             g.cmd("menu close")
             p = self.held("shift")
             self.ok("input back after the menu", p["buttons"] == CROSS, str(p))
+
+            # the mouse's camera at a wall. Here, after the weapon checks, not among them: it moves Vic across the map
+            # and back, the city around him loads anew, and with it before them the shot and wheel checks failed
+            # now and then (a 50 ms wheel press lost to a long frame, a shot that missed its man)
+            self.foot_wall()
 
             # vibration: an explosion next to Vic (the game shakes the pad; god mode so he lives)
             g.cmd("trainer toggle god 1")

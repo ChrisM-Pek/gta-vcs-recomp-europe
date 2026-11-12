@@ -558,6 +558,17 @@ dropped on uploads (lazy render-target patching).
       it after the points before it, in every configuration; a fresh teleport there from Fort Baxter lands (z 14.5).
       Collision streaming order / timing at that spot needs a look.
 ## Phase 5 - stability
+- [x] **Memory growing for as long as the player moves about** (2026-11-10, GitHub issue 115: vcs.exe at 5.3 GB on a
+      PC with 8 GB; PERFORMANCE.md 31, DECISIONS.md 2026-11-10): the RSL replay's recordings, keyed by guest address
+      and length, were never dropped, and the game streams the same model in at ever new addresses. On a route across
+      the map (a move every 30 s) the process grew by 40 MB a minute - 245 -> 842 MB in 15 minutes, 2.3 GB an hour -
+      and stayed at ~300 MB with the recordings off. They now have a limit (`VCS_RSL_RECORDINGS_MB`, 256; 0 = none),
+      least recently used first; a recording's confirmation is withdrawn before it is freed, so the skip (FULLY_NATIVE
+      step 4b) never meets a missing one; the game thread's maps are trimmed with it. Same route: levels off at
+      650-700 MB (40 minutes: +1.45 MB a minute over the second half, +0.78 with no recordings at all; +0.02 with the
+      limit at 64 MB, where it stays at ~470 MB). Checked with the limit at 24 MB: `VCS_RSL_SKIP_VERIFY` 4.87M decisions 0 wrong,
+      `VCS_RSL_WORLD_VERIFY` 7.32M recordings 0 differ; no skipped block read from guest RAM in any run.
+      `tools/memcheck.py` (new) is the check: the route, memory every 10 s, fails when it still rises.
 - [ ] Fire, explosions and flame-thrower flames invisible on AMD GPUs (GitHub issue 4: RX 6600; a laptop's Radeon iGPU,
       while its NVIDIA GPU drew them) - **likely fixed 2026-11-04, waiting on the reporters**: hidden by everything but
       the sky, i.e. the fire's depth lost to every written one. D3D11 no longer writes the GS depth from the pixel shader
@@ -666,6 +677,16 @@ dropped on uploads (lazy render-target patching).
   limits (src/game/vcs_input.cpp; why: game-internals.md 12b). The gamepad keeps the game's own speeds (pitch 0.6 x the
   heading's). `tools/controls_check.py`: "mouse pitch at once" (120 counts -> +0.300 two frames later, still +0.300
   after 22); 47 checks, 0 failed.
+- [x] **The mouse's camera stopped at a wall on foot** (reported by the user 2026-11-11, fixed the same day): turned
+  toward a building with the mouse, the camera stood still at the wall's edge while its heading turned on behind the
+  wall (at the Fort Baxter barracks door: 0.744 rad behind its heading after a radian of mouse, at 4.41 m; the
+  gamepad's stick is pulled in toward the player instead). The game pulls the camera in only for a turned stick;
+  while the mouse turns the on-foot camera, and 300 ms after, the pad read now sets `0x487E58`, the game's own switch
+  for that path (src/game/vcs_input.cpp; game-internals.md 12b "On foot: the stick, the camera on its string,
+  walls"). Measured at 30 / 60 / 144 fps: the camera 0.001 rad from its heading, pulled in to 3.19 m. First part of
+  an on-foot mouse camera that was built and taken out again that day (DECISIONS.md), then asked for on its own.
+  `VCS_FOOT_WALL=0`: as before. `tools/controls_check.py`: two new checks (the stick's camera at the wall as the
+  reference, then the mouse's); 77 checks, 0 failed.
 - **Free aim with the mouse and the gamepad** (2026-10-31, asked for by the user): Keyboard > Free aim / Gamepad > Free
   aim (off by default): with a gun, holding R1's button aims where the mouse / right stick points with the game's own
   circle, shots go through it, Vic moves as he does locked on with that gun; fists / melee / thrown / scoped weapons keep
@@ -861,9 +882,10 @@ dropped on uploads (lazy render-target patching).
   down 7 -> 9 (off), and no change while the announcement plays.
 - **GitHub issues round, 2026-11-10** (DECISIONS.md): the graphics card on a PC with two (issue 112: Graphics >
   **Graphics card**, Fastest by default - D3D11 through DXGI's ranking, Vulkan by device type; `[rhi] graphics cards` in
-  the log; only one card here, so the choice between two is not checked); F12's frame dump only with
+  the log; only one card here, so the choice between two is not checked; since 2026-11-12 the setting lists the cards
+  by name, "(integrated)" after the CPU's chip - DECISIONS.md 2026-11-12); F12's frame dump only with
   `PS2X_HW_DUMP_KEY=1` (issue 89: Bandicam's and Steam's key; checked: 0 `[draw]` lines without, 893 with); vcs.exe's
-  icon and version information (issue 91: the launcher's icon, VERSION through a header only the resource file sees;
+  icon and version information (issue 91: the launcher's icon - since 2026-11-11 its own, the same scene by day in lighter colours -, VERSION through a header only the resource file sees;
   checked: Explorer's details read 0.2.4, "GTA: Vice City Stories PC port").
 
 ## Milestone 9 - Linux (started 2026-10-30)
@@ -976,6 +998,19 @@ Python scripts still usable on their own. docs/LAUNCHER.md has the whole of it; 
         60 cap, no control channel) but in a 1920x993 window, not 960x672: game 57.5 fps (58-59 after the first 10 s),
         p50 16.7 ms, p95 18.2 ms, host 60.2 fps - where it was. (With the control channel, in the city at 1920x1080,
         `gamectl.py perf` reads 35-48: the brightness probe's readback every frame, as section 16 says.)
+      **2026-11-12, merged with the setting's new form** (the cards by name, DECISIONS.md 2026-11-12; what is above is
+      as it was on the 10th - Fastest / Power saving, `VCS_GPU=0|1` and that log line are gone). Both sides had given
+      Vulkan a `[rhi] graphics cards` line; they are one now: D3D11's form plus what the Linux check had added. The
+      merged tree builds with clang 20 without a warning (quick build). On the HD 520, the window shown:
+      - `[rhi] graphics cards, fastest first: Intel(R) HD Graphics 520 (SKL GT2) (integrated) [364574466]; not in the
+        list: llvmpipe (LLVM 20.1.2, 256 bits) (software); using Intel(R) HD Graphics 520 (SKL GT2)` - the first run of
+        the Vulkan list and its "(integrated)" mark (Windows had no such chip and only syntax-checked that file);
+      - F2 > Graphics > Graphics card has the one card by name. The closed row cuts the mark short - "Intel(R) HD
+        Graphics 520 (SKL GT2) (integr": Mesa's name is longer than the box. Not changed here;
+      - `VCS_GPU=364574466` takes it; `VCS_GPU=1` (an old value) is refused (`[settings] VCS_GPU: ignoring
+        display.gpu=1`), the card the same; `VCS_VK_DEVICE=llvmpipe` ends the line "using llvmpipe (LLVM 20.1.2, 256
+        bits) (VCS_VK_DEVICE)", and the software renderer's warning follows it.
+      Not run again after the merge: `haze_check.py`, `controls_check.py`, `shakedown.py`, `framerate_audit.py`.
       Not checked: a ThinLTO build (the quick build was used), and - never checkable here - the choice between two
       cards. Not done, for the user to decide: the game's window has no icon on Linux (issue 91 gave vcs.exe one
       through its resources; DECISIONS.md).
@@ -1006,6 +1041,7 @@ Python scripts still usable on their own. docs/LAUNCHER.md has the whole of it; 
 | `VCS_TIMING_LOG=1` | independent timing: fps, host wait, EE clock vs real time, WaitVBlank callers every 2 s |
 | `VCS_GAME_VOLUME=0` | Audio > Music / Sound effects leave the game's own levels alone (no setter hooks, no sync; the reference) |
 | `VCS_CARCAM=0` | the hook on the camera behind a vehicle not installed: the mouse moves the right stick there, as before 2026-11-03; Car camera return does nothing |
+| `VCS_FOOT_WALL=0` | on foot the mouse's turn does not ask the camera's update for the pull-in at walls: the camera stands at a wall's edge while its heading turns on, as before 2026-11-11 |
 | `VCS_FREEAIM=0` | free aim's hooks not installed (CGame::Process, CCamera::Process, the weapons' line test): the game's aiming untouched, the setting does nothing |
 | `VCS_INPUT_MAP=0` | the runtime's fixed built-in key / gamepad mapping instead of the player's bindings (`ps2_pad.cpp`; the reference) |
 | `VCS_VSYNC=0\|1\|2` | Vertical sync for one run: off, on, off with tearing allowed |
@@ -1118,6 +1154,7 @@ Python scripts still usable on their own. docs/LAUNCHER.md has the whole of it; 
 | `VCS_RSL_CENSUS=1` | every 5 s: what the VIF1 chain still carries outside marked blocks and items - top-level tags by DMA id, first VIFcode and data region, per chain (FULLY_NATIVE.md step 5) |
 | `VCS_RSL_SKIP=0`, `VCS_RSL_SKIP_VERIFY=1`, `VCS_RSL_SKIP_KINDS=<mask>` | copy every marked block; decide skips but copy anyway and check each against the recording it would have replayed; which kinds may be skipped (bit 0 world, 1 model, 2 model-b, 3 other call; default all) |
 | `VCS_RSL_MEASURE=1` | with `VCS_RSL_WORLD_LOG`: per chain the bytes copied, the marked blocks and the distinct ones |
+| `VCS_RSL_RECORDINGS_MB=<n>` | the memory the RSL recordings may hold before the least recently used are dropped (256; 0: no limit, as before 2026-11-10 - GitHub issue 115). `VCS_RSL_WORLD_LOG`'s `memory:` line has what they hold, what was dropped and the game thread's map sizes |
 | `PS2X_HW_RT_LOG=1` | the render targets with their names (gsHwSetTargetRole), sizes and scales, every 5 s |
 | `PS2X_HW_REFLECTION_SCALE=0` | the reflection map stays 1x with "Match window" |
 | `PS2X_HW_DUMP_STEPS=1` with F12 | the target after every full-screen draw or render-target read, as `hw_stepN_fbpF.ppm` (the reflection map: the first `_fbp420` file - the end-of-frame dump of FBP 420 is the bloom) |
@@ -1194,7 +1231,7 @@ Python scripts still usable on their own. docs/LAUNCHER.md has the whole of it; 
 | `PS2X_HW_SPECIALISE=0` | the GS pixel shader's full version for every draw (not one per texture read; PERFORMANCE.md 18) |
 | `PS2X_HW_QUEUE=<n>`, `PS2X_HW_BATCH_MAX=<n>` | frames the game may queue ahead / frames rendered per host frame (0: all); defaults 1 / 1 with frame-rate independent timing, 3 / all with the original (PERFORMANCE.md 17) |
 | `VCS_VK_DEVICE=<n or name>` | Vulkan: which GPU |
-| `VCS_GPU=0\|1\|2` | Graphics > Graphics card for one run: 0 the fastest card (the default), 1 power saving, 2 the system's default adapter (D3D11; as before 2026-11-10). The log's `[rhi] graphics cards` line names them |
+| `VCS_GPU=<id>` | Graphics > Graphics card for one run: the card with that id - the number after each name in the log's `[rhi] graphics cards` line (made from the card's PCI ids, the same every start and under D3D11 and Vulkan). An id no card has is ignored (the saved card, else the fastest) |
 | `PS2X_HLE=0` | draw the world through the VU1 program instead of natively (src/game/vcs_hle_world.cpp) |
 | `PS2X_HLE_VERIFY=1` | compare the C++ world pipeline with the VU1's output (bit-exact expected) |
 | `PS2X_HLE_SURVEY=1`, `PS2X_HLE_SURVEY_DUMP=n`, `PS2X_HLE_SURVEY_DUMP_EVERY=n` | VU1 program / layout survey, sample dumps |

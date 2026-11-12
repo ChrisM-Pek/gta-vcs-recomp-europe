@@ -79,36 +79,107 @@ namespace rhi
             return s;
         }
 
-        // The graphics card for the player's choice (Graphics > Graphics card, GitHub issue 112): the first hardware
-        // adapter in DXGI's ranking for it (IDXGIFactory6, Windows 10 1803+) - on a laptop the dedicated card rather
-        // than the integrated chip Windows hands out by default. Null: no choice to make (SystemDefault, an older
-        // Windows) - D3D11CreateDevice then takes Windows' default adapter, as before. The log names every card.
-        ComPtr<IDXGIAdapter1> pickAdapter(GpuPreference want)
+        // DXCore (dxcore.dll, Windows 10 2004+) tells whether a card is the CPU's integrated chip; DXGI doesn't. Its
+        // header isn't in llvm-mingw, so the methods used are declared here, in the order of the Windows SDK's
+        // dxcore_interface.h (the rest of each vtable is never called). Loaded at run time: an older Windows just
+        // goes without the "(integrated)".
+        struct IDXCoreAdapterMin : IUnknown
         {
-            ComPtr<IDXGIFactory6> factory;
+            virtual bool STDMETHODCALLTYPE IsValid() = 0;
+            virtual bool STDMETHODCALLTYPE IsAttributeSupported(REFGUID attribute) = 0;
+            virtual bool STDMETHODCALLTYPE IsPropertySupported(uint32_t property) = 0;
+            virtual HRESULT STDMETHODCALLTYPE GetProperty(uint32_t property, size_t size, void *data) = 0;
+        };
+        struct IDXCoreAdapterFactoryMin : IUnknown
+        {
+            virtual HRESULT STDMETHODCALLTYPE CreateAdapterList(uint32_t count, const GUID *attributes, REFIID riid, void **list) = 0;
+            virtual HRESULT STDMETHODCALLTYPE GetAdapterByLuid(const LUID &luid, REFIID riid, void **adapter) = 0;
+        };
+        constexpr GUID kIID_IDXCoreAdapterFactory = {0x78ee5945, 0xc36e, 0x4b13, {0xa6, 0x69, 0x00, 0x5d, 0xd1, 0x1c, 0x0f, 0x06}};
+        constexpr GUID kIID_IDXCoreAdapter = {0xf0db4c7f, 0xfe5a, 0x42a2, {0xbd, 0x62, 0xf2, 0xa6, 0xcf, 0x6f, 0xc8, 0x3e}};
+        constexpr uint32_t kDXCoreIsHardware = 11, kDXCoreIsIntegrated = 12; // DXCoreAdapterProperty
+
+        // A DXCore bool property of the card with this LUID: 1 / 0, or -1 when DXCore can't tell.
+        int dxcoreFlag(const LUID &luid, uint32_t property)
+        {
+            static ComPtr<IDXCoreAdapterFactoryMin> factory = [] {
+                ComPtr<IDXCoreAdapterFactoryMin> f;
+                if (HMODULE dll = LoadLibraryExW(L"dxcore.dll", nullptr, LOAD_LIBRARY_SEARCH_SYSTEM32))
+                {
+                    using Create = HRESULT(WINAPI *)(REFIID, void **);
+                    if (auto create = reinterpret_cast<Create>(reinterpret_cast<void (*)()>(GetProcAddress(dll, "DXCoreCreateAdapterFactory"))))
+                        create(kIID_IDXCoreAdapterFactory, reinterpret_cast<void **>(f.GetAddressOf()));
+                }
+                return f;
+            }();
+            ComPtr<IDXCoreAdapterMin> adapter;
+            bool value = false;
+            if (!factory || FAILED(factory->GetAdapterByLuid(luid, kIID_IDXCoreAdapter, reinterpret_cast<void **>(adapter.GetAddressOf()))) ||
+                !adapter->IsPropertySupported(property) || FAILED(adapter->GetProperty(property, sizeof(value), &value)))
+                return -1;
+            return value ? 1 : 0;
+        }
+
+        // The graphics cards (rhi::listGpus), the fastest first: DXGI's high-performance ranking (IDXGIFactory6,
+        // Windows 10 1803+; DXGI's plain order before that), software adapters (Microsoft Basic Render Driver) left out.
+        struct Card
+        {
+            ComPtr<IDXGIAdapter1> adapter;
+            Gpu gpu;
+        };
+        std::vector<Card> enumerateCards()
+        {
+            std::vector<Card> cards;
+            ComPtr<IDXGIFactory1> factory;
             if (FAILED(CreateDXGIFactory1(IID_PPV_ARGS(&factory))))
-                return nullptr;
-            const DXGI_GPU_PREFERENCE preference = want == GpuPreference::PowerSaving ? DXGI_GPU_PREFERENCE_MINIMUM_POWER
-                                                                                    : DXGI_GPU_PREFERENCE_HIGH_PERFORMANCE;
-            ComPtr<IDXGIAdapter1> chosen, adapter;
-            std::string names;
-            for (UINT i = 0; SUCCEEDED(factory->EnumAdapterByGpuPreference(i, preference, IID_PPV_ARGS(&adapter))); ++i)
+                return cards;
+            ComPtr<IDXGIFactory6> ranked;
+            factory.As(&ranked);
+            for (UINT i = 0;; ++i)
             {
+                ComPtr<IDXGIAdapter1> adapter;
+                const HRESULT hr = ranked ? ranked->EnumAdapterByGpuPreference(i, DXGI_GPU_PREFERENCE_HIGH_PERFORMANCE, IID_PPV_ARGS(&adapter))
+                                          : factory->EnumAdapters1(i, &adapter);
+                if (FAILED(hr))
+                    break;
                 DXGI_ADAPTER_DESC1 d{};
                 adapter->GetDesc1(&d);
-                if (d.Flags & DXGI_ADAPTER_FLAG_SOFTWARE) // Microsoft Basic Render Driver
+                if (d.Flags & DXGI_ADAPTER_FLAG_SOFTWARE)
                     continue;
-                names += (names.empty() ? "" : ", ") + narrow(d.Description);
-                if (!chosen)
-                    chosen = adapter;
+                Card card;
+                card.adapter = adapter;
+                card.gpu.name = narrow(d.Description);
+                card.gpu.vendorId = d.VendorId;
+                card.gpu.deviceId = d.DeviceId;
+                card.gpu.integrated = dxcoreFlag(d.AdapterLuid, kDXCoreIsIntegrated) == 1;
+                cards.push_back(std::move(card));
             }
-            const char *mode = want == GpuPreference::PowerSaving     ? "power saving"
-                               : want == GpuPreference::SystemDefault ? "Windows' choice"
-                                                                      : "fastest";
-            std::fprintf(stderr, "[rhi] graphics cards, %s first: %s (choice: %s)\n",
-                         preference == DXGI_GPU_PREFERENCE_MINIMUM_POWER ? "most frugal" : "fastest",
-                         names.empty() ? "none" : names.c_str(), mode);
-            return want == GpuPreference::SystemDefault ? nullptr : chosen;
+            std::vector<Gpu> gpus;
+            for (const Card &c : cards)
+                gpus.push_back(c.gpu);
+            numberGpus(gpus);
+            for (size_t i = 0; i < cards.size(); ++i)
+                cards[i].gpu = gpus[i];
+            return cards;
+        }
+
+        // The graphics card the player chose (Graphics > Graphics card, GitHub issue 112): the card with that id, else
+        // the fastest - on a laptop the dedicated card rather than the integrated chip Windows hands out by default.
+        // Null when DXGI lists none: D3D11CreateDevice then takes Windows' default adapter. The log names every card.
+        ComPtr<IDXGIAdapter1> pickAdapter(int id)
+        {
+            const std::vector<Card> cards = enumerateCards();
+            const Card *chosen = cards.empty() ? nullptr : &cards[0];
+            for (const Card &c : cards)
+                if (c.gpu.id == id)
+                    chosen = &c;
+            std::string names;
+            for (const Card &c : cards)
+                names += (names.empty() ? "" : ", ") + c.gpu.name + (c.gpu.integrated ? " (integrated)" : "") + " [" +
+                         std::to_string(c.gpu.id) + "]";
+            std::fprintf(stderr, "[rhi] graphics cards, fastest first: %s; using %s\n", names.empty() ? "none" : names.c_str(),
+                         chosen ? chosen->gpu.name.c_str() : "Windows' default");
+            return chosen ? chosen->adapter : nullptr;
         }
 
         D3D11_BLEND blendFactor(BlendFactor f)
@@ -995,5 +1066,13 @@ namespace rhi
         if (!device->create(desc, error))
             return nullptr;
         return device;
+    }
+
+    std::vector<Gpu> listD3D11Gpus()
+    {
+        std::vector<Gpu> gpus;
+        for (const Card &c : enumerateCards())
+            gpus.push_back(c.gpu);
+        return gpus;
     }
 }

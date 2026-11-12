@@ -1368,3 +1368,22 @@ turned stick (the pull-in toward the player), through the game's own switch for 
 - **Nothing else of the on-foot camera changes**: the game's swing behind him, its string, the keys following the
   camera are as they were. With the mouse at rest the game's own handling of walls is back.
 - `VCS_FOOT_WALL=0` is the switch back (rule 1); not a setting - there is nothing to choose.
+
+## 2026-11-12 - Graphics > Graphics card lists the cards by name (the user's request)
+
+- **The cards, not "Fastest / Power saving / System default"**: the user asked for the list of cards the game can see,
+  with "(integrated)" after the CPU's own chip. The first is the fastest (DXGI's high-performance ranking; Vulkan:
+  discrete before integrated) and the default, so nothing changes for a player who never opens the setting. "System
+  default" (Windows' default adapter) went with the old choices; Windows' own Graphics settings no longer steer vcs.exe.
+- **vcs.ini keeps a card id, not a place in the list**: settings are ints, and a list's order changes when a card is
+  added, removed or ranked differently. The id is a hash of the PCI vendor and device ids and which of several identical
+  cards it is (`rhi::gpuId`): the same every start and under D3D11 and Vulkan (the list comes from D3D11 where it is
+  built - its names are Windows' -, the Vulkan backend matches the id against its own cards). A card no longer there is
+  an id no choice has: the setting falls back to the fastest. The old values 0 / 1 / 2 are ignored the same way (never in a
+  release).
+- **"(integrated)" from DXCore** (`dxcore.dll`, Windows 10 2004+, `IsIntegrated` looked up by the DXGI adapter's LUID):
+  DXGI has no such flag, and a guess from the dedicated memory size fails on AMD APUs with a large carve-out. DXCore's
+  header isn't in llvm-mingw, so the two interfaces' first methods are declared in rhi_d3d11.cpp; checked on the dev
+  machine with a scratch program: IsHardware 1 for the GTX 1080 Ti, 0 for Microsoft Basic Render Driver, IsIntegrated 0.
+  An integrated chip itself is not checked (none here). Vulkan: the device type. Older Windows: no mark.
+- Software renderers stay out of the list (Microsoft Basic Render Driver, llvmpipe), as do Vulkan cards older than 1.3.

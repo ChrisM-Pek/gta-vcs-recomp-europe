@@ -882,7 +882,8 @@ dropped on uploads (lazy render-target patching).
   down 7 -> 9 (off), and no change while the announcement plays.
 - **GitHub issues round, 2026-11-10** (DECISIONS.md): the graphics card on a PC with two (issue 112: Graphics >
   **Graphics card**, Fastest by default - D3D11 through DXGI's ranking, Vulkan by device type; `[rhi] graphics cards` in
-  the log; only one card here, so the choice between two is not checked); F12's frame dump only with
+  the log; only one card here, so the choice between two is not checked; since 2026-11-12 the setting lists the cards
+  by name, "(integrated)" after the CPU's chip - DECISIONS.md 2026-11-12); F12's frame dump only with
   `PS2X_HW_DUMP_KEY=1` (issue 89: Bandicam's and Steam's key; checked: 0 `[draw]` lines without, 893 with); vcs.exe's
   icon and version information (issue 91: the launcher's icon - since 2026-11-11 its own, the same scene by day in lighter colours -, VERSION through a header only the resource file sees;
   checked: Explorer's details read 0.2.4, "GTA: Vice City Stories PC port").
@@ -1182,7 +1183,7 @@ Python scripts still usable on their own. docs/LAUNCHER.md has the whole of it; 
 | `PS2X_HW_SPECIALISE=0` | the GS pixel shader's full version for every draw (not one per texture read; PERFORMANCE.md 18) |
 | `PS2X_HW_QUEUE=<n>`, `PS2X_HW_BATCH_MAX=<n>` | frames the game may queue ahead / frames rendered per host frame (0: all); defaults 1 / 1 with frame-rate independent timing, 3 / all with the original (PERFORMANCE.md 17) |
 | `VCS_VK_DEVICE=<n or name>` | Vulkan: which GPU |
-| `VCS_GPU=0\|1\|2` | Graphics > Graphics card for one run: 0 the fastest card (the default), 1 power saving, 2 the system's default adapter (D3D11; as before 2026-11-10). The log's `[rhi] graphics cards` line names them |
+| `VCS_GPU=<id>` | Graphics > Graphics card for one run: the card with that id - the number after each name in the log's `[rhi] graphics cards` line (made from the card's PCI ids, the same every start and under D3D11 and Vulkan). An id no card has is ignored (the saved card, else the fastest) |
 | `PS2X_HLE=0` | draw the world through the VU1 program instead of natively (src/game/vcs_hle_world.cpp) |
 | `PS2X_HLE_VERIFY=1` | compare the C++ world pipeline with the VU1's output (bit-exact expected) |
 | `PS2X_HLE_SURVEY=1`, `PS2X_HLE_SURVEY_DUMP=n`, `PS2X_HLE_SURVEY_DUMP_EVERY=n` | VU1 program / layout survey, sample dumps |

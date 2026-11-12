@@ -220,5 +220,6 @@ namespace theme
         constexpr char32_t kList = 0xEA37;
         constexpr char32_t kGame = 0xE7FC;
         constexpr char32_t kStop = 0xE71A;
+        constexpr char32_t kPackage = 0xE7B8; // a box: the Mods sheet (texture packs)
     }
 }

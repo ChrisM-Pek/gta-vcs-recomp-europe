@@ -457,6 +457,11 @@ namespace render::icons
             case 0xE71A: // stop
                 c.box(6, 6, 18, 18, 2);
                 return true;
+            case 0xE7B8: // package: a box (the Mods sheet, texture packs)
+                c.polyline({{12, 2.8f}, {21, 7.4f}, {12, 12}, {3, 7.4f}, {12, 2.8f}});
+                c.polyline({{3, 7.4f}, {3, 16.6f}, {12, 21.2f}, {21, 16.6f}, {21, 7.4f}});
+                c.line(12, 12, 12, 21);
+                return true;
             default:
                 return false;
             }

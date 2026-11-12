@@ -1461,3 +1461,14 @@ turned stick (the pull-in toward the player), through the game's own switch for 
 - The first use of each texture decodes its pack PNG on the GS stage (a one-off hitch of a few tens of ms for a
   4096x4096 file). What would change it: a background decode with the PS2 texture shown until it is ready, if players
   notice the pause menu's first opening.
+## 2026-11-12 - The launcher's Mods sheet: the pack is linked, not shipped, and its setting turned on
+
+- Players want the HD HUD in one step, but the pack is third-party art: the launcher's **Mods** sheet (title bar, next
+  to Saves and Settings) links the pack's GTAForums page, installs a chosen `.zip` or `.7z` with `tools/mods.py` into
+  the build folder's `textures/` (where the game reads packs), and turns the game's Graphics > Image quality >
+  **HD textures (HUD)** setting on, so the next start shows it. Nothing of the game or the pack is redistributed;
+  *Remove the textures* deletes `textures/` and the game falls back to its PS2 art.
+- Why in the launcher and not in the game: the pack is a folder next to vcs.exe, the launcher is what owns that folder
+  and knows whether the game runs - and the game stays authentic by default (the setting off until a pack is
+  installed).
+- What would change it: packs shipped with their authors' permission, or the game offering to install one itself.

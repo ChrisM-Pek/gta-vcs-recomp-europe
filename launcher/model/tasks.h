@@ -99,6 +99,11 @@ namespace launcher
         void startBackup();
         void startRestore(const std::string &backup);
         void startBackupList();
+        // the 2D layer's HD texture packs (tools/mods.py, the Mods sheet): what is installed, install an archive
+        // (.zip or .7z as packs are published), remove the installed textures
+        void startModsStatus();
+        void startModsInstall(const std::filesystem::path &archive);
+        void startModsRemove();
         void startReport();
         void startUpdateCheck(bool quiet);
         void startUpdate();
@@ -112,6 +117,7 @@ namespace launcher
         void cancelTask();
         void dismissTask() { if (task && task->finished) task.reset(); }
         Json backups, drives, updateInfo; // results kept from their tasks
+        Json mods; // tools/mods.py's last answer: installed, total, packs, enabled, folder
         bool updateQuiet = false;
         // an update put in place (update.py apply said restart): the version; this launcher is the old one until then
         std::string updatedTo;

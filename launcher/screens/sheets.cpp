@@ -105,6 +105,81 @@ namespace screens
             return y;
         }
 
+        // The Mods sheet (docs/LAUNCHER.md "Mods"): the 2D layer's HD textures. The pack is optional and belongs to its
+        // author, so the launcher only points at the page players get it from: install a chosen archive next to the
+        // game (tools/mods.py) and turn the game's own setting on.
+        float mods(App &app, Rect r)
+        {
+            constexpr const char *kPackPage =
+                "https://gtaforums.com/topic/983317-grand-theft-auto-vice-city-stories-hd-hud-for-pcsx2/";
+            float y = r.y;
+            if (!shell.modsAsked && !app.busy())
+            {
+                shell.modsAsked = true;
+                app.startModsStatus();
+            }
+            section(r, y, "HD TEXTURES FOR THE HUD");
+            text(r, y, "The game draws its HUD, texts, radar and menus from the PS2's own textures, so they stay at the "
+                       "original 640x448 resolution however high the game is set. A high-resolution texture pack replaces "
+                       "them; one made for PCSX2 works as it is. It is optional, and the game is unchanged without one.");
+            y += px(4);
+            {
+                const float w = ui::buttonWidth("The HD HUD pack (GTAForums)", theme::icon::kLink);
+                const Rect link{r.x, y, w, px(38)};
+                if (ui::button("The HD HUD pack (GTAForums)", link, ButtonStyle::Secondary, theme::icon::kLink))
+                    launcher::openUrl(kPackPage);
+                ui::tooltip(ui::id("#mods-link"), link, "Opens gtaforums.com in the browser: download the pack there");
+                y += px(50);
+            }
+            {
+                const float w = ui::buttonWidth("Install a pack...", theme::icon::kPackage);
+                const Rect install{r.x, y, w, px(38)};
+                if (ui::button("Install a pack...", install, ButtonStyle::Primary, theme::icon::kPackage,
+                               !app.busy() && !app.gameRunning))
+                    chooseModPack();
+                ui::tooltip(ui::id("#mods-install"), install,
+                            app.gameRunning ? "Quit the game first: it reads the textures when it starts"
+                                            : "Choose the pack's .zip or .7z: it is put next to the game, and the "
+                                              "game's HD textures setting is turned on");
+                y += px(50);
+            }
+            divider(r, y);
+
+            section(r, y, "INSTALLED");
+            const std::string kind = app.busy() ? app.task->kind : std::string();
+            if (kind == "mods_status" || kind == "mods_install" || kind == "mods_remove")
+            {
+                ui::spinner(r.x + px(9), y + px(11), px(7), theme::kDim, px(1.8f));
+                ui::label(kFontBody, px(theme::kBody), {r.x + px(26), y, r.w, px(22)}, theme::kDim,
+                          kind == "mods_install" ? "Installing..." : kind == "mods_remove" ? "Removing..." : "Checking...");
+                y += px(34);
+            }
+            else if (app.mods["installed"].num() <= 0)
+                text(r, y, "No pack installed.", theme::kFaint);
+            else
+            {
+                std::string packs;
+                const launcher::Json &list = app.mods["packs"];
+                for (size_t i = 0; i < list.size(); ++i)
+                    packs += std::string(i ? ", " : "") + list[i].str();
+                y += row({r.x, y, r.w, 0}, "Textures",
+                         std::to_string(static_cast<long long>(app.mods["installed"].num())) +
+                             (packs.empty() ? "" : "  (" + packs + ")"));
+                y += px(2);
+                if (!app.mods["enabled"].boolean())
+                    text(r, y, "The game's setting is off: turn it on in the game, Graphics > Image quality > "
+                               "HD textures (HUD).", theme::kAmber);
+                else
+                    text(r, y, "On in the game: it reads them when it starts.", theme::kDim);
+                y += px(8);
+                if (app.gameRunning)
+                    text(r, y, "Quit the game to remove them.", theme::kAmber);
+                else if (action(r, y, "Remove the textures", ButtonStyle::Ghost, theme::icon::kCancel, !app.busy()))
+                    openDialog(Dialog::ModsRemove);
+            }
+            return y;
+        }
+
         float settings(App &app, Rect r)
         {
             float y = r.y;
@@ -317,6 +392,7 @@ namespace screens
         switch (shell.sheetShown)
         {
         case Sheet::Saves: title = "Saves"; subtitle = "Back up and restore your memory card."; break;
+        case Sheet::Mods: title = "Mods"; subtitle = "Optional texture packs for the game's HUD, texts and menus."; break;
         case Sheet::Settings: title = "Settings"; subtitle = "The launcher's own options. The game's are in the game (F2)."; break;
         case Sheet::Help: title = "Help"; subtitle = "When something goes wrong, the logs say why."; break;
         case Sheet::Folder: title = "Build folder"; subtitle = "Where the game is built."; break;
@@ -341,6 +417,7 @@ namespace screens
         switch (shell.sheetShown)
         {
         case Sheet::Saves: bottom = saves(app, content); break;
+        case Sheet::Mods: bottom = mods(app, content); break;
         case Sheet::Settings: bottom = settings(app, content); break;
         case Sheet::Help: bottom = help(app, content); break;
         case Sheet::Folder: bottom = folder(app, content); break;

@@ -40,6 +40,12 @@ that the launcher is from an unknown publisher (it isn't signed): *More info > R
 If the *Pricedown* font (GTA's lettering, free for personal desktop use from Typodermic) is installed on your PC, the
 launcher uses it for its title and Play button; its licence doesn't allow including it, so it isn't.
 
+**Optional: high-resolution HUD textures.** The game draws its HUD, texts, radar and menus from the PS2's own
+textures, so they stay at the original resolution however high the picture is set. A texture pack made for PCSX2
+replaces them; the launcher's **Mods** tab (title bar) links the community *HD HUD* pack's page on GTAForums -
+download it there, then *Install a pack...* with the `.zip` or `.7z`. The pack belongs to its author and is not
+included; the game is exactly as before without one.
+
 ## Install on Linux: the launcher (easiest)
 
 1. Download the newest `VCS-Recomp-<version>-x86_64.AppImage` from the [Releases](../../releases) page. It runs on

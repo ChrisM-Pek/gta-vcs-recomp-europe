@@ -384,6 +384,19 @@ namespace screens
         };
     }
 
+    void chooseModPack()
+    {
+        shell.pending = [] {
+            fs::path picked;
+            if (platform::openFileDialog(picked, "Choose an HD texture pack (the HD HUD pack's zip or 7z)",
+                                         {{"Texture pack (*.zip)", "*.zip"}, {"Texture pack (*.7z)", "*.7z"}, {"All files", "*"}}))
+            {
+                shell.app->startModsInstall(picked);
+                shell.modsAsked = false; // the status again afterwards
+            }
+        };
+    }
+
     void chooseBuildDir(const fs::path &start)
     {
         shell.pending = [start] {
@@ -562,14 +575,21 @@ namespace screens
             g_forcedMode = int(Mode::Task);
         }
         else if (kind == "sheet")
-            openSheet(which == "saves" ? Sheet::Saves : which == "settings" ? Sheet::Settings : which == "help" ? Sheet::Help : Sheet::Folder);
+            openSheet(which == "saves" ? Sheet::Saves
+                      : which == "mods" ? Sheet::Mods
+                      : which == "settings" ? Sheet::Settings
+                      : which == "help" ? Sheet::Help
+                                        : Sheet::Folder);
         else if (kind == "dialog")
         {
             if (which == "restore")
                 shell.restoreName = "2026-10-31_21-04-12";
             if (which == "cancel" && !app.task)
                 demoTask(app, "running");
-            openDialog(which == "restore" ? Dialog::Restore : which == "quit" ? Dialog::Quit : Dialog::CancelTask);
+            openDialog(which == "restore" ? Dialog::Restore
+                       : which == "modsremove" ? Dialog::ModsRemove
+                       : which == "quit" ? Dialog::Quit
+                                         : Dialog::CancelTask);
         }
         else if (kind == "gallery")
             g_forcedMode = 100;

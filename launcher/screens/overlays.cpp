@@ -145,6 +145,22 @@ namespace screens
                 shell.dialog = Dialog::None;
             break;
         }
+        case Dialog::ModsRemove:
+        {
+            const int r = dialogBox(window, t, "Remove the HD textures?",
+                                    {{"The game goes back to its PS2 HUD, texts, radar and menus. The pack's files are "
+                                      "deleted; you can install them again later.", 0}},
+                                    {{"Remove", ButtonStyle::Danger, 1}, {"Cancel", ButtonStyle::Ghost, 0}});
+            if (r == 1)
+            {
+                app.startModsRemove();
+                shell.modsAsked = false;
+                shell.sheet = Sheet::None;
+            }
+            if (r >= 0)
+                shell.dialog = Dialog::None;
+            break;
+        }
         case Dialog::Quit:
         {
             const std::string what = app.task ? app.task->title : std::string("A task");

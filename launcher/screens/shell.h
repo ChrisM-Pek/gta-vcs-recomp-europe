@@ -31,6 +31,7 @@ namespace screens
     {
         None,
         Saves,
+        Mods,
         Settings,
         Help,
         Folder,
@@ -40,6 +41,7 @@ namespace screens
     {
         None,
         Restore,
+        ModsRemove,
         Quit,
         CancelTask,
         BuildDir,
@@ -89,6 +91,7 @@ namespace screens
         bool showDrives = false;
         bool showLog = false;
         bool backupsAsked = false;
+        bool modsAsked = false;
         bool awaitingBuildDir = false;
         bool minimizedForGame = false;
         bool quitNow = false;
@@ -125,6 +128,7 @@ namespace screens
 
     // ---- actions shared by several screens -------------------------------------------------------------------------
     void chooseIso();                        // the file dialog
+    void chooseModPack();                    // the file dialog: a texture pack to install (Mods)
     void chooseBuildDir(const std::filesystem::path &start);
     void chooseRipTarget();
     void play(App &app);

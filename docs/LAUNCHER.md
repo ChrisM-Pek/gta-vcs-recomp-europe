@@ -133,9 +133,9 @@ motion is (2026-11-01, the user's "rethink everything"; before, a sidebar of pag
   wavers - drawn at 30 frames a second (15 unfocused), only while Home shows, never while the game runs, and still with
   reduce motion on. In front of it,
   one big button for what's next (Play, or Check again when the check failed; with an update ready Play stays and a
-  smaller *Update the build* sits under it with a pink NEW badge, why in its tooltip - offered, never forced), what was built under it ("Built 2 days ago ·
-  Standard · AVX2"), and three cards along the bottom: Setup (opens it at any step), Saves, Updates. While the game runs
-  the button is a "Playing · 12:34" panel (redrawn once a second, never continuously); a non-zero exit becomes a red
+  smaller *Update the build* sits under it with a pink NEW badge, why in its tooltip - offered, never forced), what was built under it ("Built 2 days ago Â·
+  Standard Â· AVX2"), and three cards along the bottom: Setup (opens it at any step), Saves, Updates. While the game runs
+  the button is a "Playing Â· 12:34" panel (redrawn once a second, never continuously); a non-zero exit becomes a red
   card with `gameExitText()` and the log.
 - **Task** (`task.cpp`): a build, the installer, a disc copy, an update, a report or a restore takes the window: a
   large percentage whose digits roll like an odometer (the one leaving blurs and fades as it rises, the one arriving
@@ -144,10 +144,10 @@ motion is (2026-11-01, the user's "rethink everything"; before, a sidebar of pag
   bottom (Ctrl+L, or *Show details*; it opens by itself on a failure). A failure slides in a card with a red edge that
   shakes once: the code's title and fix (`errorHelp` in `launcher/model/tasks.cpp`), *Try again*, *Open the log*,
   *Make a report*. Success: the check, what happened, *Play* after a build.
-- **Sheets** (`sheets.cpp`): Saves, Settings and Help from the title bar slide in from the right on a spring over a
-  dimmed window; Escape, the dim or the button close them. **Dialogs** (`overlays.cpp`: restore a backup, cancel a
-  task, quit during a task, the chosen build folder's check) scale up and fade in; **toasts** rise at the bottom and
-  leave after 6 s.
+- **Sheets** (`sheets.cpp`): Saves, Mods, Settings and Help from the title bar slide in from the right on a spring over
+  a dimmed window; Escape, the dim or the button close them. **Dialogs** (`overlays.cpp`: restore a backup, remove the
+  HD textures, cancel a task, quit during a task, the chosen build folder's check) scale up and fade in; **toasts**
+  rise at the bottom and leave after 6 s.
 - Keyboard: Enter is the highlighted action, Escape closes the top sheet or dialog, F1 Help, Ctrl+L the log, Tab /
   Shift+Tab walk the controls with a focus ring. *Reduce motion* in Settings: everything snaps and Home's scene
   stands still. Off until the player turns it on (`reduce_motion` in launcher.ini). Windows' "Animate controls and
@@ -198,6 +198,11 @@ What each step and sheet holds:
   5 no window / graphics / sound; `0xC...` a crash, with the log).
 - **Saves**: the card's folder, Back up now, the backups with Restore (asks first; tools/backup.py). The list includes
   the game's own `auto-*` backups, made before it deletes or overwrites a save (game-internals.md 10f).
+- **Mods**: the game's HUD, texts, radar and menus can be drawn from a high-resolution texture pack (NATIVE_RENDERER.md,
+  "HD textures for the 2D layer"). The pack is its author's, not the launcher's: the sheet links its page on GTAForums;
+  *Install a pack...* takes the pack's `.zip` or `.7z` and `tools/mods.py` unpacks it into the build folder (`textures/`
+  next to vcs.exe), turns the game's Graphics > Image quality > **HD textures (HUD)** setting on, and the game reads it
+  at its next start. What is installed is shown with *Remove the textures*; the game must be closed to change them.
 - **Settings**: what the launcher does when the game starts, updates (check now, check at start, Update now when one
   is found - a dot on the title bar's Settings marks it), Appearance (System / Light / Dark), Reduce motion, a desktop
   shortcut.
@@ -317,8 +322,8 @@ repository root, ~1 MB stripped, 27 s from scratch on the dev laptop.
 
 ```
 VCSLauncher.exe (launcher/: main.cpp, screens/ ui/ render/ platform/ core/, model/ tasks process disc_check system json)
-   ├─ itself: window, disc check, file / folder dialogs, vcs.ini's iso=, processes (Job Objects), shortcuts, the game
-   └─ python\python.exe -I tools\<tool>.py ...  with VCS_PROGRESS=json
+   â”œâ”€ itself: window, disc check, file / folder dialogs, vcs.ini's iso=, processes (Job Objects), shortcuts, the game
+   â””â”€ python\python.exe -I tools\<tool>.py ...  with VCS_PROGRESS=json
          doctor.py --json     the state: folder, memory, cpu, compiler, downloads, disc, build, "next"
          build.py --recompile-if-needed <iso> --progress json [--opt X]
          setup_vs.py install, backup.py create|list|restore, report.py, update.py check|apply, rip_disc.py list|rip
@@ -363,6 +368,7 @@ recompiler, the runtime headers it compiles in, the translate / sync scripts; `r
 | `python tools/report.py [OUT]` | build logs, the newest four game logs (crash reports included), state files, doctor's JSON, Windows / CPU / GPU names; never the disc, generated code or the card |
 | `python tools/update.py check / apply [--zip F]` | GitHub's latest release vs RELEASE.json; apply replaces the release's files, removes the ones the new release dropped, keeps build/ and generated/ and anything added; files in use (the launcher, the running Python) are renamed `*.old` and removed next time, a file held open is tried again for a few seconds; a file it still can't write is skipped and named, `VERSION` / `RELEASE.json` stay the old ones and it fails with `update_incomplete` (the launcher offers the update again; issue 66); checks the `.sha256`; its result says `restart: true` when it put a new release in place (the launcher's Restart button) |
 | `python tools/rip_disc.py list / rip E: OUT.iso` | a disc's sectors (the size its ISO 9660 volume gives) to an .iso, retries, then the check |
+| `python tools/mods.py status / install ARCHIVE / remove [--build DIR]` | HD texture packs for the 2D layer: install unpacks a `.zip` (Python's zipfile) or `.7z` (7z, 7za, 7zr, bsdtar, or Windows' tar) into the build folder's `textures/`, only what is a pack (a `textures/` tree, or images named as PCSX2 names them), and turns the game's `display.hud_textures` setting on; remove deletes `textures/`; status says what is there |
 | `python tools/deps.py list / fetch [DIR] / check [DIR]` | the FetchContent pins read from the CMake files (one list); nlohmann/json from its release archive (0.2 MB instead of a 188 MB clone) |
 | `python tools/release.py [--ref vX / --worktree] [--version X] [--launcher EXE]` | the release zip |
 | `python tools/vcs_disc.py check ISO [--json]` | the disc check, for scripts |
@@ -370,8 +376,8 @@ recompiler, the runtime headers it compiles in, the translate / sync scripts; `r
 The launcher's command line: `--check`, `--build [--iso X]`, `--play [--iso X]`, `--self-test`, `--out FILE` (a GUI
 exe prints to the terminal that started it only through AttachConsole; `--out` for scripts and CI), and
 `--screenshot F.png`: the window rendered offscreen into a texture and saved - tests never put a window on the desktop.
-`--screen` picks what is shown (`setup:folder|disc|tools|game`, `home`, `task`, `sheet:saves|settings|help|folder`,
-`dialog:restore|quit|cancel`, `gallery` - every widget in its states), `--demo` a sample state (`running`, `link`,
+`--screen` picks what is shown (`setup:folder|disc|tools|game`, `home`, `task`, `sheet:saves|mods|settings|help|folder`,
+`dialog:restore|modsremove|quit|cancel`, `gallery` - every widget in its states), `--demo` a sample state (`running`, `link`,
 `firstlink`, `error`, `done`, `playing`, `update`, `updated` - an update in place with Restart / Later, `gameerror`,
 `stale` - Home with the build out of date), `--after-update PID` waits for PID to end first (the Restart button's), `--then S --at T` switches after T seconds and `--frames N` saves N
 consecutive frames (a transition, frame by frame), `--scale K` / `--size WxH` the pixels per unit and the logical size,

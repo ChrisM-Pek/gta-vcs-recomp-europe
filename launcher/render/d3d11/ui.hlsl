@@ -7,10 +7,12 @@
 //
 // Keep Instance in sync with render::Instance in render/draw.h.
 //
-// One source for both backends: fxc compiles it for Direct3D 11, glslang (tools/hlsl_spirv.py, VCS_SPIRV) for Vulkan,
-// where the frame constants are push constants and the viewport is flipped (render/vulkan/renderer_vulkan.cpp).
+// One source for every backend: fxc compiles it for Direct3D 11, glslang (tools/hlsl_spirv.py, VCS_SPIRV) for Vulkan,
+// where the frame constants are push constants and the viewport is flipped (render/vulkan/renderer_vulkan.cpp), and
+// glslang + SPIRV-Cross (tools/hlsl_msl.py, VCS_MSL) for Metal, as D3D11: the constants at buffer 0, no flip
+// (render/metal/renderer_metal.mm).
 
-#ifdef VCS_SPIRV
+#if defined(VCS_SPIRV) && !defined(VCS_MSL)
 [[vk::push_constant]] cbuffer Frame // no register: a push constant block has no binding
 #else
 cbuffer Frame : register(b0)

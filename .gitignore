@@ -32,4 +32,5 @@ __pycache__/
 # the build folder chosen elsewhere (tools/build_dir.py): this machine only
 .vcs-build-dir
 /VCSLauncher
+/VCSLauncher.app
 /VCSLauncher.old

@@ -3,7 +3,7 @@
 # for a release:
 #   python tools/build.py --launcher        (build/launcher, VCSLauncher(.exe) in the repository root)
 # Its own window, renderer and UI (uppies' design). Windows: Win32, Direct3D 11, DirectWrite. Linux: X11 or Wayland,
-# Vulkan, FreeType + fontconfig - the system's libraries, nothing downloaded. Layers, each using only those below it:
+# Vulkan, FreeType + fontconfig - the system's libraries, nothing downloaded. macOS: Cocoa, Metal, Core Text. Layers, each using only those below it:
 # screens/ -> ui/ -> render/ -> platform/ -> core/; model/ is the state and the tools it runs.
 cmake_minimum_required(VERSION 3.21)
 project(vcs_launcher LANGUAGES C CXX)
@@ -71,6 +71,61 @@ if(WIN32)
     if(MINGW)  # mingw-w64's headers default to Windows 7; the Windows SDK's (and the launcher) to Windows 10
         target_compile_definitions(VCSLauncher PRIVATE _WIN32_WINNT=0x0A00 WINVER=0x0A00)
     endif()
+elseif(APPLE)
+    # macOS (docs/LAUNCHER.md "macOS"): Cocoa, Metal, Core Text - the system's frameworks, nothing downloaded.
+    # VCSLauncher.app in the repository root. The shader is the one ui.hlsl as MSL (tools/hlsl_msl.py, the compilers
+    # tools/shader_tools.py builds), compiled by the OS when the launcher starts.
+    enable_language(OBJCXX)
+    find_package(Python3 REQUIRED COMPONENTS Interpreter)
+    if(NOT VCS_GLSLANG OR NOT VCS_SPIRV_CROSS)
+        message(FATAL_ERROR "VCS_GLSLANG / VCS_SPIRV_CROSS not set: python3 tools/build.py --launcher builds them")
+    endif()
+    foreach(stage vs ps)
+        if(stage STREQUAL "vs")
+            set(_msl_stage vert)
+        else()
+            set(_msl_stage frag)
+        endif()
+        add_custom_command(
+            OUTPUT "${VCS_LAUNCHER_SHADERS}/ui_${stage}.msl.h"
+            COMMAND "${Python3_EXECUTABLE}" -I "${VCS_ROOT}/tools/hlsl_msl.py" --glslang "${VCS_GLSLANG}"
+                    --spirv-cross "${VCS_SPIRV_CROSS}" --stage ${_msl_stage} --entry ${stage}_main
+                    --name g_ui_${stage}_msl --out "${VCS_LAUNCHER_SHADERS}/ui_${stage}.msl.h" "${VCS_UI_HLSL}"
+            DEPENDS "${VCS_UI_HLSL}" "${VCS_ROOT}/tools/hlsl_msl.py" "${VCS_ROOT}/tools/hlsl_spirv.py"
+            COMMENT "msl ui.hlsl ${stage}_main"
+            VERBATIM)
+    endforeach()
+    # the app's icon, drawn by make_icon.py
+    set(VCS_ICNS "${VCS_LAUNCHER_SHADERS}/launcher.icns")
+    add_custom_command(
+        OUTPUT "${VCS_ICNS}"
+        COMMAND "${Python3_EXECUTABLE}" -I "${CMAKE_CURRENT_SOURCE_DIR}/make_icon.py" --icns "${VCS_ICNS}"
+        DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/make_icon.py"
+        COMMENT "make_icon.py --icns"
+        VERBATIM)
+    set_source_files_properties("${VCS_ICNS}" PROPERTIES MACOSX_PACKAGE_LOCATION Resources)
+
+    set(_vcs_objcxx
+        platform/platform_macos.mm
+        render/font_coretext.mm
+        render/metal/renderer_metal.mm
+        model/system_macos.mm)
+    add_executable(VCSLauncher MACOSX_BUNDLE
+        ${VCS_LAUNCHER_COMMON}
+        ${_vcs_objcxx}
+        model/process_posix.cpp
+        "${VCS_LAUNCHER_SHADERS}/ui_vs.msl.h"
+        "${VCS_LAUNCHER_SHADERS}/ui_ps.msl.h"
+        "${VCS_ICNS}"
+    )
+    set_source_files_properties(${_vcs_objcxx} PROPERTIES COMPILE_OPTIONS "-fobjc-arc")
+    target_link_libraries(VCSLauncher PRIVATE "-framework AppKit" "-framework Metal" "-framework QuartzCore"
+                          "-framework CoreText" "-framework CoreGraphics" "-framework IOKit"
+                          "-framework UniformTypeIdentifiers" "-framework Carbon")
+    target_compile_options(VCSLauncher PRIVATE -Wall -Wextra -Wno-missing-field-initializers -Wno-unused-parameter
+                           -fvisibility=hidden)
+    target_link_options(VCSLauncher PRIVATE $<$<CONFIG:Release>:-Wl,-dead_strip>)
+    set_property(TARGET VCSLauncher PROPERTY INTERPROCEDURAL_OPTIMIZATION_RELEASE ON)
 else()
     # Linux. Everything comes from the distribution (python3 tools/build.py --check-deps lists the packages):
     # pkg-config modules for the window systems, fonts and D-Bus; Vulkan headers (the loader is opened at run time);
@@ -215,6 +270,11 @@ file(CONFIGURE OUTPUT "${VCS_LAUNCHER_SHADERS}/launcher_version.h" CONTENT "#def
 target_include_directories(VCSLauncher PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}" "${VCS_ROOT}/src" "${VCS_LAUNCHER_SHADERS}")
 # next to tools/ and the source, where a release has it (the launcher finds the repository from its own folder)
 set_target_properties(VCSLauncher PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${VCS_ROOT}")
+if(APPLE)
+    set(VCS_VERSION_SHORT "${CMAKE_MATCH_1}.${CMAKE_MATCH_2}.${CMAKE_MATCH_3}")
+    configure_file("${CMAKE_CURRENT_SOURCE_DIR}/Info.plist.in" "${CMAKE_CURRENT_BINARY_DIR}/Info.plist" @ONLY)
+    set_target_properties(VCSLauncher PROPERTIES MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_BINARY_DIR}/Info.plist")
+endif()
 if(MSVC)
     # one self-contained exe: the static C++ runtime, nothing to install
     set_property(TARGET VCSLauncher PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreaded")

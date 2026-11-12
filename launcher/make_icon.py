@@ -11,6 +11,8 @@ Standard library only.
     python launcher/make_icon.py --png DIR  also writes each size as DIR/launcher_<size>.png and DIR/game_<size>.png
     python launcher/make_icon.py --header OUT.h   only the X11 window icon (_NET_WM_ICON: 32, 64, 128 px as
                                             ARGB) as a C header - launcher/CMakeLists.txt runs it on Linux
+    python launcher/make_icon.py --icns OUT.icns  only the macOS app icon (PNG entries 16 - 256 px) - the
+                                            launcher's CMakeLists.txt runs it on macOS for VCSLauncher.app
 
 Drawn here rather than kept as artwork, so the repository holds the source of every byte. Small sizes draw less (no
 windows or stars below 128 px, no towers below 24) and up to 64 px put the scene's edges and the sun's stripes on whole
@@ -265,7 +267,22 @@ def write_header(path):
     os.replace(tmp, path)
 
 
+def write_icns(path):
+    """Apple's icon container: 'icns', its length, then (type, length, PNG) entries."""
+    entries = b""
+    for kind, size in ((b"icp4", 16), (b"icp5", 32), (b"icp6", 64), (b"ic07", 128), (b"ic08", 256)):
+        data = render(size)
+        entries += kind + struct.pack(">I", 8 + len(data)) + data
+    tmp = path + ".tmp"
+    with open(tmp, "wb") as f:
+        f.write(b"icns" + struct.pack(">I", 8 + len(entries)) + entries)
+    os.replace(tmp, path)
+
+
 def main():
+    if "--icns" in sys.argv:
+        write_icns(sys.argv[sys.argv.index("--icns") + 1])
+        return
     if "--header" in sys.argv:
         write_header(sys.argv[sys.argv.index("--header") + 1])
         return

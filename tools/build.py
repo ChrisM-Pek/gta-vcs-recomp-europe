@@ -166,6 +166,9 @@ def build_launcher(env, verbose):
         cmd = ["cmake", "-S", os.path.join(tc.ROOT, "launcher"), "-B", LAUNCHER_BUILD, "-G", "Ninja",
                "-DCMAKE_BUILD_TYPE=Release"] + tc.launcher_compiler_defines(env) + tc.deps_defines() + \
               tc.python_defines()
+        if tc.IS_MACOS:  # its Metal shader's compilers (built once from pinned sources)
+            import shader_tools
+            cmd += shader_tools.cmake_defines(env)
         if os.environ.get("VCS_WAYLAND_PROTOCOLS_DIR"):  # a release built on an older distribution (CI)
             cmd.append("-DVCS_WAYLAND_PROTOCOLS_DIR=" + os.environ["VCS_WAYLAND_PROTOCOLS_DIR"])
         log = os.path.join(tc.BUILD, "configure_launcher.log")
@@ -174,8 +177,9 @@ def build_launcher(env, verbose):
             tc.fail("CMake configure of the launcher failed (build/configure_launcher.log)", tc.configure_failure(log), log)
     if not tc.cmake_build(env, "VCSLauncher", "build_launcher.log", verbose, build_dir=LAUNCHER_BUILD):
         return False
-    print("[build] ok: " + tc.exe("VCSLauncher"))
-    tc.event(result="ok", exe=tc.exe("VCSLauncher"))
+    exe = "VCSLauncher.app" if tc.IS_MACOS else tc.exe("VCSLauncher")
+    print("[build] ok: " + exe)
+    tc.event(result="ok", exe=exe)
     return True
 
 

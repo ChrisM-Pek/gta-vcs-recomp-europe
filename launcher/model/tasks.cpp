@@ -155,12 +155,29 @@ namespace launcher
                                "Close other programs and build again; it continues where it stopped."}},
         };
 #endif
+#if defined(__APPLE__)
+        // macOS' own words (checked before Linux's)
+        const std::map<std::string, ErrorHelp> kMacErrors = {
+            {"no_clt", {"Apple's Command Line Tools aren't installed",
+                        "Use \"Install the Command Line Tools\" on the Build tools step: macOS opens Apple's installer. "
+                        "Choose Check again when it has finished."}},
+            {"install_failed", {"The Command Line Tools didn't install",
+                                "Install them from developer.apple.com/download (Command Line Tools for Xcode), or "
+                                "install Xcode, then choose Check again."}},
+            {"cpu_unsupported", {"This Mac has an Intel processor",
+                                 "The macOS version of the game is for Apple Silicon Macs (M1 and newer)."}},
+        };
+#endif
         const ErrorHelp kUnknown = {"Something went wrong", "Open the log for the details, or copy a report for help."};
     }
 
     const ErrorHelp &errorHelp(const std::string &code)
     {
 #ifndef _WIN32
+#if defined(__APPLE__)
+        if (const auto it = kMacErrors.find(code); it != kMacErrors.end())
+            return it->second;
+#endif
         if (const auto it = kLinuxErrors.find(code); it != kLinuxErrors.end())
             return it->second;
 #endif
@@ -168,9 +185,32 @@ namespace launcher
         return it == kErrors.end() ? kUnknown : it->second;
     }
 
+#if defined(__APPLE__)
+    // Apple's Command Line Tools (or Xcode) are installed: xcode-select knows a developer folder
+    bool macCommandLineTools()
+    {
+        Process p;
+        Process::Options options;
+        std::string ignored;
+        if (!p.start({"/usr/bin/xcode-select", "-p"}, options, ignored))
+            return false;
+        return p.wait() == 0;
+    }
+#endif
+
     bool App::init(std::string &error)
     {
-#ifndef _WIN32
+#if defined(__APPLE__)
+        // a macOS release: VCSLauncher.app carries the release's files (Contents/MacOS -> Contents/Resources/release),
+        // and the game is built in a folder of its own they are copied to, as from an AppImage
+        if (const fs::path files = exePath().parent_path().parent_path() / "Resources" / "release";
+            fs::is_regular_file(files / "RELEASE.json"))
+        {
+            payload = files;
+            const char *dir = std::getenv("VCS_INSTALL_DIR");
+            root = dir && *dir ? pathFrom(dir) : knownFolder(Folder::LocalAppData) / "VCSRecomp" / "install";
+        }
+#elif !defined(_WIN32)
         // a Linux AppImage: the release's files are in the image next to the launcher (usr/bin -> usr/share), and the
         // game is built in a folder of its own they are copied to
         if (const fs::path files = exePath().parent_path().parent_path() / "share" / "vcs-recomp" / "release";
@@ -223,6 +263,16 @@ namespace launcher
 #else
         if (fs::path bundled = root / "python" / "bin" / "python3"; fs::is_regular_file(bundled))
             candidates.push_back({pathText(bundled)});
+#if defined(__APPLE__)
+        // without Apple's Command Line Tools /usr/bin/python3 is a stub that opens their installer: ask for them first
+        if (candidates.empty() && !macCommandLineTools())
+        {
+            error = "Apple's Command Line Tools are needed (they bring the compiler, git and Python the build uses). "
+                    "Install them - macOS opens its installer for: xcode-select --install - then start the launcher "
+                    "again.";
+            return false;
+        }
+#endif
         for (const char *name : {"python3", "python"})
             if (std::string exe = findOnPath(name); !exe.empty())
                 candidates.push_back({exe});
@@ -249,7 +299,8 @@ namespace launcher
             error = os::kWindows
                         ? "Python 3 wasn't found. A release brings its own (the python folder next to the launcher); in a "
                           "git clone, install Python from python.org (tick \"Add python.exe to PATH\")."
-                        : "Python 3 wasn't found: install your distribution's python3 package (Python 3.8 or newer).";
+                        : os::kMac ? "Python 3 wasn't found: install Apple's Command Line Tools (xcode-select --install)."
+                                   : "Python 3 wasn't found: install your distribution's python3 package (Python 3.8 or newer).";
             return false;
         }
         pythonText = python[0];
@@ -597,6 +648,9 @@ namespace launcher
     {
 #ifdef _WIN32
         runTool("tools", "Installing the build tools", {toolPath(root, "setup_vs.py"), "install"});
+#elif defined(__APPLE__)
+        // Apple's Command Line Tools: build.py --install-deps runs xcode-select --install (macOS' own installer)
+        runTool("tools", "Installing Apple's Command Line Tools", {toolPath(root, "build.py"), "--install-deps", "--progress", "json"});
 #else
         // the distribution's packages, through pkexec (the desktop's password prompt): build.py --install-deps
         runTool("tools", "Installing the packages the build needs",
@@ -735,8 +789,13 @@ namespace launcher
         // Linux: the AppImage file (update.py renamed the new one over it; the old image stays mounted until we end)
         if (const char *appimage = std::getenv("APPIMAGE"); appimage && *appimage && !payload.empty())
             return pathFrom(appimage);
+#if defined(__APPLE__)
+        // macOS: the app bundle is replaced where it is (update.py), so the new one is at our own path
+        return exePath();
+#else
         // Windows: the release's launcher, written fresh by update.py (this one runs as VCSLauncher.exe.old)
         return root / os::kLauncherExe;
+#endif
     }
 
     bool App::restart(std::string &error)

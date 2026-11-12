@@ -3,6 +3,11 @@
 
 namespace launcher::os
 {
+#if defined(__APPLE__)
+    constexpr bool kMac = true;
+#else
+    constexpr bool kMac = false;
+#endif
 #ifdef _WIN32
     constexpr bool kWindows = true;
     constexpr const char *kGameExe = "vcs.exe";
@@ -12,6 +17,15 @@ namespace launcher::os
     constexpr const char *kBuildGame = "build\\vcs.exe"; // as the player sees it in messages
     constexpr const char *kBuildIni = "build\\vcs.ini";
     constexpr const char *kTools = "tools\\";
+#elif defined(__APPLE__)
+    constexpr bool kWindows = false;
+    constexpr const char *kGameExe = "vcs";
+    constexpr const char *kLauncherExe = "VCSLauncher.app";
+    constexpr const char *kFileManager = "Finder";
+    constexpr const char *kShortcutName = "GTA Vice City Stories";
+    constexpr const char *kBuildGame = "build/vcs";
+    constexpr const char *kBuildIni = "build/vcs.ini";
+    constexpr const char *kTools = "tools/";
 #else
     constexpr bool kWindows = false;
     constexpr const char *kGameExe = "vcs";

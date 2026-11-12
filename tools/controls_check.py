@@ -164,8 +164,12 @@ class Check:
         Driving keys (W / S / Space as Cross / Square / R1 while driving only), checked in the camera and the car."""
         g = self.g
         S = rig.Scm
-        g.teleport(575.0, 175.0, -100.0, 0.0)  # a straight street (the camera starts at its lowest here)
+        g.teleport(575.0, 175.0, -100.0, 0.0)  # a straight street
         time.sleep(4.0)
+        # the camera at its lowest first: where the teleport leaves it depends on what came before (on the Mac it stayed
+        # up, and "mouse pitch at once" ran into the game's upper limit - +0.252 for +0.3, 2026-11-13)
+        g.cmd("mouse 0 1000")
+        g.wait_frames(10)
         g.cmd("mouse 0 -150")
         g.wait_frames(30)
         mode = self.cam()[0]

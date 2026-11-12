@@ -1433,3 +1433,9 @@ turned stick (the pull-in toward the player), through the game's own switch for 
   without overwriting local work. The chosen disc determines the rebuilt game; the launcher is built in a separate
   staging directory before replacing the running executable, with a restart offered. Release folders retain the
   existing release updater. The check and application are described in LAUNCHER.md.
+
+## 2026-11-12 - Public European fork
+
+- At the user's request, `ChrisM-Pek/gta-vcs-recomp-europe` is the public fork and the source of its launcher updates
+  and future releases. The original `gothamor/gta-vcs-recomp` is kept as `upstream`, and the earlier private repository
+  is retained separately. The clone's `origin` points to the European fork, so release metadata identifies the fork.

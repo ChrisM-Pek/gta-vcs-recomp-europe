@@ -169,7 +169,7 @@ namespace screens
             }
             if (app.canUpdate())
             {
-                text(r, y, "Checks GitHub using your existing Git authentication.", theme::kFaint);
+                text(r, y, "Checks the European fork on GitHub.", theme::kFaint);
                 if (action(r, y, app.busy() && app.task->kind == "update_check" ? "Checking..." : "Check now", ButtonStyle::Secondary, theme::icon::kSync, !app.busy()))
                     app.startUpdateCheck(false);
             }

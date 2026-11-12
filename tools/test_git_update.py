@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Exercise private-checkout updates against a local Git remote."""
+"""Exercise fork-checkout updates against a local Git remote."""
 import os
 import subprocess
 import tempfile
@@ -26,7 +26,7 @@ class GitUpdateTests(unittest.TestCase):
         self.cmd('commit', '-m', 'initial', cwd=self.remote)
         self.cmd('clone', str(self.remote), str(self.local), cwd=base)
         self.patch_root = mock.patch.object(update.tc, 'ROOT', str(self.local))
-        self.patch_remote = mock.patch.object(update, 'private_remote', return_value='origin')
+        self.patch_remote = mock.patch.object(update, 'fork_remote', return_value='origin')
         self.patch_root.start()
         self.patch_remote.start()
         self.addCleanup(self.patch_root.stop)
@@ -69,9 +69,15 @@ class GitUpdateTests(unittest.TestCase):
 
     def test_rejects_untrusted_remote_url(self):
         self.patch_remote.stop()
-        self.cmd('remote', 'set-url', 'origin', 'https://evilgithub.com/ChrisM-Pek/gta-vcs-recomp.git', cwd=self.local)
+        self.cmd('remote', 'set-url', 'origin', 'https://evilgithub.com/ChrisM-Pek/gta-vcs-recomp-europe.git', cwd=self.local)
         with self.assertRaises(SystemExit):
-            update.private_remote()
+            update.fork_remote()
+        self.patch_remote.start()
+
+    def test_accepts_public_fork_origin(self):
+        self.patch_remote.stop()
+        self.cmd('remote', 'set-url', 'origin', 'https://github.com/ChrisM-Pek/gta-vcs-recomp-europe.git', cwd=self.local)
+        self.assertEqual(update.fork_remote(), 'origin')
         self.patch_remote.start()
 
     def test_failed_build_keeps_existing_launcher(self):

@@ -10,7 +10,7 @@
 apply replaces the release's files with the new release's, removes the files the old release had and the new one
 doesn't (RELEASE.json lists them), and keeps everything else: build/ (the built game, vcs.ini, the launcher's
 settings), generated/, your disc, anything you added. The game then needs building again (the launcher says so;
-it is incremental). A Git checkout checks the private main branch with Git credentials; apply fast-forwards only,
+it is incremental). A Git checkout checks the European fork's main branch; apply fast-forwards only,
 then builds the game and a staged launcher. Local tracked changes stop it and Git protects untracked files.
 
 Linux releases are an AppImage (tools/release.py): a read-only image holding the launcher and the release's files.
@@ -40,7 +40,7 @@ RELEASE_JSON = os.path.join(tc.ROOT, "RELEASE.json")
 UPDATE_DIR = os.path.join(tc.BUILD, "update")
 KEEP = ("build/", "generated/")  # never replaced or removed
 ASSET_SUFFIX = "-windows.zip" if tc.IS_WINDOWS else "-x86_64.AppImage"
-PRIVATE_REPO = "chrism-pek/gta-vcs-recomp"
+FORK_REPO = "chrism-pek/gta-vcs-recomp-europe"
 
 
 def git(*args, check=True):
@@ -49,30 +49,30 @@ def git(*args, check=True):
         result = subprocess.run(["git", "-C", tc.ROOT, *args], capture_output=True, text=True,
                                 encoding="utf-8", errors="replace", env=env, timeout=90)
     except (OSError, subprocess.TimeoutExpired) as e:
-        tc.fail("Git could not check the private repository: " + str(e), "git_update")
+        tc.fail("Git could not check the European repository: " + str(e), "git_update")
     if check and result.returncode:
-        tc.fail("Git could not update the private repository: " + result.stderr.strip(), "git_update")
+        tc.fail("Git could not update the European repository: " + result.stderr.strip(), "git_update")
     return result
 
 
-def private_remote():
-    for remote in ("private", "origin"):
+def fork_remote():
+    for remote in ("origin", "europe", "private"):
         result = git("remote", "get-url", remote, check=False)
         url = result.stdout.strip().lower()
         if result.returncode == 0 and re.fullmatch(
                 r"(?:https://github\.com/|ssh://git@github\.com/|git@github\.com:)" +
-                re.escape(PRIVATE_REPO) + r"(?:\.git)?/?", url):
+                re.escape(FORK_REPO) + r"(?:\.git)?/?", url):
             return remote
-    tc.fail("The private GitHub repository is not configured as remote 'private' or 'origin'.", "git_update")
+    tc.fail("The European GitHub fork is not configured as a Git remote.", "git_update")
 
 
 def git_update_status():
-    remote = private_remote()
+    remote = fork_remote()
     branch = git("branch", "--show-current").stdout.strip()
     if branch != "main":
         tc.fail("Switch to the main branch before updating this project.", "git_update")
     tracking = "refs/remotes/" + remote + "/main"
-    tc.stage("check", "Checking the private repository")
+    tc.stage("check", "Checking the European repository")
     git("fetch", "--no-tags", remote, "+refs/heads/main:" + tracking)
     current = git("rev-parse", "HEAD").stdout.strip()
     latest_commit = git("rev-parse", tracking).stdout.strip()
@@ -85,10 +85,10 @@ def git_update_status():
 
 def check_git():
     _, _, current, latest_commit, newer = git_update_status()
-    message = "A newer commit is available." if newer else "The private repository has no newer commits."
+    message = "A newer commit is available." if newer else "The European repository has no newer commits."
     print("[update] " + message)
     tc.event(result="ok", newer=newer, current=current[:7], latest=latest_commit[:7],
-             url="https://github.com/ChrisM-Pek/gta-vcs-recomp/commits/main/", message=message, git=True)
+             url="https://github.com/ChrisM-Pek/gta-vcs-recomp-europe/commits/main/", message=message, git=True)
 
 
 def apply_git(iso):

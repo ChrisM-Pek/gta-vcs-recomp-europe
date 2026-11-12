@@ -5,7 +5,7 @@ terminal: it finds and checks the disc, installs what the build needs, recompile
 bar, and starts it. It is a front end over the Python tools in `tools/` - every button runs a script people can also
 run by hand - so the launcher and the README's manual install are one pipeline.
 
-The private branch also accepts the experimental European SLES-54622 disc. The disc check verifies the executable's
+This fork also accepts the experimental European SLES-54622 disc. The disc check verifies the executable's
 SHA-1 and labels this version experimental. Build chooses its matching US or PAL recompiler inputs, retains a separate
 PAL generation stamp under the build folder, and the doctor asks for a rebuild if the selected disc and executable have
 different regions. The launcher's selected disc is passed to the doctor and to the build. Checked on Windows with the
@@ -13,8 +13,8 @@ European disc: the launcher self-test and a complete `--build` both pass, the di
 the doctor reports the built game current. A second build reused the generated code, and `--play` started the PAL game
 hidden with an isolated card (81 frames advanced). The European port remains experimental (game-internals.md, PAL section).
 
-For a Git checkout, the launcher checks the private `ChrisM-Pek/gta-vcs-recomp` main branch at startup by default,
-using the existing Git credentials (no token stored by the launcher). Settings can disable the startup check. When a
+For a Git checkout, the launcher checks the public `ChrisM-Pek/gta-vcs-recomp-europe` main branch at startup by default.
+Settings can disable the startup check. When a
 new commit is available, Update now fetches and fast-forwards only: tracked uncommitted changes and diverged branches
 stop the update, and Git protects untracked files from being overwritten. The game is built for the selected disc and
 the launcher is compiled into a staging folder before its running executable is replaced; restart to use it. Saves,

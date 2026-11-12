@@ -1,6 +1,7 @@
 # GTA: Vice City Stories — Native PC port (PS2 static recompilation)
 
-A native **Windows and Linux** port of **Grand Theft Auto: Vice City Stories** (PS2, USA, SLUS-21590), made by
+A native **Windows and Linux** port of **Grand Theft Auto: Vice City Stories** (PS2, USA SLUS-21590 and experimental
+Europe SLES-54622), made by
 recompiling the game's PS2 executable into C++. Both are built from the same source and run natively: Direct3D 11 on
 Windows, Vulkan on Linux.
 
@@ -9,6 +10,10 @@ The build reads the executable from your disc, and the finished game reads every
 
 Status: in development. See [docs/PROGRESS.md](docs/PROGRESS.md) for what works, and [docs/LINUX.md](docs/LINUX.md)
 for the Linux build in detail.
+
+This is a fork of [gothamor/gta-vcs-recomp](https://github.com/gothamor/gta-vcs-recomp), adding experimental support
+for the European disc. The PAL port has been tested on Windows; mission and Linux coverage is incomplete. Releases
+will appear on this fork's Releases page when published.
 
 ## Install on Windows: the launcher (easiest)
 
@@ -20,7 +25,7 @@ for the Linux build in detail.
    - **Folder**: the game is built in `build\` next to the launcher, or in a folder you choose (another drive with
      more room, say): *Choose another folder* on this step.
    - **Disc**: it looks for your `.iso` in Downloads, Desktop, Documents and its own folder; otherwise choose it (or
-     drag it onto the window, or copy your disc from a DVD drive). It checks that it is the USA release.
+     drag it onto the window, or copy your disc from a DVD drive). It checks the USA or European release.
    - **Build tools**: the game is compiled on your PC with Microsoft's free C++ tools. If they are missing,
      *Install build tools* runs Microsoft's installer with the right options (about 6 GB; Windows asks for permission).
    - **Build**: recompiles the game from your disc and compiles it, with a progress bar - 20 to 60 minutes the first
@@ -28,8 +33,8 @@ for the Linux build in detail.
      libraries.
    - **Play**.
 
-The launcher also backs up and restores your saves, makes a desktop shortcut, checks for a new release (only when you
-ask, or at start if you turn that on in *Settings*), and zips the logs into a report for bug reports. Windows may warn
+The launcher also backs up and restores your saves, makes a desktop shortcut, checks for updates at start (changeable in
+*Settings*), and zips the logs into a report for bug reports. Windows may warn
 that the launcher is from an unknown publisher (it isn't signed): *More info > Run anyway*. How it works:
 [docs/LAUNCHER.md](docs/LAUNCHER.md). Everything it does is a script in `tools/` you can also run yourself (below).
 If the *Pricedown* font (GTA's lettering, free for personal desktop use from Typodermic) is installed on your PC, the
@@ -100,12 +105,12 @@ With Visual Studio 2022 or newer installed (*Desktop development with C++* and *
    git clone <this repository's URL> vcs-recomp
    ```
    (*Code > Download ZIP* on GitHub works too.)
-2. Copy your disc image into that folder. It must be the USA release, and its file name must contain
-   `Vice City Stories`, like the usual `Grand Theft Auto - Vice City Stories (USA).iso`.
+2. Copy your USA or European (SLES-54622) disc image into that folder. Its file name must contain
+   `Vice City Stories`, or pass its path explicitly to the build command.
 
 Optional check that the disc is the right one:
 ```bash
-python tools/vcs_disc.py info "Grand Theft Auto - Vice City Stories (USA).iso"
+python tools/vcs_disc.py check "Grand Theft Auto - Vice City Stories (Europe).iso"
 ```
 
 ### 3. Build
@@ -219,7 +224,7 @@ Vulkan on Linux -, sound and streaming run on the PC, and the movies are decoded
 | `vswhere.exe not found` (with `VCS_TOOLCHAIN=msvc`) | Visual Studio isn't installed (`python tools/setup_vs.py install`), or build without it: unset `VCS_TOOLCHAIN`. |
 | CMake configure fails, mentioning `clang-cl` | Open the Visual Studio Installer, *Modify*, and tick **C++ Clang tools for Windows**. |
 | `no disc image` | Put the `.iso` in the repository folder, or give its path after `--recompile`. |
-| `unsupported executable build` or `SLUS_215.90 not found on disc` | The disc isn't the USA release (SLUS-21590). Other regions aren't supported. |
+| `unsupported executable build` | Use the supported USA SLUS-21590 or Europe SLES-54622 disc; other builds are not supported. |
 | CMake configure fails while downloading | Check the internet connection and that `git --version` works in a new terminal. |
 | `CMake 3.21 or newer not found, and downloading it failed` | Check the internet connection, or install CMake yourself ([cmake.org](https://cmake.org/download), or Visual Studio Installer, *Modify*, **C++ CMake tools for Windows**). `VCS_CMAKE` / `VCS_NINJA` set to a full path choose a particular one. |
 | A step fails within seconds, its log empty or ending in `exit code 0xC000001D (illegal instruction ...)` | The build was made for a newer processor than this PC's. Build again: the build follows the PC's processor (AVX2, AVX or SSE4; `python tools/doctor.py` shows which). Processors without SSE4.2 (before 2008) can't run the game. |

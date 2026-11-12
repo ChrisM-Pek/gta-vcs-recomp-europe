@@ -50,7 +50,7 @@ namespace launcher
     {
         std::string afterLaunch = "minimize"; // minimize, close, stay
         std::string opt;                      // "" (keep the build's), lto, none, pgo
-        bool checkUpdates = true;             // check the private repository when the launcher starts
+        bool checkUpdates = true;             // check for updates when the launcher starts
         bool reduceMotion = false;            // the launcher's animations off; this alone decides (off until set)
         std::string theme = "system";         // system (Windows' app mode), light, dark
     };

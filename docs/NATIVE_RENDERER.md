@@ -396,6 +396,47 @@ The HUD, text and radar are drawn over the shown picture at the window's size in
 - Textures: the GS backend's decoded texture cache (the same textures the emulated path samples) rather than a
   decoder for RenderWare rasters (DECISIONS.md).
 
+### HD textures for the 2D layer (2026-11-12)
+
+The HUD layer draws at the output size but samples the disc's textures - the font atlas 256x256, the money / clock
+digits 128x64, the icons 16x16 to 64x64, the radar's map tiles 128x128 (game-internals.md 6f) -, so at 1080p the HUD is
+the last part of the picture still at 640x448 resolution (the user's report: "ce sont toujours les HUD faible
+résolution ps2 qui sont utilisés même si ont upscale"). A texture a 2D primitive of the HUD layer draws now comes from
+a sharper image when one is available:
+- **Which images.** PCSX2's texture-replacement packs: a file named as PCSX2 names a texture,
+  `<TEX0Hash>-<CLUTHash>-<bits>.png` (or `<TEX0Hash>-<bits>.png` without a palette), `<bits>` = PSM | TW << 6 |
+  TH << 10 | TEXA. The two 64-bit hashes are PCSX2's own (`GSTextureCache::HashCacheKey::Create` and `GSClut::Read32`
+  of 2.6): XXH3-64 over the texture's 256-byte blocks in GS memory, or over the texels of a texture smaller than one,
+  and over the CLUT expanded to RGBA8. `GSCpuBackend::Pcsx2TextureName` reproduces them from the same memory (and the
+  same CLUT the renderer already keeps). Bit 14 of the bits field is ignored, as PCSX2 does when it reads a name (it
+  held TCC in older dumps; without that, packs dumped by 1.6 never match). `third_party/PS2Recomp/ps2xRuntime/
+  third_party/xxhash` (BSD-2-Clause) provides XXH3.
+- **Where packs are read.** `textures/` next to vcs.exe and in the data folder, any depth - a PCSX2 pack unzipped as
+  it comes (`textures/<serial>/replacements/*.png`) works as it is - plus `VCS_HUDTEX_DIR=<dir>` for one run. PNG
+  (grey / RGB / palette / grey + alpha / RGBA, 8 or 16-bit) and uncompressed RGBA DDS.
+- **When.** Once per texture, at its first draw the HUD classifier names (`recordPrimitive`'s `hud`): the renderer
+  writes the texture's blocks into VRAM if the decode had taken a queued upload, decodes the PS2 image and asks
+  `gsHwSetTexture2DSource` (the game side is `src/game/vcs_hudtex.cpp`). A replacement is uploaded as a texture of its
+  own and the primitive's state rewritten - `texKey`, `tw` / `th`, the clamp region scaled - so the vertices' texture
+  coordinates (0..1) need no change and filtering samples the sharper texels. `VCS_HUDTEX=0|1` and the setting decide;
+  installing the source again (`gsHwSetTexture2DSource`) makes textures already seen be asked again, so the setting and
+  the pack can change while the game runs.
+- **Size.** At most 8x the PS2 texture and 2048 a side (a 4096x4096 font atlas would be 64 MB for pixels the HUD
+  cannot show): larger images are downscaled by an area average when loaded. Alpha is kept as it is (0..128, the PS2's
+  scale: these packs are dumped from it) - not rescaled like PCSX2 does for its own shaders.
+- **Setting.** Graphics > Image quality > **HD textures (HUD)**: PS2 (original, the default) / HD pack. `VCS_HUDTEX=0|1`
+  for one run; `VCS_HUDTEX_LOG=1` writes `[hudtex]` lines naming every 2D texture and whether a file was found;
+  `VCS_HUDTEX_DUMP=<dir>` writes the PS2 textures the 2D layer draws, named exactly as PCSX2 names them - what a pack
+  author starts from (upscale or redraw them, drop them into `textures/<serial>/replacements/`).
+- **Checked** with "HD HUD - SLUS-21590 - PS Icons" (160 files, 8x PS icons and a 4096x4096 font atlas) on the PAL disc:
+  both hashes match the pack's names for every HUD texture the game draws - the PAL and NTSC discs' HUD art is the same
+  data, only the old TCC bit differed -, 30+ textures replaced (font atlas -> 2048x2048, digits -> 1024x512, icons ->
+  128 to 512, the pause menu's drawings -> 2048x2048). Screenshots at 1920x1080 by `tools/hudtex_check.py`.
+- **What does not change.** The geometry: the layer's vertices still snap to the PS2's pixel coverage (its pieces line
+  up through the scissor and depth), so the HUD is laid out in 640x448 units and its edges land on that grid - the
+  texels inside are sharp, the layout is the PS2's. Text and icons of a pack that keeps the atlas layout line up
+  exactly; a texture the classifier does not name (3D sprites, the sky, screen effects) keeps the disc's art.
+
 ### Post effects (milestone 3 step 3, started 2026-10-23)
 
 The user's priority: authentic at the original 640x448 first, then at higher resolutions and other aspect ratios.

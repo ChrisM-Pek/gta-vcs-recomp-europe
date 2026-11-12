@@ -43,7 +43,7 @@ choices).
 | Path | What |
 |---|---|
 | `src/main.cpp` | Launcher: ISO, settings registration, runtime start |
-| `src/game/` | Game-specific code: overrides / hooks (`vcs_overrides.cpp`), native draw HLE (`vcs_hle_world.cpp`), display (`vcs_display.cpp`), the trainer (`vcs_trainer.cpp`), frame timing (`vcs_framerate.cpp`, per-frame mission meters `vcs_script_timing.cpp`), the player's controls (`vcs_input.cpp`; free aim `vcs_aim.cpp`; the pause menu's keys and mouse `vcs_frontend.cpp`), the game's music / effects levels as settings (`vcs_volume.cpp`), button prompts by device (`vcs_prompts.cpp`, its glyphs `vcs_glyph_art.cpp`), traffic / pedestrian density and draw distance (`vcs_world_detail.cpp`), the NPC drive-by's fire rate (`vcs_driveby.cpp`), mission scripts stuck above 30 fps (`vcs_script_fixes.cpp`) |
+| `src/game/` | Game-specific code: overrides / hooks (`vcs_overrides.cpp`), native draw HLE (`vcs_hle_world.cpp`), display (`vcs_display.cpp`), the trainer (`vcs_trainer.cpp`), frame timing (`vcs_framerate.cpp`, per-frame mission meters `vcs_script_timing.cpp`), the player's controls (`vcs_input.cpp`; free aim `vcs_aim.cpp`; the pause menu's keys and mouse `vcs_frontend.cpp`), the game's music / effects levels as settings (`vcs_volume.cpp`), button prompts by device (`vcs_prompts.cpp`, its glyphs `vcs_glyph_art.cpp`), traffic / pedestrian density and draw distance (`vcs_world_detail.cpp`), the NPC drive-by's fire rate (`vcs_driveby.cpp`), mission scripts stuck above 30 fps (`vcs_script_fixes.cpp`), HD textures for the HUD, text, radar and menus from PCSX2 texture packs (`vcs_hudtex.cpp`) |
 | `src/render/`, `src/rhi/`, `src/platform/` | Presenter + shaders (HLSL; DXBC by fxc, SPIR-V by `tools/hlsl_spirv.py`), the RHI (backends `d3d11/`, `vulkan/`, `null/`; only they see a graphics API), SDL3 platform layer |
 | `src/sound/` | Sony's libsd on the host (the native sound driver in `src/game/vcs_sound.cpp` drives the SPU2 through it) |
 | `src/settings/`, `src/ui/` | Settings registry + vcs.ini, the in-game settings menu (F2), the trainer menu (F5) |
@@ -105,6 +105,9 @@ python tools/trainer_check.py [OUT] [--vehicles all]          # every trainer fe
 python tools/finale_check.py [OUT] [--story] [--full]         # Last Stand's end from the trainer: final cutscene, credits
 python tools/controls_check.py [OUT]                          # bindings, presets, reset, vibration, volume levels; menu screenshots
 python tools/hud_check.py [OUT]                               # HUD at the screen edges: radar left, centred text in the middle
+python tools/hudtex_check.py [OUT] [--pack DIR]               # HD textures for the HUD, text, radar and menus: a pack's
+                                                              # replacement found by PCSX2's name for a texture, drawn at its
+                                                              # size (makes a synthetic magenta pack when none is given)
 python tools/menu_check.py [OUT]                              # the pause menu: Escape / Enter, the mouse (hover, click, sliders,
                                                               # map drag), the gamepad as before
 python tools/prompts_check.py [OUT]                           # button prompts: each glyph set in help text and the menu, the

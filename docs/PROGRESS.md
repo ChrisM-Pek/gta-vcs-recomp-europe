@@ -218,6 +218,17 @@ dropped on uploads (lazy render-target patching).
         scene 1.12 against the reference (ok); at 1080p the progress bar and its shadow draw at the output's
         resolution instead of a scaled-up 640x448 frame. `VCS_LOADING_NATIVE=0` = into the frame buffer. There is no
         title menu (game-internals.md 6f: the game boots into the opening sequence; the frontend is the pause menu).
+  - [x] **HD textures for the 2D layer** (2026-11-12, the user's report that the HUD stays the PS2's low-resolution
+        art at a modern internal resolution): a texture the HUD classifier names is drawn from a PCSX2
+        texture-replacement pack, found by PCSX2's own hash of it (reproduced from the port's GS memory:
+        `GSCpuBackend::Pcsx2TextureName`), uploaded at the replacement's size and drawn in the HUD layer with `texKey`,
+        size and clamp region rewritten (NATIVE_RENDERER.md "HD textures for the 2D layer"). Off by default (Graphics >
+        Image quality > HD textures (HUD)); `VCS_HUDTEX_DUMP` writes the PS2 textures for pack authors.
+        Checked with "HD HUD - SLUS-21590 - PS Icons" (160 files) on the PAL disc: both hashes match for every 2D
+        texture the game drew (the HUD art is the same data on both discs; only the old TCC bit of the name differed),
+        30+ textures replaced - font atlas 256x256 -> 2048x2048, digits 128x64 -> 1024x512, icons 16x16..64x64 ->
+        128..512, the pause menu's drawings -> 2048x2048 - and screenshots at 1920x1080 (hud + pause menu: crisp text,
+        radar and PS glyphs; `tools/hudtex_check.py`, which builds a pack of its own from the dumps).
 - [x] **Textures without emulated VRAM in steady state** (2026-10-24, FULLY_NATIVE.md step 3a): CLUT loads take the
       palette from the queued upload that wrote it, and data-less upload calls no longer force the queue; swizzled VRAM
       writes while driving ~245k -> ~7 per 5 s, render worker idle 27% -> 41% on the drive (`writeRectFast` was 11% of
@@ -1269,3 +1280,7 @@ Python scripts still usable on their own. docs/LAUNCHER.md has the whole of it; 
 | `python tools/sendkey.py Return`, `python tools/screenshot.py f.png` | key press / screenshot (control channel if open, else the window) |
 | `python tools/eedis.py <elf> <addr or name>` | EE disassembly with function names |
 | `python tools/minidbg.py <exe> <iso>` | catch fail-fast crashes with a stack |
+| `VCS_HUDTEX=0|1` | Graphics > Image quality > HD textures (HUD): draw the 2D layer's textures from a PCSX2 texture pack (default 0 = the PS2's art) |
+| `VCS_HUDTEX_DIR=<dir>` | the pack's folder for one run (also `textures/` next to vcs.exe or in the data folder) |
+| `VCS_HUDTEX_LOG=1` | `[hudtex]` lines: every 2D texture by PCSX2's name, and the file used for it |
+| `VCS_HUDTEX_DUMP=<dir>` | write the PS2 textures the 2D layer draws, named as PCSX2 names them - a pack author's starting point (analysis only, never commit the output) |

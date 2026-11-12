@@ -99,6 +99,35 @@ void gsHwSetGlyphAtlas(uint32_t width, uint32_t height, std::shared_ptr<const st
 // [gta-recomp] Glyph draws recorded so far (the prompts check).
 uint64_t gsHwGlyphDraws();
 
+// [gta-recomp] HD textures for the 2D layer (src/game/vcs_hudtex.cpp, docs/NATIVE_RENDERER.md "HD textures"): the HUD,
+// text, radar and menus are drawn over the picture at the output size, but sampled from the PS2's textures (the font
+// atlas 256x256, the digits 128x64, the radar's map tiles 128x128). A texture the 2D layer draws may come from a
+// sharper image instead: a PCSX2 texture-replacement pack's PNG, or an upscaled copy of the PS2 texture itself.
+//
+// The source is asked once per texture, on the GS stage, the first time a 2D draw (one the HUD classifier names) uses
+// it. `texture` is PCSX2's name for it (`tex0Hash` / `clutHash` / `bits`: the pack's file name) with the PS2 texture
+// decoded (`width` x `height`, RGBA8, R in the low byte, alpha in the PS2's 0..255). Filling `out` with an image of
+// any size draws that texture's 2D primitives from it; false keeps the PS2 texture. Vertices keep their texture
+// coordinates (0..1), clamp regions and filtering scale with the image, so a sharper image is drawn at its own
+// resolution. nullptr (the default) = off, nothing is read back.
+struct GSHwTexture2D
+{
+    uint32_t width = 0, height = 0;
+    const uint32_t *pixels = nullptr; // RGBA8
+    uint64_t tex0Hash = 0, clutHash = 0;
+    uint32_t bits = 0;
+};
+struct GSHwTexture2DImage
+{
+    uint32_t width = 0, height = 0;
+    std::shared_ptr<std::vector<uint32_t>> pixels; // RGBA8; handed over (moved from) when the replacement is taken
+};
+using GSHwTexture2DFn = bool (*)(const GSHwTexture2D &texture, GSHwTexture2DImage &out);
+void gsHwSetTexture2DSource(GSHwTexture2DFn fn);
+// [gta-recomp] Textures replaced by one so far, and the number of 2D textures the source was asked about (checks).
+uint64_t gsHwTexture2DReplaced();
+uint64_t gsHwTexture2DAsked();
+
 // [gta-recomp] Native HUD layer: the primitives the classifier names are kept out of the PS2 frame buffer and drawn over
 // the displayed picture at the output size (gsHwSetOutputSize) - sharp at any window size, in its aspect. The displayed
 // buffer's latest HUD is drawn; a new scene in that buffer starts the next one. Any thread.

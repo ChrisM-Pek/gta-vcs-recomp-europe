@@ -509,6 +509,9 @@ target_include_directories(ps2_runtime PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CMAKE_CURRENT_SOURCE_DIR}/src/lib/Kernel
 )
+# [gta-recomp] xxHash (third_party/xxhash, BSD-2-Clause): XXH3-64, the hash PCSX2 names HD texture replacements by
+# (src/lib/gs/gs_cpu_backend.cpp's Pcsx2TextureName; docs/NATIVE_RENDERER.md "HD textures")
+target_include_directories(ps2_runtime PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/third_party/xxhash)
 
 target_link_libraries(ps2_runtime PUBLIC ps2_host_backend ffmpeg ps2_iop)
 target_link_libraries(ps2EntryRunner

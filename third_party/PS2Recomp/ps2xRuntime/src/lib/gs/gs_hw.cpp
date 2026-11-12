@@ -48,6 +48,12 @@ namespace
     };
     GlyphAtlas g_glyphAtlas;
     std::atomic<uint64_t> g_glyphDraws{0};
+    // [gta-recomp] gsHwSetTexture2DSource: HD textures for the 2D layer, and the counts the checks read. The generation
+    // changes with every call, so textures the source was already asked about are asked again (the setting or the pack
+    // changed; source nullptr = switched off, what was replaced goes back to the PS2's texture).
+    std::atomic<GSHwTexture2DFn> g_texture2dSource{nullptr};
+    std::atomic<uint32_t> g_texture2dGeneration{0};
+    std::atomic<uint64_t> g_texture2dReplaced{0}, g_texture2dAsked{0};
     constexpr uint64_t kGlyphAtlasKey = 0xF1F1F1F100000000ull; // its texture key: no GS texture key has these high bits
     std::atomic<uint32_t> g_outputW{0}, g_outputH{0};   // [gta-recomp] gsHwSetOutputSize
     std::atomic<float> g_aspectWidening{1.0f};          // [gta-recomp] gsHwSetAspectWidening
@@ -240,6 +246,13 @@ void gsHwSetGlyphAtlas(uint32_t width, uint32_t height, std::shared_ptr<const st
     ++g_glyphAtlas.generation;
 }
 uint64_t gsHwGlyphDraws() { return g_glyphDraws.load(std::memory_order_relaxed); }
+void gsHwSetTexture2DSource(GSHwTexture2DFn fn)
+{
+    g_texture2dSource.store(fn, std::memory_order_relaxed);
+    g_texture2dGeneration.fetch_add(1, std::memory_order_relaxed);
+}
+uint64_t gsHwTexture2DReplaced() { return g_texture2dReplaced.load(std::memory_order_relaxed); }
+uint64_t gsHwTexture2DAsked() { return g_texture2dAsked.load(std::memory_order_relaxed); }
 void gsHwSetOutputSize(uint32_t width, uint32_t height)
 {
     g_outputW.store(width, std::memory_order_relaxed);
@@ -2985,6 +2998,98 @@ namespace
             g_glyphDraws.fetch_add(1, std::memory_order_relaxed);
         }
 
+        // [gta-recomp] HD 2D textures (gsHwSetTexture2DSource, docs/NATIVE_RENDERER.md "HD textures"): a primitive the
+        // native HUD layer will draw samples a texture the game uploaded at the PS2's resolution. The source is asked
+        // about that texture once, at its first such draw, by PCSX2's name for it (a replacement pack's file name) and
+        // the decoded PS2 image. A replacement becomes a texture of its own (any size, up to kTex2DMaxSide) and this
+        // primitive and the ones after it are recorded with it: the coordinates are normalised (0..1), so only the size
+        // and the clamp region change with the image.
+        void adoptTexture2D(HwState &s)
+        {
+            const GSHwTexture2DFn source = g_texture2dSource.load(std::memory_order_relaxed);
+            if (!source || !s.tme || s.texIsRt || s.fst)
+                return;
+            const auto found = m_tex2d.find(s.texKey);
+            if (found == m_tex2d.end() || !found->second.stored)
+                return;
+            Tex2DState &rec = found->second;
+            const uint32_t generation = g_texture2dGeneration.load(std::memory_order_relaxed);
+            if (!rec.asked || rec.generation != generation)
+            {
+                rec.asked = true;
+                rec.generation = generation;
+                if (rec.hdKey) // the setting or the pack changed: what was replaced goes back to the PS2's texture
+                {
+                    Frame &old = *m_frame;
+                    old.cmds.push_back({CmdType::TexDelete, static_cast<uint32_t>(old.texDeletes.size())});
+                    old.texDeletes.push_back(rec.hdKey);
+                    rec.hdKey = 0;
+                }
+                g_texture2dAsked.fetch_add(1, std::memory_order_relaxed);
+                const GSTex0Reg &t = rec.state.context.tex0;
+                const uint32_t ps2W = rec.state.textureWidth, ps2H = rec.state.textureHeight;
+                // the texture's data as the name hashes it (PCSX2 hashes GS memory too): what the decode took from a
+                // queued upload is written into VRAM first
+                materializeRectKeepTransfer(t.psm, t.tbp0, t.tbw, 0u, 0u, ps2W, ps2H);
+                GSCpuBackend::TextureName2 name;
+                const bool named = m_cpu.Pcsx2TextureName(rec.state, name);
+                std::vector<uint32_t> ps2;
+                m_cpu.DecodeTexture(rec.state, ps2);
+                GSHwTexture2D texture;
+                texture.width = ps2W;
+                texture.height = ps2H;
+                texture.pixels = ps2.data();
+                texture.tex0Hash = named ? name.tex0Hash : 0u;
+                texture.clutHash = named ? name.clutHash : 0u;
+                texture.bits = named ? name.bits : 0u;
+                GSHwTexture2DImage image;
+                const uint32_t capW = std::min(kTex2DMaxSide, ps2W * kTex2DMaxScale);
+                const uint32_t capH = std::min(kTex2DMaxSide, ps2H * kTex2DMaxScale);
+                const bool replaced = source(texture, image) && image.width && image.height && image.pixels &&
+                                      image.pixels->size() >= size_t(image.width) * image.height &&
+                                      image.width <= capW && image.height <= capH;
+                if (replaced)
+                {
+                    Frame &f = *m_frame;
+                    TexCreate tc;
+                    rec.hdKey = mix64(s.texKey ^ 0x48443244u, (uint64_t(image.width) << 32) | image.height);
+                    tc.key = rec.hdKey;
+                    tc.w = image.width;
+                    tc.h = image.height;
+                    tc.pixels = std::move(*image.pixels); // the source hands it over (asked once)
+                    f.cmds.push_back({CmdType::TexCreate, static_cast<uint32_t>(f.textures.size())});
+                    f.textures.push_back(std::move(tc));
+                    rec.hdW = image.width;
+                    rec.hdH = image.height;
+                    g_texture2dReplaced.fetch_add(1, std::memory_order_relaxed);
+                }
+                static const bool log = std::getenv("VCS_HUDTEX_LOG") != nullptr; // the HD texture check
+                if (log)
+                {
+                    std::string outcome = named ? "no replacement" : "format not named";
+                    if (replaced)
+                        outcome = "-> " + std::to_string(rec.hdW) + "x" + std::to_string(rec.hdH);
+                    std::fprintf(stderr, "[hudtex] %016llx-%016llx-%08x psm %u %ux%u %s\n",
+                                 (unsigned long long)texture.tex0Hash, (unsigned long long)texture.clutHash,
+                                 texture.bits, (unsigned)t.psm, ps2W, ps2H, outcome.c_str());
+                }
+            }
+            if (!rec.hdKey)
+                return;
+            const uint32_t maxW = std::max<uint32_t>(rec.state.textureWidth, 1u);
+            const uint32_t maxH = std::max<uint32_t>(rec.state.textureHeight, 1u);
+            auto scale = [](uint16_t v, uint32_t from, uint32_t to, uint32_t limit) {
+                return static_cast<uint16_t>(std::min<uint32_t>(limit, v * to / from));
+            };
+            s.minu = scale(s.minu, maxW, rec.hdW, rec.hdW - 1u);
+            s.maxu = scale(s.maxu, maxW, rec.hdW, rec.hdW - 1u);
+            s.minv = scale(s.minv, maxH, rec.hdH, rec.hdH - 1u);
+            s.maxv = scale(s.maxv, maxH, rec.hdH, rec.hdH - 1u);
+            s.texKey = rec.hdKey;
+            s.tw = static_cast<uint16_t>(rec.hdW);
+            s.th = static_cast<uint16_t>(rec.hdH);
+        }
+
         void recordPrimitive(HwState s, HwVertex *out, uint32_t n, const GSPrimitiveBatch *batch, float ofx, float ofy,
                              uint32_t source, bool bookkeeping)
         {
@@ -3092,6 +3197,9 @@ namespace
                     }
                 }
             }
+            // [gta-recomp] HD 2D textures: a primitive of the native HUD layer draws a sharper copy of its texture
+            if (hud)
+                adoptTexture2D(s);
             if (bookkeeping)
             {
                 if (s.zte && s.ztst != 1u && s.zbp != s.fbp)
@@ -4856,6 +4964,15 @@ namespace
                                                             ps2x::hostNow() - decodeStart).count()));
             f.cmds.push_back({CmdType::TexCreate, static_cast<uint32_t>(f.textures.size())});
             f.textures.push_back(std::move(tc));
+            // [gta-recomp] HD 2D textures: the textures the HUD, text, radar and menus draw are small (the font atlas
+            // 256x256, the digits 128x64, icons and map tiles 128x128 at most); keep what PCSX2's name for one needs.
+            // Recorded while the feature is off too (a few hundred bytes), so turning it on finds the textures made so far.
+            if (d.textureWidth <= kTex2DMaxSource && d.textureHeight <= kTex2DMaxSource)
+            {
+                Tex2DState &rec = m_tex2d[key];
+                rec.state = d;
+                rec.stored = true;
+            }
             m_texLru[key] = m_frameIndex;
             if (m_texLru.size() > kMaxTextures)
                 evictTextures();
@@ -4955,6 +5072,16 @@ namespace
                     break;
                 f.cmds.push_back({CmdType::TexDelete, static_cast<uint32_t>(f.texDeletes.size())});
                 f.texDeletes.push_back(byAge[i].first);
+                // [gta-recomp] HD 2D textures: the sharper copy goes with its texture
+                if (auto two = m_tex2d.find(byAge[i].first); two != m_tex2d.end())
+                {
+                    if (two->second.hdKey)
+                    {
+                        f.cmds.push_back({CmdType::TexDelete, static_cast<uint32_t>(f.texDeletes.size())});
+                        f.texDeletes.push_back(two->second.hdKey);
+                    }
+                    m_tex2d.erase(two);
+                }
                 ++m_texStateVersion;
                 m_texLru.erase(byAge[i].first);
             }
@@ -5262,6 +5389,21 @@ namespace
         std::unordered_map<uint32_t, UploadInfo> m_uploadAt;
         uint64_t m_skippedUploads = 0;
         std::unordered_map<uint64_t, uint64_t> m_texLru;  // key -> last frame used
+        // [gta-recomp] HD 2D textures (gsHwSetTexture2DSource): a texture the 2D layer may draw keeps the TEX0/TEXA it
+        // was created with (PCSX2's name for it is made from those and the memory's data), and the replacement the source
+        // supplied at its first 2D draw - the texture of its own drawn for that texture's primitives.
+        struct Tex2DState
+        {
+            GSDrawState state{};
+            bool stored = false, asked = false;
+            uint32_t generation = 0xFFFFFFFFu;
+            uint64_t hdKey = 0;
+            uint32_t hdW = 0, hdH = 0;
+        };
+        std::unordered_map<uint64_t, Tex2DState> m_tex2d;
+        static constexpr uint32_t kTex2DMaxSource = 512u; // PS2 pixels a side: what the 2D layer's art is
+        static constexpr uint32_t kTex2DMaxScale = 8u;    // the replacement may be this much sharper a side
+        static constexpr uint32_t kTex2DMaxSide = 2048u;  // ... and this big (the 2D layer's art fits easily)
         std::unordered_map<uint64_t, uint64_t> m_meshLru; // [gta-recomp] native draws' meshes: key -> last frame used
         std::unordered_map<uint32_t, RtInfo> m_rts;       // fbp -> extent (game thread's view)
         struct TexBindInput // [gta-recomp] bindTexture cache (see there)

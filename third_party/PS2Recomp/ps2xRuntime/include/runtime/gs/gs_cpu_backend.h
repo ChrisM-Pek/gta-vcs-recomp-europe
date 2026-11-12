@@ -40,6 +40,18 @@ public:
     // row) - docs/FULLY_NATIVE.md step 3c: a texture decoded from the upload that wrote it
     void DecodeTextureFromTexels(const GSDrawState &state, const std::vector<uint32_t> &texels, std::vector<uint32_t> &out);
     uint64_t ClutHash(const GSTex0Reg &tex0) const;
+    // [gta-recomp] A texture named as PCSX2's texture-replacement packs name it (src/game/vcs_hudtex.cpp): the two
+    // 64-bit XXH3 hashes of the texture's data and of its CLUT, and the TEX0/TEXA bits PCSX2 keeps in the file name -
+    // GSTextureCache::HashCacheKey::Create / GSClut::Read32 as PCSX2 2.6 computes them. `tex0Hash` covers the texture's
+    // blocks in GS memory (raw 256-byte blocks, or the texels of a texture smaller than one), `clutHash` the CLUT's
+    // entries expanded to RGBA8 (0 for formats without a palette). False for a format PCSX2 hashes another way.
+    struct TextureName2
+    {
+        uint64_t tex0Hash = 0;
+        uint64_t clutHash = 0;
+        uint32_t bits = 0; // PSM 6 | TW 4 << 6 | TH 4 << 10 | TCC 1 << 14 | TA0 8 << 15 | AEM << 23 | TA1 8 << 24
+    };
+    bool Pcsx2TextureName(const GSDrawState &state, TextureName2 &out);
     // [gta-recomp] A CLUT load (TEX0.CLD rules as LoadClut) whose source pixels come from a linear rectangle - the data of
     // the upload that wrote them (rect: rectW x rectH pixels of 2 or 4 bytes from the CLUT buffer's origin) - instead of
     // VRAM. -1 when a source pixel is outside the rectangle (nothing changed then), 0 when CLD skips the load, 1 loaded.

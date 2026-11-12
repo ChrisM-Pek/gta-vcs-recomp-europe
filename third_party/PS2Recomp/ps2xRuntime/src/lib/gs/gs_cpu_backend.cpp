@@ -1,5 +1,9 @@
 #include "runtime/gs/gs_cpu_backend.h"
 #include "gs_stats.h"
+// [gta-recomp] XXH3-64, PCSX2's texture-replacement hash (third_party/xxhash, BSD-2-Clause): the HD texture packs are
+// named by it, so the same digest is what finds a replacement for a texture.
+#define XXH_INLINE_ALL
+#include "xxhash.h"
 #include "runtime/gs/ps2_gs_common.h"
 #include "runtime/gs/ps2_gs_psmct16.h"
 #include "runtime/gs/ps2_gs_psmct32.h"
@@ -1311,6 +1315,124 @@ uint64_t GSCpuBackend::ClutHash(const GSTex0Reg &tex0) const
         m_clutHashDirty = false;
     }
     return m_clutHashCache ^ (uint64_t(tex0.cpsm) << 56) ^ (uint64_t(tex0.csa) << 48) ^ (uint64_t(tex0.csm) << 40);
+}
+
+// [gta-recomp] PCSX2's texture identity (docs/NATIVE_RENDERER.md "HD textures"): a texture-replacement pack names its
+// files "<TEX0Hash>-<CLUTHash>-<bits>.png", which PCSX2 2.6 makes with GSTextureCache::HashCacheKey::Create and
+// GSClut::Read32. Reproduced here from the same GS memory (the packs at pcsx2.net/texture-replacements are made by it).
+namespace
+{
+    // GSLocalMemory::m_psm as far as the hash needs it: the size of a 256-byte block in texels (`bx` x `by`), the
+    // palette size, and `fmsk` - the bits a texel covers in 32-bit words (0xFFFFFFFF: all of them). A format whose
+    // texels do not fill a word is expanded before it is hashed (HashTextureLevel's other branch).
+    struct Pcsx2Psm
+    {
+        uint32_t bx = 0, by = 0, pal = 0, fmsk = 0xFFFFFFFFu;
+    };
+    Pcsx2Psm pcsx2Psm(uint32_t psm)
+    {
+        switch (psm)
+        {
+        case 0: return {8, 8, 0, 0xFFFFFFFFu};           // CT32
+        case 1: return {8, 8, 0, 0x00FFFFFFu};           // CT24
+        case 2: case 10: return {16, 8, 0, 0x80F8F8F8u}; // CT16 / CT16S
+        case 19: return {16, 16, 256, 0xFFFFFFFFu};      // T8
+        case 20: return {32, 16, 16, 0xFFFFFFFFu};       // T4
+        case 27: return {8, 8, 256, 0xFF000000u};        // T8H
+        case 36: return {8, 8, 16, 0x0F000000u};         // T4HL
+        case 44: return {8, 8, 16, 0xF0000000u};         // T4HH
+        default: return {};
+        }
+    }
+    // GSClut::Expand16: a 16-bit CLUT entry to RGBA8 (R in the low byte), alpha from TEXA
+    uint32_t expandClut16(uint32_t c, const GSTexaReg &texa)
+    {
+        const uint32_t alpha = (texa.aem && c == 0u) ? 0u : ((c & 0x8000u) ? texa.ta1 : texa.ta0);
+        return ((c & 0x1Fu) << 3) | ((c & 0x3E0u) << 6) | ((c & 0x7C00u) << 9) | (alpha << 24);
+    }
+}
+
+bool GSCpuBackend::Pcsx2TextureName(const GSDrawState &state, TextureName2 &out)
+{
+    std::lock_guard<std::mutex> lock(m_mutex);
+    if (!m_vram)
+        return false;
+    m_texturePageCache.Invalidate(); // the texel reads below are VRAM's own
+    const GSTex0Reg &t = state.context.tex0;
+    const Pcsx2Psm psm = pcsx2Psm(t.psm);
+    if (!psm.bx)
+        return false;
+    const uint32_t tw = 1u << t.tw, th = 1u << t.th;
+    const bool paletted = psm.pal != 0u;
+    out = {};
+    out.bits = (t.psm & 0x3Fu) | ((t.tw & 0xFu) << 6) | ((t.th & 0xFu) << 10);
+    if (!paletted) // TEXA only goes into the name for the formats PCSX2 reads with it (no palette, a real format)
+        out.bits |= (uint32_t(state.texa.ta0) << 15) | (state.texa.aem ? (1u << 23) : 0u) |
+                    (uint32_t(state.texa.ta1) << 24);
+
+    XXH3_state_t hash;
+    XXH3_64bits_reset(&hash);
+    const bool expand = tw < psm.bx || th < psm.by || psm.fmsk != 0xFFFFFFFFu;
+    if (expand)
+    {
+        if (!paletted)
+            return false; // CT16 / CT24 expanded to 32-bit colours: no 2D texture of the game needs it yet
+        // rtxP: the texture's texels as rows of `tw` palette indices (the block rectangle's padding is not hashed)
+        std::vector<uint8_t> row(tw);
+        for (uint32_t y = 0; y < th; ++y)
+        {
+            for (uint32_t x = 0; x < tw; ++x)
+                row[x] = static_cast<uint8_t>(ReadTextureVramUnlocked(t.psm, t.tbp0, t.tbw, x, y) & 0xFFu);
+            XXH3_64bits_update(&hash, row.data(), row.size());
+        }
+    }
+    else
+    {
+        // the 256-byte blocks the texture covers, in memory order (GSOffset::BNHelper's walk): a block starts at its
+        // top-left texel
+        const uint32_t cols = (tw + psm.bx - 1u) / psm.bx, rows = (th + psm.by - 1u) / psm.by;
+        for (uint32_t by = 0; by < rows; ++by)
+            for (uint32_t bx = 0; bx < cols; ++bx)
+            {
+                uint32_t bit = 0, width = 0;
+                if (!GSMem::PixelBits(t.psm, t.tbp0, t.tbw, bx * psm.bx, by * psm.by, bit, width))
+                    return false;
+                const size_t at = bit / 8u;
+                if (at + 256u > m_vramSize)
+                    return false;
+                XXH3_64bits_update(&hash, m_vram + at, 256u);
+            }
+    }
+    out.tex0Hash = XXH3_64bits_digest(&hash);
+
+    if (paletted)
+    {
+        // the CLUT as GSClut::Read32 expands it: entry i is the colour texture index i picks
+        uint32_t clut[256] = {};
+        const uint32_t n = psm.pal;
+        const uint32_t base = (static_cast<uint32_t>(t.csa) & 0x0Fu) << 4;
+        // the loader's layout for a T8 with a 32-bit CLUT and CSM1: entry i at i (its source offset clamps instead)
+        const bool eightBitCsm1 = n == 256u && t.csm == 0u && (t.cpsm == 0u || t.cpsm == 1u);
+        if (t.cpsm == 0u || t.cpsm == 1u) // CT32 / CT24: two 16-bit halves, low at the entry, high 256 later
+        {
+            for (uint32_t i = 0; i < n; ++i)
+            {
+                const uint32_t at = eightBitCsm1 ? i : ((base + i) & 0xFFu);
+                clut[i] = static_cast<uint32_t>(m_clut[at]) | (static_cast<uint32_t>(m_clut[at + 256u]) << 16);
+            }
+        }
+        else if (t.cpsm == 2u || t.cpsm == 10u)
+        {
+            for (uint32_t i = 0; i < n; ++i)
+                clut[i] = expandClut16(m_clut[(base + i) & 0x1FFu], state.texa);
+        }
+        else
+        {
+            return false;
+        }
+        out.clutHash = XXH3_64bits(clut, n * 4u);
+    }
+    return true;
 }
 
 void GSCpuBackend::DrawSprite(const GSPrimitiveBatch &batch)

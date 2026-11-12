@@ -1439,3 +1439,25 @@ turned stick (the pull-in toward the player), through the game's own switch for 
 - At the user's request, `ChrisM-Pek/gta-vcs-recomp-europe` is the public fork and the source of its launcher updates
   and future releases. The original `gothamor/gta-vcs-recomp` is kept as `upstream`, and the earlier private repository
   is retained separately. The clone's `origin` points to the European fork, so release metadata identifies the fork.
+
+## 2026-11-12 - HD textures for the 2D layer: PCSX2's packs, off by default
+
+- The user's report: the HUD stays the PS2's low-resolution art even at a modern internal resolution. The native HUD
+  layer draws the HUD at the output size but samples the disc's textures (font atlas 256x256, digits 128x64, icons
+  and radar tiles 128x128 or less), so the last 640x448 thing on screen is the HUD's art.
+- **Packs are PCSX2's.** They are named by PCSX2's own texture hash (`GSTextureCache::HashCacheKey::Create` +
+  `GSClut::Read32`), so the port reproduces that hash from its GS memory and finds existing packs as they are - the
+  user's "HD HUD - SLUS-21590 - PS Icons" pack works unchanged, on the PAL disc as well (the HUD art is the same
+  data; only the old TCC bit of the name differs, which PCSX2 itself ignores). An own naming scheme would have
+  worked too, but every pack in the wild would have had to be converted, and the hash is what makes a texture
+  recognisable across discs and languages.
+- **Off by default** (authentic unless asked for: the project's rule), Graphics > Image quality > HD textures (HUD).
+- **Alpha stays in the PS2's 0..128 scale** (these packs are dumped from it) instead of PCSX2's 0..255: the port's
+  shaders use the PS2's scale, and rescaling would make every HUD glyph look too opaque or too faint.
+- **Caps**: 8x the PS2 texture and 2048 a side, larger images area-averaged down on load - a 4096x4096 font atlas is
+  64 MB of pixels for a HUD drawn at 24-40 px a glyph.
+- **The geometry does not change**: the layer still snaps its vertices to the PS2's pixel coverage (that is what
+  lines the radar's mask, scissor and map up). So the art gets sharper, the layout stays the PS2's.
+- The first use of each texture decodes its pack PNG on the GS stage (a one-off hitch of a few tens of ms for a
+  4096x4096 file). What would change it: a background decode with the PS2 texture shown until it is ready, if players
+  notice the pause menu's first opening.

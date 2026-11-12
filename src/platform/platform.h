@@ -9,6 +9,7 @@
 
 #include <cstdint>
 #include <string>
+#include <vector>
 
 namespace platform
 {
@@ -233,4 +234,12 @@ namespace platform
 
     // PNG (8-bit RGB, rows top-down) - screenshots.
     bool writePng(const char *path, const uint8_t *rgb, int width, int height);
+    // PNG (8-bit RGBA, rows top-down) - the HUD's textures as a replacement pack stores them (src/game/vcs_hudtex.cpp).
+    bool writePngRgba(const char *path, const uint8_t *rgba, int width, int height);
+    // PNG -> RGBA8, rows top-down (src/game/vcs_hudtex.cpp's HD texture packs): 8 / 16-bit grey, RGB, palette, grey +
+    // alpha, RGBA, not interlaced. False and a line on stderr for anything else.
+    bool readPng(const char *path, int &width, int &height, std::vector<uint8_t> &rgba);
+    // A .dds of 32-bit RGBA - BGRA in memory, as PCSX2's packs store their uncompressed images -> RGBA8. False for a
+    // compressed one (DXT) or anything else.
+    bool readDds(const char *path, int &width, int &height, std::vector<uint8_t> &rgba);
 }

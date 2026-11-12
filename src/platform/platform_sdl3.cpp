@@ -869,66 +869,289 @@ namespace platform
         g_audio = nullptr;
     }
 
-    bool writePng(const char *path, const uint8_t *rgb, int width, int height)
+    namespace
     {
-        // Each row with the PNG filter (none / sub / up / paeth) whose bytes sum smallest as signed values - the
-        // usual heuristic - then zlib. A 1080p screenshot was 6.2 MB with stored blocks.
-        const size_t stride = static_cast<size_t>(width) * 3u;
-        std::vector<uint8_t> raw(static_cast<size_t>(height) * (stride + 1u));
-        std::vector<uint8_t> trial(stride);
-        for (int y = 0; y < height; ++y)
+        // PNG from 8-bit rows of `channels` (3 RGB, 4 RGBA): each row with the PNG filter (none / sub / up / paeth)
+        // whose bytes sum smallest as signed values - the usual heuristic - then zlib.
+        bool writePngRows(const char *path, const uint8_t *pixels, int width, int height, size_t channels)
         {
-            const uint8_t *row = rgb + static_cast<size_t>(y) * stride;
-            const uint8_t *above = y ? row - stride : nullptr;
-            uint8_t *out = raw.data() + static_cast<size_t>(y) * (stride + 1u);
-            uint64_t best = ~0ull;
-            for (uint8_t filter = 0; filter < 5; ++filter)
+            const size_t stride = static_cast<size_t>(width) * channels;
+            std::vector<uint8_t> raw(static_cast<size_t>(height) * (stride + 1u));
+            std::vector<uint8_t> trial(stride);
+            for (int y = 0; y < height; ++y)
             {
-                if (filter == 3)
-                    continue; // average: rarely better here
-                uint64_t cost = 0;
-                for (size_t i = 0; i < stride; ++i)
+                const uint8_t *row = pixels + static_cast<size_t>(y) * stride;
+                const uint8_t *above = y ? row - stride : nullptr;
+                uint8_t *out = raw.data() + static_cast<size_t>(y) * (stride + 1u);
+                uint64_t best = ~0ull;
+                for (uint8_t filter = 0; filter < 5; ++filter)
                 {
-                    const int a = i >= 3 ? row[i - 3] : 0, b = above ? above[i] : 0, c = (i >= 3 && above) ? above[i - 3] : 0;
-                    int predicted = 0;
-                    if (filter == 1)
-                        predicted = a;
-                    else if (filter == 2)
-                        predicted = b;
-                    else if (filter == 4)
+                    if (filter == 3)
+                        continue; // average: rarely better here
+                    uint64_t cost = 0;
+                    for (size_t i = 0; i < stride; ++i)
                     {
-                        const int p = a + b - c, pa = std::abs(p - a), pb = std::abs(p - b), pc = std::abs(p - c);
-                        predicted = (pa <= pb && pa <= pc) ? a : (pb <= pc ? b : c);
+                        const int a = i >= channels ? row[i - channels] : 0, b = above ? above[i] : 0;
+                        const int c = (i >= channels && above) ? above[i - channels] : 0;
+                        int predicted = 0;
+                        if (filter == 1)
+                            predicted = a;
+                        else if (filter == 2)
+                            predicted = b;
+                        else if (filter == 4)
+                        {
+                            const int p = a + b - c, pa = std::abs(p - a), pb = std::abs(p - b), pc = std::abs(p - c);
+                            predicted = (pa <= pb && pa <= pc) ? a : (pb <= pc ? b : c);
+                        }
+                        trial[i] = static_cast<uint8_t>(row[i] - predicted);
+                        cost += static_cast<uint64_t>(std::abs(static_cast<int8_t>(trial[i])));
                     }
-                    trial[i] = static_cast<uint8_t>(row[i] - predicted);
-                    cost += static_cast<uint64_t>(std::abs(static_cast<int8_t>(trial[i])));
-                }
-                if (cost < best)
-                {
-                    best = cost;
-                    out[0] = filter;
-                    std::memcpy(out + 1, trial.data(), stride);
+                    if (cost < best)
+                    {
+                        best = cost;
+                        out[0] = filter;
+                        std::memcpy(out + 1, trial.data(), stride);
+                    }
                 }
             }
-        }
-        uLongf zSize = compressBound(static_cast<uLong>(raw.size()));
-        std::vector<uint8_t> z(zSize);
-        if (compress2(z.data(), &zSize, raw.data(), static_cast<uLong>(raw.size()), 6) != Z_OK)
-            return false;
-        z.resize(zSize);
+            uLongf zSize = compressBound(static_cast<uLong>(raw.size()));
+            std::vector<uint8_t> z(zSize);
+            if (compress2(z.data(), &zSize, raw.data(), static_cast<uLong>(raw.size()), 6) != Z_OK)
+                return false;
+            z.resize(zSize);
 
-        std::vector<uint8_t> png = {0x89, 'P', 'N', 'G', '\r', '\n', 0x1A, '\n'};
-        std::vector<uint8_t> ihdr;
-        put32(ihdr, static_cast<uint32_t>(width));
-        put32(ihdr, static_cast<uint32_t>(height));
-        ihdr.insert(ihdr.end(), {8, 2, 0, 0, 0}); // 8-bit RGB
-        chunk(png, "IHDR", ihdr);
-        chunk(png, "IDAT", z);
-        chunk(png, "IEND", {});
-        FILE *f = std::fopen(path, "wb");
-        if (!f)
+            std::vector<uint8_t> png = {0x89, 'P', 'N', 'G', '\r', '\n', 0x1A, '\n'};
+            std::vector<uint8_t> ihdr;
+            put32(ihdr, static_cast<uint32_t>(width));
+            put32(ihdr, static_cast<uint32_t>(height));
+            ihdr.insert(ihdr.end(), {8, static_cast<uint8_t>(channels == 4 ? 6 : 2), 0, 0, 0});
+            chunk(png, "IHDR", ihdr);
+            chunk(png, "IDAT", z);
+            chunk(png, "IEND", {});
+            FILE *f = std::fopen(path, "wb");
+            if (!f)
+                return false;
+            const bool ok = std::fwrite(png.data(), 1, png.size(), f) == png.size();
+            return std::fclose(f) == 0 && ok;
+        }
+    }
+
+    bool writePng(const char *path, const uint8_t *rgb, int width, int height)
+    {
+        return writePngRows(path, rgb, width, height, 3u);
+    }
+
+    bool writePngRgba(const char *path, const uint8_t *rgba, int width, int height)
+    {
+        return writePngRows(path, rgba, width, height, 4u);
+    }
+
+    // ---- PNG reading (src/game/vcs_hudtex.cpp's HD texture packs) --------------------------------------------
+    namespace
+    {
+        uint32_t readBe32(const uint8_t *p)
+        {
+            return (uint32_t(p[0]) << 24) | (uint32_t(p[1]) << 16) | (uint32_t(p[2]) << 8) | uint32_t(p[3]);
+        }
+        bool readWholeFile(const char *path, std::vector<uint8_t> &out)
+        {
+            FILE *f = std::fopen(path, "rb");
+            if (!f)
+                return false;
+            bool ok = false;
+            if (std::fseek(f, 0, SEEK_END) == 0)
+            {
+                const long size = std::ftell(f);
+                if (size > 0 && std::fseek(f, 0, SEEK_SET) == 0)
+                {
+                    out.resize(size_t(size));
+                    ok = std::fread(out.data(), 1, out.size(), f) == out.size();
+                }
+            }
+            std::fclose(f);
+            return ok;
+        }
+        // the four channels of a texel of a PNG's row: 8-bit grey / RGB / palette / grey + alpha / RGBA, 16-bit by the
+        // high byte; `palette` 3 bytes an entry, `trns` the palette's alpha
+        void pngTexel(const uint8_t *row, int x, int type, int depth, int channels, const std::vector<uint8_t> &palette,
+                      const std::vector<uint8_t> &trns, uint8_t out[4])
+        {
+            const size_t step = size_t(channels) * (depth == 16 ? 2u : 1u);
+            const uint8_t *p = row + size_t(x) * step;
+            auto channel = [&](int i) { return depth == 16 ? p[size_t(i) * 2u] : p[i]; };
+            switch (type)
+            {
+            case 0: out[0] = out[1] = out[2] = channel(0); out[3] = 255; break;
+            case 2: out[0] = channel(0); out[1] = channel(1); out[2] = channel(2); out[3] = 255; break;
+            case 3:
+            {
+                const unsigned index = unsigned(channel(0));
+                if (size_t(index) * 3u + 2u < palette.size())
+                {
+                    out[0] = palette[size_t(index) * 3u];
+                    out[1] = palette[size_t(index) * 3u + 1u];
+                    out[2] = palette[size_t(index) * 3u + 2u];
+                }
+                else
+                    out[0] = out[1] = out[2] = 0;
+                out[3] = index < trns.size() ? trns[index] : 255;
+                break;
+            }
+            case 4: out[0] = out[1] = out[2] = channel(0); out[3] = channel(1); break;
+            case 6: out[0] = channel(0); out[1] = channel(1); out[2] = channel(2); out[3] = channel(3); break;
+            default: out[0] = out[1] = out[2] = 0; out[3] = 255; break;
+            }
+        }
+    }
+
+    bool readPng(const char *path, int &width, int &height, std::vector<uint8_t> &rgba)
+    {
+        std::vector<uint8_t> file;
+        if (!readWholeFile(path, file) || file.size() < 8u + 25u)
             return false;
-        const bool ok = std::fwrite(png.data(), 1, png.size(), f) == png.size();
-        return std::fclose(f) == 0 && ok;
+        static const uint8_t signature[8] = {0x89, 'P', 'N', 'G', '\r', '\n', 0x1A, '\n'};
+        if (std::memcmp(file.data(), signature, 8) != 0)
+            return false;
+        int w = 0, h = 0, depth = 0, type = 0, interlace = 0;
+        std::vector<uint8_t> idat, palette, trns;
+        for (size_t at = 8; at + 12u <= file.size();)
+        {
+            const uint32_t length = readBe32(&file[at]);
+            if (length > file.size() || at + 12u + length > file.size())
+                return false;
+            const uint8_t *data = &file[at + 8u];
+            const uint8_t *kind = &file[at + 4u];
+            if (std::memcmp(kind, "IHDR", 4) == 0 && length >= 13u)
+            {
+                w = int(readBe32(data));
+                h = int(readBe32(data + 4u));
+                depth = data[8];
+                type = data[9];
+                interlace = data[12];
+            }
+            else if (std::memcmp(kind, "PLTE", 4) == 0)
+                palette.assign(data, data + length);
+            else if (std::memcmp(kind, "tRNS", 4) == 0)
+                trns.assign(data, data + length);
+            else if (std::memcmp(kind, "IDAT", 4) == 0)
+                idat.insert(idat.end(), data, data + length);
+            else if (std::memcmp(kind, "IEND", 4) == 0)
+                break;
+            at += 12u + length;
+        }
+        const int channels = type == 0 ? 1 : type == 2 ? 3 : type == 3 ? 1 : type == 4 ? 2 : type == 6 ? 4 : 0;
+        if (w <= 0 || h <= 0 || w > 8192 || h > 8192 || !channels || (depth != 8 && depth != 16) || interlace != 0 ||
+            (type == 3 && depth != 8) || idat.empty())
+        {
+            std::fprintf(stderr, "[platform] %s: PNG %dx%d depth %d type %d interlace %d not supported\n", path, w, h, depth,
+                         type, interlace);
+            return false;
+        }
+        const size_t bitsPerPixel = size_t(channels) * size_t(depth);
+        const size_t rowBytes = (size_t(w) * bitsPerPixel + 7u) / 8u;
+        uLongf rawSize = uLongf((rowBytes + 1u) * size_t(h));
+        std::vector<uint8_t> raw(rawSize);
+        if (uncompress(raw.data(), &rawSize, idat.data(), uLong(idat.size())) != Z_OK || rawSize < (rowBytes + 1u) * size_t(h))
+        {
+            std::fprintf(stderr, "[platform] %s: PNG data does not inflate\n", path);
+            return false;
+        }
+        std::vector<uint8_t> out(size_t(w) * size_t(h) * 4u);
+        const size_t bpp = std::max<size_t>(1u, bitsPerPixel / 8u);
+        const uint8_t *previous = nullptr;
+        for (int y = 0; y < h; ++y)
+        {
+            uint8_t *row = raw.data() + size_t(y) * (rowBytes + 1u);
+            const uint8_t filter = row[0];
+            uint8_t *current = row + 1;
+            for (size_t i = 0; i < rowBytes; ++i) // unfilter, PNG's filters on the row before it
+            {
+                const int a = i >= bpp ? current[i - bpp] : 0;
+                const int b = previous ? previous[i] : 0;
+                const int c = (previous && i >= bpp) ? previous[i - bpp] : 0;
+                int value = current[i];
+                switch (filter)
+                {
+                case 0: break;
+                case 1: value += a; break;
+                case 2: value += b; break;
+                case 3: value += (a + b) / 2; break;
+                case 4:
+                {
+                    const int p = a + b - c, pa = std::abs(p - a), pb = std::abs(p - b), pc = std::abs(p - c);
+                    value += (pa <= pb && pa <= pc) ? a : (pb <= pc ? b : c);
+                    break;
+                }
+                default:
+                    std::fprintf(stderr, "[platform] %s: PNG filter %u\n", path, filter);
+                    return false;
+                }
+                current[i] = static_cast<uint8_t>(value);
+            }
+            for (int x = 0; x < w; ++x)
+                pngTexel(current, x, type, depth, channels, palette, trns, &out[(size_t(y) * size_t(w) + size_t(x)) * 4u]);
+            previous = current;
+        }
+        width = w;
+        height = h;
+        rgba = std::move(out);
+        return true;
+    }
+
+    // ---- DDS reading (the same packs; PCSX2 writes .dds too) --------------------------------------------------
+    bool readDds(const char *path, int &width, int &height, std::vector<uint8_t> &rgba)
+    {
+        std::vector<uint8_t> file;
+        if (!readWholeFile(path, file) || file.size() < 128u || std::memcmp(file.data(), "DDS ", 4) != 0)
+            return false;
+        const auto u32 = [&](size_t at) {
+            return uint32_t(file[at]) | (uint32_t(file[at + 1]) << 8) | (uint32_t(file[at + 2]) << 16) | (uint32_t(file[at + 3]) << 24);
+        };
+        const int w = int(u32(16)), h = int(u32(12));
+        const uint32_t pixelFlags = u32(80), fourCC = u32(84), bitCount = u32(88);
+        const uint32_t rMask = u32(92), gMask = u32(96), bMask = u32(100), aMask = u32(104);
+        const bool rgb = (pixelFlags & 0x40u) != 0u && fourCC == 0u && bitCount == 32u;
+        if (w <= 0 || h <= 0 || w > 8192 || h > 8192 || !rgb || file.size() < 128u + size_t(w) * size_t(h) * 4u)
+        {
+            std::fprintf(stderr, "[platform] %s: DDS %dx%d fourCC %08x %u bits not supported (uncompressed RGBA only)\n", path, w, h,
+                         fourCC, bitCount);
+            return false;
+        }
+        const auto shift = [](uint32_t mask) {
+            if (!mask)
+                return 0;
+            int s = 0;
+            while (!((mask >> s) & 1u))
+                ++s;
+            return s;
+        };
+        const auto bits = [](uint32_t mask) {
+            int n = 0;
+            while ((mask >> n) & 1u)
+                ++n;
+            return n;
+        };
+        const int rs = shift(rMask), gs = shift(gMask), bs = shift(bMask), as = shift(aMask);
+        const int rb = bits(rMask), gb = bits(gMask), bb = bits(bMask), ab = bits(aMask);
+        std::vector<uint8_t> out(size_t(w) * size_t(h) * 4u);
+        for (size_t i = 0, n = size_t(w) * size_t(h); i < n; ++i)
+        {
+            const uint8_t *p = &file[128u + i * 4u];
+            const uint32_t texel = uint32_t(p[0]) | (uint32_t(p[1]) << 8) | (uint32_t(p[2]) << 16) | (uint32_t(p[3]) << 24);
+            auto channel = [&](uint32_t mask, int s, int b, int fallback) {
+                if (!mask || !b)
+                    return fallback;
+                const uint32_t v = (texel & mask) >> s;
+                return b == 8 ? int(v) : int((v * 255u) / ((1u << b) - 1u));
+            };
+            out[i * 4u] = static_cast<uint8_t>(channel(rMask, rs, rb, 0));
+            out[i * 4u + 1u] = static_cast<uint8_t>(channel(gMask, gs, gb, 0));
+            out[i * 4u + 2u] = static_cast<uint8_t>(channel(bMask, bs, bb, 0));
+            out[i * 4u + 3u] = static_cast<uint8_t>(channel(aMask, as, ab, 255));
+        }
+        width = w;
+        height = h;
+        rgba = std::move(out);
+        return true;
     }
 }

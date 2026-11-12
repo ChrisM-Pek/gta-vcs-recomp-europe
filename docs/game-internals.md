@@ -798,6 +798,15 @@ end, Im2D primitives drawn with the depth test off get the HUD's z (`VCS_HUD_RW=
   128x64 atlas with 16-texel cells side by side; the ammo count and text use a 256x256 font atlas. All HUD textures
   are bilinear-filtered (TEX1 MMAG / MMIN linear) and drawn smaller than their texels (a clock digit: 15 x 21.5
   texels into about 5 x 9 pixels).
+  - **What the 2D layer's textures are** (2026-11-12, `VCS_HUDTEX_LOG=1` of the HUD and the pause menu): the font
+    atlas is 256x256 T8 (PSM 19) with a 16-bit CLUT; the digits / star atlas 128x64 T4 (PSM 20); the radar's ring,
+    compass letters and player arrow 128x128 and 64x64 T4; the PS button icons 16x16 T8 and 32x32 / 64x64 T4; the
+    wanted star 64x16 T4; the pause menu's drawings 128x128..512x512 (T4, and 512x512 T8 for the map). All of them
+    paletted, uploaded once and reused - a PCSX2 texture-replacement pack finds them by its hash of the data and the
+    CLUT (docs/NATIVE_RENDERER.md "HD textures for the 2D layer").
+  - **The PAL and NTSC discs' HUD art is the same data**: the hashes of the 2D textures are identical to those in a
+    pack dumped from SLUS-21590 ("HD HUD - SLUS-21590 - PS Icons"), for the font atlas, the digits, the icons and the
+    menu's drawings alike. So a pack made for the US disc applies to the European one (2026-11-12).
 
 Milestone 3 step 2 builds on this (docs/NATIVE_RENDERER.md "HUD layer"): `vcs_hud.cpp` collects the HUD context's Im2D
 primitives each frame, groups them into elements (boxes closer than 12 px across / 3 px down: a line of text, the

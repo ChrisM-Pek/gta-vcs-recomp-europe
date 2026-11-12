@@ -31,6 +31,7 @@
 #include "game/vcs_script_fixes.h"
 #include "game/vcs_movie.h"
 #include "game/vcs_hud.h"
+#include "game/vcs_hudtex.h"
 #include "game/vcs_input.h"
 #include "game/vcs_prompts.h"
 #include "game/vcs_volume.h"
@@ -738,6 +739,7 @@ namespace
         vcs::prompts::registerSettings(); // the Enhancements page: button prompts by device (game/vcs_prompts.h)
         vcs::world::registerSettings();   // Enhancements > World: density, draw distance (game/vcs_world_detail.h)
         vcs::driveby::registerSettings(); // Enhancements > Combat: drive-by fire rate (game/vcs_driveby.h)
+        vcs::hudtex::registerSettings();  // Graphics > Image quality: HD textures for the HUD (game/vcs_hudtex.h)
 
         s = {};
         s.key = "graphics.perf_overlay";
@@ -978,6 +980,7 @@ int main(int argc, char *argv[])
         vcs::volume::install(runtime);  // the game's music / effects levels follow the settings (game/vcs_volume.h)
         vcs::gameinfo::install(runtime); // the F3 overlay's game-state panel, the `gameinfo` command (debug/game_info.h)
 #endif
+        vcs::hudtex::install(exeDirectory(), data); // HD textures for the 2D layer (game/vcs_hudtex.h)
         // setting <key> [value] -> ok <value>: a setting read or changed (a hidden run never writes vcs.ini)
         ps2control::addCommand("setting", [](const std::string &args, ps2control::Reply reply) {
             const size_t space = args.find(' ');

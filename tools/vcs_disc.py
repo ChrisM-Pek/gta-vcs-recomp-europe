@@ -22,8 +22,11 @@ SECTOR = 2048
 # The one supported build. The recompiled code only matches this executable.
 KNOWN_BUILDS = {
     "d1832508caf0990c2291c0f255c96a889cce9f88": "SLUS-21590 (USA) v1.00",
+    "47048caa4bd2ce8bd5223847b7abe02aa790bc3e": "SLES-54622 (Europe, experimental)",
 }
 ELF_NAME = "SLUS_215.90"
+BUILD_SHA1 = {ELF_NAME: "d1832508caf0990c2291c0f255c96a889cce9f88",
+              "SLES_546.22": "47048caa4bd2ce8bd5223847b7abe02aa790bc3e"}
 
 # Other discs a player may pick, named so the message says what to do (src/disc/vcs_disc_id.h has the same list)
 OTHER_RELEASES = {
@@ -118,15 +121,16 @@ def check(iso):
         boot = m.group(1) if m else ""
     if not boot:
         return {"ok": False, "code": "not_ps2", "message": "not a PS2 game disc (no SYSTEM.CNF)"}
-    if boot.upper() != ELF_NAME:
+    boot = boot.upper()
+    if boot not in BUILD_SHA1:
         other = OTHER_RELEASES.get(boot.upper())
         return {"ok": False, "code": "other_release", "boot": boot,
-                "message": "this disc is %s (%s). Only GTA: Vice City Stories for the USA (SLUS-21590) is supported" % (other or "another game", boot)}
-    rec = img.find(ELF_NAME)
+                "message": "this disc is %s (%s). Choose Vice City Stories USA or Europe (SLES-54622)" % (other or "another game", boot)}
+    rec = img.find(boot)
     if not rec:
-        return {"ok": False, "code": "not_ps2", "boot": boot, "message": ELF_NAME + " missing from the image (a damaged copy?)"}
+        return {"ok": False, "code": "not_ps2", "boot": boot, "message": boot + " missing from the image (a damaged copy?)"}
     sha1 = hashlib.sha1(img.read_file(rec)).hexdigest()
-    if sha1 not in KNOWN_BUILDS:
+    if sha1 != BUILD_SHA1[boot]:
         return {"ok": False, "code": "unsupported_build", "boot": boot, "sha1": sha1,
                 "message": "unsupported build of the executable (sha1 %s): a modified or damaged copy?" % sha1}
     return {"ok": True, "code": "ok", "boot": boot, "sha1": sha1, "title": "GTA: Vice City Stories - " + KNOWN_BUILDS[sha1],

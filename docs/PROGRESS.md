@@ -2,6 +2,9 @@
 
 ## Experimental SLES_546.22 PAL update (2026-11-12)
 
+- The launcher verifies the European disc and builds the PAL port through its normal build button. It tracks the selected
+  disc's region, so switching between USA and PAL requires the matching build. Windows launcher self-test and `--build`
+  pass with the European disc; `tools/test_pal_launcher.py` checks the region and PAL generation stamp logic.
 - Merged upstream through `b56d395`. The PAL build compiles; a hidden new-game check with an isolated card reached
   gameplay, spawned an Admiral, and changed the radio one station forward and back with the wheel
   (`tools/pal_upstream_check.py`).

@@ -124,7 +124,12 @@ namespace
             return argv;
         };
         if (hasArg(args, "--check"))
-            return runInConsole(tool("doctor.py"), app.root);
+        {
+            auto argv = tool("doctor.py");
+            if (app.disc.ok)
+                argv.insert(argv.end(), {"--iso", pathText(app.iso)});
+            return runInConsole(argv, app.root);
+        }
         if (hasArg(args, "--build"))
         {
             auto argv = tool("build.py");

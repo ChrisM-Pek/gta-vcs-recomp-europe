@@ -253,7 +253,7 @@ namespace screens
         if (!app.discChecked)
             return "Not chosen yet";
         if (app.disc.ok)
-            return "USA, verified";
+            return app.disc.boot == "SLES_546.22" ? "Europe, verified (experimental)" : "USA, verified";
         return app.disc.code == "not_found" ? "File not found" : app.disc.code == "not_iso" ? "Not an .iso" : "Not the supported disc";
     }
 

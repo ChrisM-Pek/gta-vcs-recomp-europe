@@ -19,7 +19,7 @@ namespace launcher
     {
         constexpr const char *kEventPrefix = "@vcs "; // tools/toolchain.py EVENT_PREFIX
         // what the launcher runs (tools/release.py's self-test makes sure a release has them)
-        constexpr const char *kTools[] = {"doctor.py", "build.py", "toolchain.py", "recompile.py", "vcs_disc.py",
+        constexpr const char *kTools[] = {"doctor.py", "build.py", "build_pal.py", "toolchain.py", "recompile.py", "vcs_disc.py",
                                           "setup_vs.py", "backup.py", "report.py", "update.py", "rip_disc.py"};
         constexpr size_t kLogLines = 4000;
 
@@ -87,10 +87,10 @@ namespace launcher
                           "tools for Windows\" (Visual Studio Installer, Modify)."}},
             {"vcvars_failed", {"Visual Studio's environment could not be set up",
                                "Repair Visual Studio from the Visual Studio Installer (More > Repair)."}},
-            {"no_disc", {"No disc image", "Choose your GTA: Vice City Stories (USA) .iso on the Disc step."}},
+            {"no_disc", {"No disc image", "Choose your GTA: Vice City Stories (USA or Europe) .iso on the Disc step."}},
             {"disc_not_found", {"The disc image is gone", "It was moved or deleted: choose it again on the Disc step."}},
             {"wrong_disc", {"This is not the supported disc",
-                            "Only GTA: Vice City Stories for the USA (SLUS-21590) works. Choose another image."}},
+                            "Choose a supported USA or Europe (SLES-54622) image."}},
             {"download_failed", {"A download failed",
                                  "The first build downloads libraries. Check the internet connection and try again "
                                  "(a release with a deps folder needs none)."}},
@@ -369,6 +369,8 @@ namespace launcher
         }
         std::vector<std::string> argv = python;
         argv.insert(argv.end(), {"-I", toolPath(root, "doctor.py"), "--json"});
+        if (disc.ok)
+            argv.insert(argv.end(), {"--iso", pathText(iso)});
         Process::Options options;
         options.cwd = root;
         options.env = {{"PYTHONUTF8", "1"}, {"PYTHONIOENCODING", "utf-8"}};
@@ -426,6 +428,8 @@ namespace launcher
                 doctorDone = true;
                 doctorCached = false;
                 m_doctor.reset();
+                if (ok && disc.ok && doctor["disc"]["ok"].boolean() && doctor["disc"]["boot"].str() != disc.boot)
+                    refresh();
             }
         }
 
@@ -769,7 +773,7 @@ namespace launcher
         case 0: return "";
         case 2: return "The game found no disc image. Choose your disc again.";
         case 3: return "The game could not read the disc image (moved, or on a drive that's gone?).";
-        case 4: return "The game says this is not the supported disc (GTA: Vice City Stories USA, SLUS-21590).";
+        case 4: return "The game says this disc does not match the version built. Rebuild for the selected disc.";
         case 5: return "The game could not start its window, graphics or sound. Update the graphics driver; "
                        "the log has the details.";
         default: break;

@@ -292,10 +292,12 @@ def newest_input():
     return newest, which
 
 
-def check_build(cpu_level=None):
+def check_build(cpu_level=None, disc=None):
     import recompile
+    import build_pal
     source = tc.source_version()
-    why_recompile = recompile.why_recompile()
+    pal = bool(disc and disc.get('boot') == 'SLES_546.22')
+    why_recompile = build_pal.why_recompile() if pal else recompile.why_recompile()
     exe = tc.VCS_EXE
     info = None
     try:
@@ -311,10 +313,12 @@ def check_build(cpu_level=None):
             reasons.append(why_recompile)
         if not info:
             reasons.append("no build/build_info.json (built before the launcher existed)")
+        elif disc and disc.get('ok') and info.get('region', 'usa') != ('pal' if pal else 'usa'):
+            reasons.append('the game was built for another disc region')
         elif info.get("source") != source:
             reasons.append("the source changed since the last build")
         else:
-            stamp = recompile.read_stamp() or {}
+            stamp = build_pal.read_stamp() if pal else recompile.read_stamp() or {}
             if info.get("generated_inputs") != stamp.get("inputs", ""):
                 reasons.append("the generated code changed since the last build")
         # built before build_info said (AVX2 then), or on / for another PC: a game for a newer CPU stops at once
@@ -342,7 +346,7 @@ def run(given_iso):
     report["compiler"] = check_compiler()
     report["downloads"] = check_downloads()
     report["disc"] = check_disc(given_iso)
-    report["build"] = check_build(report["cpu"]["level"] or None)
+    report["build"] = check_build(report["cpu"]["level"] or None, report["disc"])
     if not report["cpu"]["ok"]:
         nxt = "cpu"
     elif not report["disc"]["ok"]:

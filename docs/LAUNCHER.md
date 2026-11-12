@@ -5,6 +5,14 @@ terminal: it finds and checks the disc, installs what the build needs, recompile
 bar, and starts it. It is a front end over the Python tools in `tools/` - every button runs a script people can also
 run by hand - so the launcher and the README's manual install are one pipeline.
 
+The private branch also accepts the experimental European SLES-54622 disc. The disc check verifies the executable's
+SHA-1 and labels this version experimental. Build chooses its matching US or PAL recompiler inputs, retains a separate
+PAL generation stamp under the build folder, and the doctor asks for a rebuild if the selected disc and executable have
+different regions. The launcher's selected disc is passed to the doctor and to the build. Checked on Windows with the
+European disc: the launcher self-test and a complete `--build` both pass, the disc setup screen displays Europe, and
+the doctor reports the built game current. A second build reused the generated code, and `--play` started the PAL game
+hidden with an isolated card (81 frames advanced). The European port remains experimental (game-internals.md, PAL section).
+
 Status (2026-11-01): rebuilt as a native app of its own - its own window, Direct3D 11 renderer, DirectWrite text and
 animated UI, after uppies - with a rethought flow (Setup, Home, Task); before, SDL3 + Dear ImGui (2026-10-30, checked
 end to end from a release zip in a fresh folder, below). Windows and Linux (2026-11-01: X11 and Wayland, Vulkan,

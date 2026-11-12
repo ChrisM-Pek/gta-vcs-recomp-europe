@@ -99,18 +99,43 @@ def main():
     if a.iop_tests:
         sys.exit(iop_tests(env))
     import recompile
+    import build_pal
+    import vcs_disc
     iso_arg = a.recompile if a.recompile is not None else a.recompile_if_needed
+    pal = tc.cached_value(tc.BUILD_DIR, 'VCS_EXPERIMENTAL_PAL') == 'ON'
+    if iso_arg is not None:
+        iso = tc.find_iso(iso_arg or None)
+        disc = vcs_disc.check(iso)
+        if not disc['ok']:
+            tc.fail(disc['message'], 'wrong_disc')
+        pal = disc['boot'] == 'SLES_546.22'
+    region_defines = build_pal.defines() if pal else {
+        'VCS_EXPERIMENTAL_PAL': 'OFF',
+        'VCS_GENERATED_DIR': os.path.join(tc.ROOT, 'generated', 'ee').replace(os.sep, '/'),
+        'VCS_VU1_SOURCE': os.path.join(tc.ROOT, 'generated', 'vu1', 'vu1_compiled.cpp').replace(os.sep, '/')}
+    region_changed = any(tc.cached_value(tc.BUILD_DIR, k) != v for k, v in region_defines.items())
+    if region_changed:
+        tc.configure(env, defines=region_defines)
+    prepared_pal = False
     if a.recompile_if_needed is not None:
-        why = recompile.why_recompile()
+        why = build_pal.why_recompile() if pal else recompile.why_recompile()
         if why:
             print("[build] recompiling: " + why)
-            recompile.recompile(a.recompile_if_needed or None, env, a.verbose)
+            if pal:
+                build_pal.prepare(iso, env)
+                prepared_pal = True
+            else:
+                recompile.recompile(iso, env, a.verbose)
         else:
             print("[build] generated code is current: no recompile")
             tc.find_iso(a.recompile_if_needed or None)  # the disc is still checked (and remembered below)
     elif a.recompile is not None:
-        recompile.recompile(a.recompile or None, env, a.verbose)
-    elif not os.path.isdir(os.path.join(tc.ROOT, "generated", "ee")):
+        if pal:
+            build_pal.prepare(iso, env)
+            prepared_pal = True
+        else:
+            recompile.recompile(iso, env, a.verbose)
+    elif not pal and not os.path.isdir(os.path.join(tc.ROOT, "generated", "ee")):
         print("[build] no generated code yet: run with --recompile (only the tools will be built)")
 
     defines = None
@@ -122,7 +147,7 @@ def main():
         if a.train or not os.path.isfile(PROFDATA):
             train(env, a.verbose)
         defines = {"PS2X_LTO": "THIN", "PS2X_PGO": PROFDATA.replace(os.sep, "/")}
-    tc.configure(env, force=a.reconfigure or configured_without_game(), defines=defines)
+    tc.configure(env, force=a.reconfigure or configured_without_game() or prepared_pal, defines=defines)
     print(f"[build] building {a.target}")
     tc.stage("compile", "Compiling the game" if a.target == "ps2EntryRunner" else "Building " + a.target)
     if not tc.cmake_build(env, a.target, "build.log", a.verbose, link=game_link_stage() if a.target == "ps2EntryRunner" else None):
@@ -132,7 +157,7 @@ def main():
             tc.fail("build finished but " + tc.show(tc.VCS_EXE) + " is missing", "build_failed")
         move_from_old_place()
         iso = remember_iso(iso_arg or None)
-        write_build_info(iso)
+        write_build_info(iso, pal)
         print("[build] ok: " + tc.show(tc.VCS_EXE) + " (" + built_opt() + ")")
         tc.event(result="ok", exe=tc.show(tc.VCS_EXE).replace(os.sep, "/"), opt=built_opt())
 
@@ -140,13 +165,14 @@ def main():
 BUILD_INFO = os.path.join(tc.BUILD, "build_info.json")
 
 
-def write_build_info(iso):
+def write_build_info(iso, pal=False):
     """build/build_info.json: what the game in build/ was built from. The launcher compares it with the source
     (tools/doctor.py) to tell "Play" from "Update the build"."""
     import recompile
-    stamp = recompile.read_stamp() or {}
+    import build_pal
+    stamp = build_pal.read_stamp() if pal else recompile.read_stamp() or {}
     info = {"source": tc.source_version(), "generated_inputs": stamp.get("inputs", ""), "opt": built_opt(),
-            "cpu": tc.cached_value(tc.BUILD_DIR, "PS2X_CPU") or "AVX2", "iso": iso or "", "time": int(time.time())}
+            "cpu": tc.cached_value(tc.BUILD_DIR, "PS2X_CPU") or "AVX2", "iso": iso or "", "region": "pal" if pal else "usa", "time": int(time.time())}
     with open(BUILD_INFO, "w", encoding="utf-8") as f:
         json.dump(info, f, indent=1)
 

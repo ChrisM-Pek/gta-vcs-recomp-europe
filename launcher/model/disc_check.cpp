@@ -62,24 +62,25 @@ namespace launcher
         std::string upper = boot;
         for (char &c : upper)
             c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
-        if (upper != vcs::disc::kElfName)
+        const bool pal = upper == "SLES_546.22";
+        if (!pal && upper != "SLUS_215.90")
         {
             const char *what = vcs::disc::describeOtherRelease(upper);
             return fail("other_release",
                         std::string("this disc is ") + (*what ? what : "another game") + " (" + boot +
-                            "). Only GTA: Vice City Stories for the USA (SLUS-21590) is supported",
+                            "). Choose Vice City Stories USA or Europe (SLES-54622)",
                         boot);
         }
         vcs::IsoEntry elf;
-        if (!iso.find(vcs::disc::kElfName, elf) || elf.isDirectory)
-            return fail("not_ps2", std::string(vcs::disc::kElfName) + " is missing from the image (a damaged copy?)", boot);
+        if (!iso.find(upper, elf) || elf.isDirectory)
+            return fail("not_ps2", upper + " is missing from the image (a damaged copy?)", boot);
         std::vector<uint8_t> bytes(elf.size);
         iso.readBytes(uint64_t(elf.lba) * vcs::IsoImage::kSectorSize, bytes.size(), bytes.data());
         const std::string sha1 = vcs::sha1Hex(bytes.data(), bytes.size());
-        if (sha1 != vcs::disc::kElfSha1)
+        if (sha1 != (pal ? "47048caa4bd2ce8bd5223847b7abe02aa790bc3e" : "d1832508caf0990c2291c0f255c96a889cce9f88"))
             return fail("unsupported_build", "an unsupported build of the game's executable (sha1 " + sha1 +
                                                  "): a modified or damaged copy?", boot);
-        return {true, "ok", vcs::disc::kTitle, boot};
+        return {true, "ok", pal ? "GTA: Vice City Stories - Europe (experimental)" : "GTA: Vice City Stories - USA", boot};
     }
 
     std::vector<fs::path> discCandidates(const fs::path &root)

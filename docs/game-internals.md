@@ -2685,6 +2685,25 @@ hidden run (rig `peek` / `poke`, snapshots diffed).
     Fire, does not check it). The NPC path was left with Fire's on-foot "no delay" and no animation to pace it, and
     its burst lengths are in milliseconds, so at the PS2's fixed 30 fps the number of shots in a burst came out as
     "a frame each". Above 30 fps it gets worse with the frame rate.
+  - **On foot the attack animation is the pace** (found 2026-11-09: CWeapon::Fire's callers by `jal` scan, then
+    `tools/eedecomp.py`). **FUN_001D26C8** (the ped attack, CPed::Attack; called from FUN_001F4BF0) reads the gun's
+    animation times from weapon info **+0x44 loop start, +0x48 loop end, +0x4C fire point** (+0x50..+0x58 the crouched
+    set; seconds), calls Fire on the frame the attack animation's time (assoc + 0x28; + 0xC the frame's step) passes
+    the fire point, and once it passes the loop end, with the trigger held and ammo left, sets it back to the loop start
+    (FUN_0018EB70, SetCurrentTime). One shot per loop. Read in the game: SMG / Scorpion / Mac 10 (25-27) loop
+    0.3667-0.4667 s, fire 0.4333 - 0.1 s a loop, ~10 shots/s (rate +0xC says 90 ms); Micro SMG (24) 0.3667-0.5000 s,
+    ~7.5/s (+0xC 120 ms). NPCs on foot go through the same function.
+  - **The player's drive-by skips the reload** (an original-game bug, found 2026-11-10 from a player's report that
+    drive-bys fire faster than on foot). FireFromCar (FUN_002C1BB0), on the last round of the clip, sets state 2 and
+    the timer to `now + reload time` (weapon info + 0x10), but its caller then sets the timer again - FUN_002CEBE0 to
+    `now + rate`, FUN_002CF078 / FUN_002CF4A8 to `now + 70` - so the reload ends one shot gap later and the clip is
+    full again. Measured (Vic with an SMG, Circle held through the injected gamepad, driver looking left with L2;
+    scratch script, `gamepad` control command): the gap between shots is the same as on foot at 30 fps (99 ms:
+    the 90 ms rate, rounded up to the frame - 10.1 shots/s; on foot the animation loop gives 99 ms too), but on foot
+    the reload is 2.3 s and in the car 0.1 s - 6.9 against 10.1 shots a second overall. At 144 fps: on foot 104 ms
+    (9.6/s), driver 91-97 ms (10.5/s; the 90 ms is rounded up to a shorter frame). The NPC drive-by hook
+    (vcs_driveby.cpp) does not touch the player's paths. The passenger path was not measured (L2 + Circle in an
+    autodriven car fired nothing).
   - **Fixed as an option** (Enhancements > Combat: **Drive-by fire rate**; `src/game/vcs_driveby.cpp`): a hook on
     CWeapon::Fire for the two NPC calls (return addresses **0x2168B4** in FUN_00216768, **0x2169D4** in FUN_002168E8)
     lets a call through only when the shooter's next shot is due and otherwise returns 0, so the burst gate and the

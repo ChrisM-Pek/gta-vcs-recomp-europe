@@ -28,19 +28,24 @@ namespace vcs::trainer
         constexpr uint32_t kRamMask = 0x01FFFFFFu;
 
         // ---- Game addresses (game-internals.md 11, 12) ------------------------------------------------------------
-        constexpr uint32_t kPlayerPed = 0x004E4910u;      // CWorld::Players[0].m_pPed
-        constexpr uint32_t kScriptSpacePtr = 0x0048741Cu; // 0 until the script engine runs
-        constexpr uint32_t kGameTimeMs = 0x004CD104u;     // CTimer::m_snTimeInMilliseconds: stands still while paused
-        constexpr uint32_t kClockHours = 0x004CD148u;     // CClock: hours, minutes (bytes)
-        constexpr uint32_t kCurrArea = 0x00489F7Cu;       // CGame::currArea (0 outdoors)
-        constexpr uint32_t kMissionRunning = 0x004CD3E7u; // u8, set by LOAD_AND_LAUNCH_MISSION_INTERNAL
-        constexpr uint32_t kActiveScripts = 0x004CD3C4u;  // CRunningScript active list (+0 next, +0x10 IP)
-        constexpr uint32_t kTextTable = 0x0048A2A0u;      // -> -> {entries, count, ...}; entry {u32 UTF-16 text, char key[8]}
-        constexpr uint32_t kModelInfos = 0x00486518u;     // -> CModelInfo::ms_modelInfoPtrs
+#ifdef VCS_EXPERIMENTAL_PAL
+        constexpr uint32_t kAddressOffset = 0x300u;
+#else
+        constexpr uint32_t kAddressOffset = 0;
+#endif
+        constexpr uint32_t kPlayerPed = 0x004E4910u + kAddressOffset;      // CWorld::Players[0].m_pPed
+        constexpr uint32_t kScriptSpacePtr = 0x0048741Cu + kAddressOffset;
+        constexpr uint32_t kGameTimeMs = 0x004CD104u + kAddressOffset;
+        constexpr uint32_t kClockHours = 0x004CD148u + kAddressOffset;
+        constexpr uint32_t kCurrArea = 0x00489F7Cu + kAddressOffset;
+        constexpr uint32_t kMissionRunning = 0x004CD3E7u + kAddressOffset;
+        constexpr uint32_t kActiveScripts = 0x004CD3C4u + kAddressOffset;
+        constexpr uint32_t kTextTable = 0x0048A2A0u + kAddressOffset;
+        constexpr uint32_t kModelInfos = 0x00486518u + kAddressOffset;
         constexpr uint32_t kModelGameName = 0x158u;       // vehicle model info: the game name / text key (8 chars)
-        constexpr uint32_t kStreaming = 0x00489FF8u;      // -> CStreaming; +200 -> the models' streaming info (0x18 each,
+        constexpr uint32_t kStreaming = 0x00489FF8u + kAddressOffset; // -> CStreaming; +200 -> the models' streaming info (0x18 each,
                                                           // +0xC load state, 1 = loaded): HAS_MODEL_LOADED's test
-        constexpr uint32_t kCameraLooksAtPlayer = 0x006F44D0u + 0x888u; // TheCamera: 1 unless a script camera holds it
+        constexpr uint32_t kCameraLooksAtPlayer = 0x006F44D0u + kAddressOffset + 0x888u; // TheCamera: 1 unless a script camera holds it
         constexpr int kVehicleFirst = 171, kVehicleLast = 280;
         // ped fields
         constexpr uint32_t kPedPosition = 0x30u;
@@ -1164,7 +1169,18 @@ namespace vcs::trainer
     // Health back to full: the engine and fire. The dents stay - no script command repairs them (a Pay 'n' Spray does).
     void repairVehicle()
     {
+#ifdef VCS_EXPERIMENTAL_PAL
+        queue([](uint8_t *ram, Scm &, std::string &notice) {
+            const uint32_t ped = rd32(ram, kPlayerPed);
+            if (!driving(ram, ped))
+                return (notice = "Not in a vehicle", false);
+            wrf(ram, rd32(ram, ped + kPedVehicle) + kCarHealth, 1000.0f);
+            notice = "Vehicle repaired";
+            return true;
+        });
+#else
         vehicleAction("Vehicle repaired", [](Scm &code) { code.op(SET_CAR_HEALTH).car().i(1000); });
+#endif
     }
 
     // SET_CAR_HEADING rebuilds the matrix upright around its heading; SET_CAR_COORDINATES lifts it onto its wheels.

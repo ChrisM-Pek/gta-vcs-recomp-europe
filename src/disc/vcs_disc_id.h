@@ -7,9 +7,15 @@
 
 namespace vcs::disc
 {
+#ifdef VCS_EXPERIMENTAL_PAL
+    constexpr const char *kElfName = "SLES_546.22";
+    constexpr const char *kElfSha1 = "47048caa4bd2ce8bd5223847b7abe02aa790bc3e";
+    constexpr const char *kTitle = "GTA: Vice City Stories - Europe (SLES-54622)";
+#else
     constexpr const char *kElfName = "SLUS_215.90";
     constexpr const char *kElfSha1 = "d1832508caf0990c2291c0f255c96a889cce9f88";
     constexpr const char *kTitle = "GTA: Vice City Stories - USA (SLUS-21590) v1.00";
+#endif
 
     // vcs.exe's exit codes for a start that never reached the game (the launcher names the reason)
     enum ExitCode : int

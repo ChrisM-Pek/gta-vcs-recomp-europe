@@ -1,6 +1,11 @@
 cmake_minimum_required(VERSION 3.21)
 project(vcs_recomp LANGUAGES C CXX)
 
+option(VCS_EXPERIMENTAL_PAL "Use the experimental PAL disc identity" OFF)
+if(VCS_EXPERIMENTAL_PAL)
+    add_compile_definitions(VCS_EXPERIMENTAL_PAL=1)
+endif()
+
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
@@ -64,8 +69,9 @@ list(REMOVE_ITEM VCS_SOURCES "${CMAKE_SOURCE_DIR}/src/main.cpp")
 # The platform layer, RHI and renderer are their own libraries (src/*/CMakeLists.txt), linked into the runtime.
 list(FILTER VCS_SOURCES EXCLUDE REGEX "/src/(platform|rhi|render)/")
 # VU1 microprograms compiled to C++ by tools/vu1_recomp.py (from the user's ELF; see game/vcs/vu1_uploads.txt)
-if(EXISTS "${CMAKE_SOURCE_DIR}/generated/vu1/vu1_compiled.cpp")
-    list(APPEND VCS_SOURCES "${CMAKE_SOURCE_DIR}/generated/vu1/vu1_compiled.cpp")
+set(VCS_VU1_SOURCE "${CMAKE_SOURCE_DIR}/generated/vu1/vu1_compiled.cpp" CACHE FILEPATH "Compiled VU1 programs")
+if(EXISTS "${VCS_VU1_SOURCE}")
+    list(APPEND VCS_SOURCES "${VCS_VU1_SOURCE}")
 endif()
 
 set(PS2X_RUNNER_SOURCE_DIR "${VCS_GENERATED_DIR}" CACHE PATH "" FORCE)

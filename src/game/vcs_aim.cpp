@@ -18,7 +18,12 @@ namespace vcs::aim
     namespace
     {
         constexpr uint32_t kRamMask = 0x01FFFFFFu;
-        constexpr uint32_t kPlayerPed = 0x004E4910u; // CWorld::Players[0].m_pPed
+#ifdef VCS_EXPERIMENTAL_PAL
+        constexpr uint32_t kRegionOffset = 0x300u;
+#else
+        constexpr uint32_t kRegionOffset = 0u;
+#endif
+        constexpr uint32_t kPlayerPed = 0x004E4910u + kRegionOffset; // CWorld::Players[0].m_pPed
         // the ped (game-internals.md 12, 12c)
         constexpr uint32_t kPedPos = 0x30u, kPedVehicle = 0x480u, kPedState = 0x8C4u, kPedSlot = 0x789u, kPedWeapons = 0x578u;
         constexpr uint32_t kPedTarget = 0x820u;     // what the player is locked on to (the dummy object in free aim)
@@ -29,13 +34,13 @@ namespace vcs::aim
         constexpr uint32_t kEntityFlags = 0x48u;    // & 0xE: 6 ped, 8 object
         constexpr uint32_t kPedAttachedTo = 0x858u; // the vehicle a script attached him to (ATTACH_CHAR_TO_CAR)
         // TheCamera and its CCams (game-internals.md 12b)
-        constexpr uint32_t kTheCamera = 0x006F44D0u;
+        constexpr uint32_t kTheCamera = 0x006F44D0u + kRegionOffset;
         constexpr uint32_t kActiveCam = kTheCamera + 0x50u;
         constexpr uint32_t kCams = kTheCamera + 0x70u, kCamSize = 0x270u;
         constexpr uint32_t kCamSource = 0x20u, kCamAlpha = 0x78u, kCamBeta = 0x7Cu;
         constexpr uint32_t kCamModeLockOn = 11;
         constexpr uint32_t kCamModeMountedGun = 45; // first person behind a gun on a vehicle (VC's HELICANNON_1STPERSON)
-        constexpr uint32_t kTimeStep = 0x004CD110u; // CTimer::ms_fTimeStep (1.0 = 1/50 s)
+        constexpr uint32_t kTimeStep = 0x004CD110u + kRegionOffset; // CTimer::ms_fTimeStep (1.0 = 1/50 s)
         // the camera's blend from one CCam to the next (game-internals.md 12c): a byte set while it runs, and its
         // durations in ms (400 into the lock-on / free-aim camera, 350 out of it)
         constexpr uint32_t kTransition = kTheCamera + 0x8D0u;
@@ -43,12 +48,18 @@ namespace vcs::aim
         constexpr uint32_t kBlendInMs = 100, kBlendOutMs = 200;
 
         // the hooked functions
+#ifdef VCS_EXPERIMENTAL_PAL
+        constexpr uint32_t kGameProcess = 0x003BABD8u, kCameraProcess = 0x00378FB8u;
+        constexpr uint32_t kShotLine = 0x002D0A48u, kMovesAiming = 0x001F1680u;
+        constexpr uint32_t kMovesAimingCamReturn = 0x00375D24u, kShotLineReturn = 0x002C497Cu;
+#else
         constexpr uint32_t kGameProcess = 0x003BA8D8u;   // CGame::Process: scripts, the world (peds move, guns fire)
         constexpr uint32_t kCameraProcess = 0x00378DD8u; // CCamera::Process: after the world, before the HUD
         constexpr uint32_t kShotLine = 0x002D0870u;      // the weapons' line test (CWorld::ProcessLineOfSight, 8 args)
         constexpr uint32_t kMovesAiming = 0x001F1698u;   // the ped's weapon lets him move while aiming (info byte 0 bit 7)
         constexpr uint32_t kMovesAimingCamReturn = 0x00375B44u; // its call in CCamera::CamControl (FUN_00372450)
         constexpr uint32_t kShotLineReturn = 0x002C47A4u; // its call in FireInstantHit (0x2c3e48) for a locked-on shooter
+#endif
         // Guest memory for the shot's start point: the EE kernel's area below the game (0x00000-0x7FFFF), unused by the
         // recompiled runtime and the game (all zero in play, 2026-10-31).
         constexpr uint32_t kScratch = 0x00060000u;
@@ -65,7 +76,7 @@ namespace vcs::aim
         // on foot (the forced free aim): 50..110 deg from Vic's up (20 deg below level, 40 above), and 110 deg either side
         // of his heading
         constexpr float kFootPitchDown = -0.3490659f, kFootPitchUp = 0.6981317f, kFootYawLimit = 1.9198622f;
-        constexpr uint32_t kWeaponInfo = 0x00712770u; // *(*(this) + 4) + type * 0x70: the weapon's info, +8 its range
+        constexpr uint32_t kWeaponInfo = 0x00712770u + kRegionOffset; // *(*(this) + 4) + type * 0x70: the weapon's info, +8 its range
 
         PS2Runtime::RecompiledFunction g_origGame = nullptr, g_origCamera = nullptr, g_origShotLine = nullptr,
                                        g_origMovesAiming = nullptr;

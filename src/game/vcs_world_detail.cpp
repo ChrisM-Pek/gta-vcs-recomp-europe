@@ -48,6 +48,19 @@ namespace vcs::world
 {
     namespace
     {
+#ifdef VCS_EXPERIMENTAL_PAL
+        constexpr uint32_t kCarFactor = 0x0048A984u, kPedFactor = 0x0048A980u;
+        constexpr uint32_t kCarCap = 0x0048ACA8u, kCarCounters = 0x0048AC6Cu;
+        constexpr uint32_t kPedCapOut = 0x00488304u, kPedCapIn = 0x00488308u;
+        constexpr uint32_t kPedCount = 0x004CD850u, kLodScale = 0x00488AF8u, kSpawnChance = 0x00487798u;
+        constexpr uint32_t kCarSpawner = 0x00430598u, kPedSpawner = 0x002B1980u;
+        constexpr uint32_t kPossiblyRemoveVehicle = 0x00433680u;
+        constexpr uint32_t kCamera = 0x006F47D0u;
+        constexpr uint32_t kGenerationDist = kCamera + 0x7D0u;
+        constexpr uint32_t kFov = 0x00487784u, kPedPool = 0x00487D94u, kVehiclePool = 0x00487D98u;
+        constexpr uint32_t kPackets = 0x00521290u;
+        constexpr uint32_t kWorldRemove = 0x0018FA30u, kPlayerPointer = 0x004E4C10u;
+#else
         constexpr uint32_t kCarFactor = 0x0048A680u; // float 0.7 (FUN_00430290)
         constexpr uint32_t kPedFactor = 0x0048A67Cu; // float 0.4 (FUN_002B17A8)
         constexpr uint32_t kCarCap = 0x0048A9A8u;    // int 16: random cars + the other car counters
@@ -66,6 +79,8 @@ namespace vcs::world
         constexpr uint32_t kPedPool = 0x00487A94u;
         constexpr uint32_t kVehiclePool = 0x00487A98u;
         constexpr uint32_t kPackets = 0x00520F90u; // +0x14 half in use, +0x18 cursor up, +0x1C data down, halves from +0x20
+        constexpr uint32_t kWorldRemove = 0x0018FA50u, kPlayerPointer = 0x004E4910u;
+#endif
         constexpr uint32_t kPacketHalf = 0xE6670u;
 
         constexpr int kMaxPercent = 300;
@@ -413,8 +428,8 @@ namespace vcs::world
                 runtime.replaceFunction(kCarSpawner, &carSpawner);
                 runtime.replaceFunction(kPedSpawner, &pedSpawner);
                 runtime.replaceFunction(kPossiblyRemoveVehicle, &possiblyRemoveVehicle);
-                if ((g_origWorldRemove = runtime.lookupFunction(0x0018FA50u)))
-                    runtime.replaceFunction(0x0018FA50u, &worldRemove);
+                if ((g_origWorldRemove = runtime.lookupFunction(kWorldRemove)))
+                    runtime.replaceFunction(kWorldRemove, &worldRemove);
             }
             else
             {
@@ -492,7 +507,7 @@ namespace vcs::world
         g_stCarChance.store(g_carChance, std::memory_order_relaxed);
         g_stPedChance.store(g_pedChance, std::memory_order_relaxed);
         g_stLod.store(lod, std::memory_order_relaxed);
-        if (const uint32_t player = rd32(rdram, 0x004E4910u) & 0x01FFFFFFu)
+        if (const uint32_t player = rd32(rdram, kPlayerPointer) & 0x01FFFFFFu)
         {
             const float p[3] = {rdf(rdram, player + 0x30), rdf(rdram, player + 0x34), rdf(rdram, player + 0x38)};
             g_stPlayerInView.store(inView(rdram, p, 0.5f) ? 1 : 0, std::memory_order_relaxed);

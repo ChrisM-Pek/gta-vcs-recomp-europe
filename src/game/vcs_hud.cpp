@@ -47,21 +47,36 @@ namespace vcs
 {
     namespace
     {
+#ifdef VCS_EXPERIMENTAL_PAL
+        constexpr uint32_t kIm2DRender = 0x002FBFE8u, kIm2DRenderIndexed = 0x002FC048u;
+        constexpr uint32_t kHudDraw = 0x0031C808u;
+        constexpr uint32_t kHudZ = 0x00FFFFFEu;
+        constexpr uint32_t kRenderStateSet = 0x00175178u;
+#else
         constexpr uint32_t kIm2DRender = 0x002FBE08u;        // (prim, vertices, count): RwIm2DRenderPrimitive
         constexpr uint32_t kIm2DRenderIndexed = 0x002FBE68u; // (prim, vertices, count, indices, indexCount)
         constexpr uint32_t kHudDraw = 0x0031C628u;           // CHud::Draw
         constexpr uint32_t kHudZ = 0x00FFFFFEu;              // the HUD's Im2D z (the far plane)
         constexpr uint32_t kRenderStateSet = 0x00175198u;    // RwRenderStateSet(state, value); 6 = rwRENDERSTATEZTESTENABLE
+#endif
 
         PS2Runtime::RecompiledFunction g_origRender = nullptr, g_origRenderIndexed = nullptr, g_origHudDraw = nullptr,
                                        g_origRenderStateSet = nullptr;
         bool g_inHud = false;    // game thread
         bool g_inMenu = false;   // the frontend's draw (FUN_003b53f8) to the frame kick; game thread
+#ifdef VCS_EXPERIMENTAL_PAL
+        constexpr uint32_t kMenuDraw = 0x003B56D0u;
+#else
         constexpr uint32_t kMenuDraw = 0x003B53F8u; // the frontend / pause menu's draw, called from FUN_0021f7d8
+#endif
         PS2Runtime::RecompiledFunction g_origMenuDraw = nullptr;
         // the loading screen (FUN_0021E170, GTA's LoadingScreen: splash, text, progress bar, its own frame) to the frame
         // kick; laid out like a menu (game-internals.md 6f)
+#ifdef VCS_EXPERIMENTAL_PAL
+        constexpr uint32_t kLoadingScreen = 0x0021E2F8u;
+#else
         constexpr uint32_t kLoadingScreen = 0x0021E170u;
+#endif
         bool g_inLoading = false; // game thread
         PS2Runtime::RecompiledFunction g_origLoadingScreen = nullptr;
         bool g_zTest = true;     // RenderWare's ZTESTENABLE as the game last set it (off: the GS's ZTST ALWAYS)
@@ -69,10 +84,16 @@ namespace vcs
         // What the HUD is drawing (game-internals.md 6f "Radar and text"), for the anchoring below. Set at the entry of
         // the routines (hooks work before the original only - AGENTS.md rule 2): the radar from its entry to the entry
         // of whatever CHud::Draw calls after it; a text line from the font's render to its glyph batch.
+#ifdef VCS_EXPERIMENTAL_PAL
+        constexpr uint32_t kRadarDraw = 0x003216E0u;
+        constexpr uint32_t kAfterRadar[] = {0x00113D50u, 0x00321938u, 0x002DFFF0u};
+        constexpr uint32_t kFontRender = 0x00261D78u, kGlyphBatch = 0x003E0124u;
+#else
         constexpr uint32_t kRadarDraw = 0x00321500u;  // CHud's radar: map tiles (huge quads, scissored), ring, blips
         constexpr uint32_t kAfterRadar[] = {0x00113D50u, 0x00321758u, 0x002DFE10u}; // CHud::Draw's next call on each path
         constexpr uint32_t kFontRender = 0x00261BE8u; // font render(font, string, x, y, colour, rect, ...): every line
         constexpr uint32_t kGlyphBatch = 0x003DFE24u; // Im2D's return address in the font's glyph batch (FUN_003dfdd8)
+#endif
         PS2Runtime::RecompiledFunction g_origRadarDraw = nullptr, g_origFontRender = nullptr;
         PS2Runtime::RecompiledFunction g_origAfterRadar[3] = {};
         bool g_inRadar = false;      // game thread
@@ -85,8 +106,13 @@ namespace vcs
         // scope are squeezed into the middle 4:3 and clipped there, so the 3D world showed in the strips beside it. The
         // bars are made to reach the screen edges: drawn unsqueezed (Stretch) from the edge to where the squeezed bar
         // ends. VCS_SCOPE_FILL=0: as before.
+#ifdef VCS_EXPERIMENTAL_PAL
+        constexpr uint32_t kRectFill = 0x003E0E10u;
+        constexpr uint32_t kMaskLeftReturn = 0x0021F878u, kMaskRightReturn = 0x0021F8B0u;
+#else
         constexpr uint32_t kRectFill = 0x003E0B10u;
         constexpr uint32_t kMaskLeftReturn = 0x0021F6F0u, kMaskRightReturn = 0x0021F728u;
+#endif
         PS2Runtime::RecompiledFunction g_origRectFill = nullptr;
         std::atomic<float> g_squeeze{1.0f}; // the HUD's squeeze in widescreen ((4:3) / aspect; 1: none)
         bool g_maskBar = false;             // the next Im2D call is a mask bar (game thread)

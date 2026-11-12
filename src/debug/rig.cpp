@@ -305,12 +305,17 @@ namespace vcs::rig
     namespace
     {
         // ---- The game's script VM (docs/game-internals.md section 11) -------------------------------------------
-        constexpr uint32_t kScriptSpacePtr = 0x0048741Cu; // -> ScriptSpace (MAIN.SCM from file offset 8)
-        constexpr uint32_t kActiveScripts = 0x004CD3C4u;  // CRunningScript list heads (+0 next, +4 prev)
-        constexpr uint32_t kIdleScripts = 0x004CD3C8u;
-        constexpr uint32_t kNextScriptId = 0x0048742Cu;
-        constexpr uint32_t kMissionRunning = 0x004CD3E7u; // u8, set by LOAD_AND_LAUNCH_MISSION_INTERNAL
-        constexpr uint32_t kPlayerPed = 0x004E4910u;      // CWorld::Players[0].m_pPed
+#ifdef VCS_EXPERIMENTAL_PAL
+        constexpr uint32_t kAddressOffset = 0x300u;
+#else
+        constexpr uint32_t kAddressOffset = 0;
+#endif
+        constexpr uint32_t kScriptSpacePtr = 0x0048741Cu + kAddressOffset;
+        constexpr uint32_t kActiveScripts = 0x004CD3C4u + kAddressOffset;
+        constexpr uint32_t kIdleScripts = 0x004CD3C8u + kAddressOffset;
+        constexpr uint32_t kNextScriptId = 0x0048742Cu + kAddressOffset;
+        constexpr uint32_t kMissionRunning = 0x004CD3E7u + kAddressOffset;
+        constexpr uint32_t kPlayerPed = 0x004E4910u + kAddressOffset;
         constexpr uint32_t kScriptSize = 0x218u;
         // A rig script's code lives in its own locals 0x30.. (+0x114..+0x1c4): locals 0..0x2f stay free for outputs,
         // the timers (locals 0x68 / 0x69 at +0x1f4) are not touched.
@@ -444,7 +449,7 @@ namespace vcs::rig
         // an AI drive (so on roads, z included).
         constexpr uint32_t kPedVehicle = 0x480u;     // CPed: the vehicle it is in (game_info.cpp)
         constexpr uint32_t kMoveSpeed = 0x140u;      // CPhysical: move speed, units per 1/50 s (game-internals.md 4)
-        constexpr uint32_t kTimeStep = 0x004CD110u;  // CTimer::ms_fTimeStep (1/50 s units)
+        constexpr uint32_t kTimeStep = 0x004CD110u + kAddressOffset;  // CTimer::ms_fTimeStep (1/50 s units)
 
         struct Cruise
         {
@@ -698,8 +703,8 @@ namespace vcs::rig
         cruiseFrame(rdram);
         if (g_trace)
         {
-            std::fprintf(g_trace, "%llu %u %.6g", static_cast<unsigned long long>(g_frames.load()), rd32(rdram, 0x4CD104u),
-                         loadF32(0x4CD110u)); // CTimer: ms clock, ms_fTimeStep
+            std::fprintf(g_trace, "%llu %u %.6g", static_cast<unsigned long long>(g_frames.load()), rd32(rdram, 0x4CD104u + kAddressOffset),
+                         loadF32(kTimeStep)); // CTimer: ms clock, ms_fTimeStep
             for (const auto &[addr, n] : g_traceSpans)
                 for (uint32_t i = 0; i < n; ++i)
                     std::fprintf(g_trace, " %.6g", loadF32(addr + i * 4));

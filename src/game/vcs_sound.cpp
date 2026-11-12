@@ -757,8 +757,13 @@ namespace vcs
                 for (StreamBuffer &b : m_buffers)
                     b.data.assign(kStreamBuffer + 0x800, 0);
                 for (uint32_t i = 0; i < kMusicFiles; ++i)
-                    if (!findDiscFile("cdrom0:" + m_module.string(0x6410 + i * 0x28), m_musicFile[i]))
-                        std::fprintf(stderr, "[sound] music file %u (%s) not found\n", i, m_module.string(0x6410 + i * 0x28).c_str());
+                {
+                    const std::string name = m_module.string(0x6410 + i * 0x28);
+                    if (!findDiscFile("cdrom0:" + name, m_musicFile[i]) &&
+                        !(name == "\\AUDIO\\MUSIC\\WAVE.VB;1" &&
+                          findDiscFile("cdrom0:\\AUDIO\\MUSIC\\WAVE_EU.VB;1", m_musicFile[i])))
+                        std::fprintf(stderr, "[sound] music file %u (%s) not found\n", i, name.c_str());
+                }
                 return kMusicThreadId;
             }
 

@@ -44,7 +44,11 @@ namespace vcs
 {
     namespace
     {
+#ifdef VCS_EXPERIMENTAL_PAL
+        constexpr uint32_t kMoviePlay = 0x0040DBC0u;
+#else
         constexpr uint32_t kMoviePlay = 0x0040D8B8u; // CMoviePlayer::Play(path, 0, frames before a skip is allowed)
+#endif
         std::atomic<bool> g_skipIntro{false};
 
         // The PSS file, split into its video elementary stream and its sound.

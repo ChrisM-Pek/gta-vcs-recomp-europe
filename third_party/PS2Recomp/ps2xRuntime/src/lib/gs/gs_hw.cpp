@@ -51,6 +51,7 @@ namespace
     constexpr uint64_t kGlyphAtlasKey = 0xF1F1F1F100000000ull; // its texture key: no GS texture key has these high bits
     std::atomic<uint32_t> g_outputW{0}, g_outputH{0};   // [gta-recomp] gsHwSetOutputSize
     std::atomic<float> g_aspectWidening{1.0f};          // [gta-recomp] gsHwSetAspectWidening
+    std::atomic<bool> g_bloomEnabled{true};              // [gta-recomp] gsHwSetBloomEnabled
     std::atomic<uint32_t> g_frameW{0}, g_frameH{0};     // [gta-recomp] gsHwSetFrameSize
     struct TargetRole                                   // [gta-recomp] gsHwSetTargetRole
     {
@@ -155,6 +156,8 @@ void gsHwSetFrameSize(uint32_t width, uint32_t height)
 }
 
 void gsHwSetAspectWidening(float widening) { g_aspectWidening.store(widening, std::memory_order_relaxed); }
+// [gta-recomp] The F2 setting is changed on the host thread and read on the render worker.
+void gsHwSetBloomEnabled(bool enabled) { g_bloomEnabled.store(enabled, std::memory_order_relaxed); }
 
 // [gta-recomp] gsHwShownInputNs (gs_hw.h)
 static int64_t steadyNs()
@@ -1995,7 +1998,7 @@ namespace
         size_t nativePost(const Frame &f, size_t ci, bool log)
         {
             const unsigned on = postNative();
-            if (on & 1u)
+            if ((on & 1u) || !g_bloomEnabled.load(std::memory_order_relaxed))
                 if (const size_t n = nativeBloom(f, ci, log))
                     return n;
             if (on & 2u)
@@ -2031,6 +2034,8 @@ namespace
             }
             if (!mapped || x0 > 0.0f || y0 > 0.0f || x1 < 640.0f || y1 < 448.0f)
                 return 0;
+            // [gta-recomp] PAL copies 512 rows; NTSC copies 448. Respect the recorded geometry and scissor.
+            const float frameHeight = std::min(y1, static_cast<float>(s.scy1) + 1.0f);
             const bool decal = s.tfx == 1u && s.tcc;
             const bool plain = !s.abe && !s.ate && !s.fge && decal && (!s.zte || (s.ztst == 1u && s.zmsk));
             Rt &dst = rtFor(s.fbp, s.fbw, s.scy1 + 1u);
@@ -2040,7 +2045,7 @@ namespace
                 rhi::Texture &from = readable(src->second);
                 endPass();
                 const uint32_t w = std::min(px(640.0f, dst.scale.x), std::min(dst.color->desc().width, from.desc().width));
-                const uint32_t h = std::min(px(448.0f, dst.scale.y), std::min(dst.color->desc().height, from.desc().height));
+                const uint32_t h = std::min(px(frameHeight, dst.scale.y), std::min(dst.color->desc().height, from.desc().height));
                 m_dev.copyTexture(*dst.color, 0, 0, from, 0, 0, w, h);
                 dst.dirty = true;
                 if (log)
@@ -2049,7 +2054,7 @@ namespace
             }
             // one quad over the screen with the draw's own state and colour
             m_postVerts.clear();
-            const float xs[6] = {0, 640, 0, 640, 640, 0}, ys[6] = {0, 0, 448, 0, 448, 448};
+            const float xs[6] = {0, 640, 0, 640, 640, 0}, ys[6] = {0, 0, frameHeight, 0, frameHeight, frameHeight};
             for (int i = 0; i < 6; ++i)
             {
                 HwVertex q = v[0];
@@ -2119,7 +2124,9 @@ namespace
                 postAdd(items, f, clr, buf(clr->s.fbp), nullptr, w, 0.0f);
                 postAdd(items, f, taps, buf(taps->s.fbp), buf(taps->s.rtFbp), w, 256.0f);
             }
-            postAdd(items, f, add, nullptr, buf(last), w, 256.0f);
+            // [gta-recomp] Keep the effect buffers for later GS readers, but omit their blend onto the picture.
+            if (g_bloomEnabled.load(std::memory_order_relaxed))
+                postAdd(items, f, add, nullptr, buf(last), w, 256.0f);
             postRun(items, w, log, "bloom");
             postWriteBack(buf(first), first, 4u, 256u, 256u);
             if (other != first)

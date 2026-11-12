@@ -17,6 +17,15 @@
 // - the limiter's VBlank wait paces on the host clock to the frame-rate cap instead, brings the emulated clock up to
 //   real time (VBlank events, timers and the IOP follow it) and presents the frame (runtime/ps2_present.h).
 #include "game/vcs_framerate.h"
+#ifdef VCS_EXPERIMENTAL_PAL
+#include "game/vcs_world_detail.h"
+#include "game/vcs_prompts.h"
+#include "game/vcs_display.h"
+#include "game/vcs_hud.h"
+#include "game/vcs_volume.h"
+#include "game/vcs_trainer.h"
+#include "debug/rig.h"
+#endif
 
 #include "platform/platform.h"
 #include "ps2_runtime.h"
@@ -39,6 +48,24 @@ namespace vcs
 {
     namespace
     {
+#ifdef VCS_EXPERIMENTAL_PAL
+        constexpr uint32_t kCountVBlank = 0x00317CA8u;
+        constexpr uint32_t kTimerTicks = 0x00451F08u;
+        constexpr uint32_t kTimerEnsure = 0x002F49A0u;
+        constexpr uint32_t kWaitVBlank = 0x00370598u;
+        constexpr uint32_t kAfterMinClamp = 0x002F4DE4u;
+        constexpr uint32_t kLimiterWait = 0x00317C30u;
+        constexpr uint32_t kTimerUpdate = 0x002F4B40u;
+        constexpr uint32_t kTwoDPass = 0x0021F4D0u;
+        constexpr uint32_t kFrameKick = 0x00272578u;
+        constexpr uint32_t kFrameCounter = 0x004CD424u;
+        constexpr uint32_t kTimeMs = 0x004CD404u;
+        constexpr uint32_t kPrevTicks = 0x00488598u;
+        constexpr uint32_t kFrameTicks = 0x004CD864u;
+        constexpr uint32_t kTimeScale = 0x004CD468u;
+        constexpr uint32_t kTimeStep = 0x004CD410u;
+        constexpr uint32_t kTimeStepNonClipped = 0x004CD600u;
+#else
         constexpr uint32_t kCountVBlank = 0x00317AC8u; // (graphics object): +0x4 += 1, from a VBlank callback
         constexpr uint32_t kTimerTicks = 0x00451C00u;  // kernel timer count (64-bit), read by CTimer::Update only
         constexpr uint32_t kTimerEnsure = 0x002F47C0u; // CTimer: create the kernel timer if needed (2 calls in Update)
@@ -55,6 +82,7 @@ namespace vcs
         constexpr uint32_t kTimeScale = 0x004CD168u;  // CTimer::ms_fTimeScale
         constexpr uint32_t kTimeStep = 0x004CD110u;   // CTimer::ms_fTimeStep (1.0 = 1/50 s)
         constexpr uint32_t kTimeStepNonClipped = 0x004CD300u;
+#endif
 
         constexpr uint64_t kBusHz = 147456000ull;     // the tick rate (CTimer: ms = ticks / 147456)
         constexpr double kEeCyclesPerNs = 0.294912;   // EE clock 294.912 MHz
@@ -80,6 +108,21 @@ namespace vcs
         std::atomic<int> g_cap{30};
         PS2Runtime::RecompiledFunction g_origTicks = nullptr, g_origEnsure = nullptr, g_origWait = nullptr, g_origTwoD = nullptr,
                                            g_origUpdate = nullptr;
+#ifdef VCS_EXPERIMENTAL_PAL
+        PS2Runtime::RecompiledFunction g_origFrameKick = nullptr;
+        PS2_GUEST_CC void frameKick(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
+        {
+            ps2perf::markGameFrame();
+            applyDisplay(rdram);
+            onFrameKick();
+            world::onGameFrame(rdram);
+            volume::onGameFrame(rdram);
+            prompts::onFrameKick(rdram);
+            rig::onGameFrame(rdram, ctx, runtime);
+            trainer::onGameFrame(rdram);
+            g_origFrameKick(rdram, ctx, runtime);
+        }
+#endif
         bool g_counterSwapped = false; // the 2D pass runs on the 30 Hz counter (game thread)
         uint32_t g_realCounter = 0;
         uint64_t g_lastSleepNs = 0; // the limiter's last host wait (VCS_TIMING_LOG)
@@ -369,6 +412,11 @@ namespace vcs
 
     void installFrameRateHooks(PS2Runtime &runtime)
     {
+#ifdef VCS_EXPERIMENTAL_PAL
+        g_origFrameKick = runtime.lookupFunction(kFrameKick);
+        if (g_origFrameKick)
+            runtime.replaceFunction(kFrameKick, &frameKick);
+#endif
         g_origTicks = runtime.lookupFunction(kTimerTicks);
         g_origEnsure = runtime.lookupFunction(kTimerEnsure);
         g_origWait = runtime.lookupFunction(kWaitVBlank);

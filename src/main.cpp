@@ -17,18 +17,24 @@
 #include "debug/profiler.h"
 #include "debug/rig.h"
 #include "game/vcs_trainer.h"
+#include "game/vcs_freecam.h"
 #include "debug/selftest.h"
 #include "debug/watchdog.h"
 #include "disc/iso_image.h"
 #include "disc/vcs_disc_id.h"
 #include "game/vcs_display.h"
 #include "game/vcs_driveby.h"
+#include "game/vcs_carcam.h"
+#include "game/vcs_aim.h"
 #include "game/vcs_framerate.h"
+#include "game/vcs_physics_timing.h"
 #include "game/vcs_movie.h"
 #include "game/vcs_hud.h"
 #include "game/vcs_input.h"
 #include "game/vcs_prompts.h"
 #include "game/vcs_volume.h"
+#include "game/vcs_sound.h"
+#include "game/vcs_stream.h"
 #include "game/vcs_world_detail.h"
 #include "platform/platform.h"
 #include "render/presenter.h"
@@ -634,6 +640,18 @@ namespace
         settings::add(s);
 
         s = {};
+        s.key = "display.bloom";
+        s.page = "Graphics";
+        s.section = "Image quality";
+        s.label = "Bloom";
+        s.help = "The original glow around bright parts of the picture. Turn off for a clearer image.";
+        s.type = Type::Toggle;
+        s.defaultValue = 1;
+        s.env = "VCS_BLOOM";
+        s.onChange = [](int v) { gsHwSetBloomEnabled(v != 0); };
+        settings::add(s);
+
+        s = {};
         s.key = "display.msaa";
         s.page = "Graphics";
         s.section = "Image quality";
@@ -913,11 +931,28 @@ int main(int argc, char *argv[])
         paths.mcRoot = data / "mc0";
         PS2Runtime::setIoPaths(paths);
 
-        vcs::rig::install(runtime); // control-channel automation commands (debug/rig.h)
-        vcs::trainer::install(runtime); // the trainer's control-channel command (game/vcs_trainer.h)
         vcs::input::install(runtime);   // the player's bindings feed the pad (game/vcs_input.h)
+        vcs::rig::install(runtime);
+        vcs::trainer::install(runtime);
+#ifdef VCS_EXPERIMENTAL_PAL
+        vcs::installFrameRateHooks(runtime);
+        vcs::installPhysicsTimingHooks(runtime);
+        vcs::installDisplayHooks(runtime);
+        vcs::installHudHooks(runtime);
+        vcs::installMovieHooks(runtime);
+        vcs::world::install(runtime);
+        vcs::driveby::install(runtime);
+        vcs::prompts::install(runtime);
+        vcs::carcam::install(runtime);
+        vcs::aim::install(runtime);
+        vcs::volume::install(runtime);
+        vcs::freecam::install(runtime);
+        vcs::installSoundHooks(runtime);
+        vcs::retireIop(false); // PAL streaming still uses the emulated IOP
+#else
         vcs::volume::install(runtime);  // the game's music / effects levels follow the settings (game/vcs_volume.h)
         vcs::gameinfo::install(runtime); // the F3 overlay's game-state panel, the `gameinfo` command (debug/game_info.h)
+#endif
         // setting <key> [value] -> ok <value>: a setting read or changed (a hidden run never writes vcs.ini)
         ps2control::addCommand("setting", [](const std::string &args, ps2control::Reply reply) {
             const size_t space = args.find(' ');

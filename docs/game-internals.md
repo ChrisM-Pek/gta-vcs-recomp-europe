@@ -2575,3 +2575,158 @@ probes in the game (rig, `worlddetail`).
 - HUD / font / sprite call sites (CHud, CFont, CSprite2d, CSprite) - milestone 3 (2D at the RW level).
 - Sound driver command protocol in full (section 9) - milestone 6.
 - Threads and their priorities.
+
+## 14. European executable comparison
+
+The SLES_546.22 executable extracted from the Europe/Australia disc examined here has SHA-1
+`47048caa4bd2ce8bd5223847b7abe02aa790bc3e`. Comparing the file-backed bytes of each function in
+`game/vcs/functions.csv` with BlackLineInteractive's SLES_546.22 `gta-vcs/gta.csv` using
+`tools/match_versions.py` found 1,277 unique byte-identical pairs. Among the 34 distinct generated
+function names referenced by `src/`, eight have such a match. These counts depend on the two function
+maps; matching bytes alone does not establish that a function's absolute data references are valid in
+both builds. The remaining functions, host-side data addresses, instruction patches and VU uploads
+need separate analysis before the European disc can be supported.
+
+With `--candidates`, the same tool masks jump targets and selected instruction immediates before
+comparison: 6,971 unique pairs, including 32 of those 34 host-referenced functions. These are only
+candidates, since the masked fields can be constants or offsets rather than relocated addresses.
+
+The project's `ps2_recomp` was built and run on this PAL ELF with BlackLineInteractive's PAL
+`gta_analyzer.toml` and `gta.csv` (paths changed to point to the local ELF and an ignored output
+directory). It generated code with 0 errors and 1,155 warnings, including unresolved indirect
+branches. This verifies translation only: it does not port the US-specific host bindings, validate
+those warnings, or establish that the game boots.
+
+All 23 ranges in `game/vcs/vu1_uploads.txt` were found byte-for-byte in the PAL ELF; their PAL
+addresses are in `game/vcs/vu1_uploads_pal.txt`. Three ranges have multiple identical matches:
+the chosen PAL addresses (0x178f80 / 0x289c90, 0x368910 and 0x369140) retain the relative
+positions of the surrounding uploads. `tools/vu1_recomp.py` successfully translated this list;
+it remains to verify at runtime whether the PAL build uploads additional programs.
+The two discs' `MODULES/CDSTREAM.IRX` are byte-identical (SHA-1
+`db2c3b3cdae1d11bac18dcc8eac067c908c031ee`), checked by extracting both files with
+`tools/vcs_disc.py` and hashing them. This establishes that the existing native sound module's
+build check accepts the PAL copy, not that sound has been tested in-game. The module's file table
+names `AUDIO/MUSIC/WAVE.VB`, but this PAL ISO contains `AUDIO/MUSIC/WAVE_EU.VB` instead. The native
+sound driver tries the European filename if the original Wave file is absent.
+
+PAL boot experiment: `_lf_bind` is at 0x46d050 (US 0x46cd10): matching the two
+function bodies and inspecting the RPC target 0x80000006 showed the same wait for LOADFILE;
+the PAL config replaces it with `ret0`, as the US config does. The PAL map initially lacked
+indirect target 0x474490 and direct target 0x3a82e8. Scanning the PAL ELF for data pointers and
+direct calls supplied 858 indirect entries and three uncovered direct call targets; 0x2fa538 is
+also registered as a resume point after it was reported missing during boot. A hidden run with
+an isolated card reached the opening cutscene and the player on foot at Fort Baxter; simulated
+left-stick input moved him. This is initial gameplay only, not a full mission or save test.
+
+The initial PAL map and analyzer configuration are from BlackLineInteractive/SHO-GTA-VCS-PS2Recomp,
+GPL-3.0, commit `659a2b0db11a14e818001f57331e216f5c604000`; `game/vcs/pal/functions.csv`
+adds the entries found above. `python tools/build_pal.py <SLES ISO>` builds an experimental PAL
+executable. Host function aliases are compilation candidates and do not port the US-specific game
+hooks; the experimental build disables the US volume and debug hooks. Sound, controls, missions,
+and memory-card save/load still require extended validation for this release.
+
+PAL display: with `PS2X_HW_DEBUG=1`, DISPLAY reports 640x509 at (0, 2). An F12 draw capture
+with `PS2X_HW_POSTFX=0` shows the full-frame copy into FBP 0 spans (0, 0)-(640, 512), scissored
+to 639, 511; the US-oriented `nativeFrameCopy` previously copied only 448 rows, leaving the
+bottom black and cutting off the radar. The native copy and quad now use the recorded draw's
+height, limited to its scissor; disabling native post effects remains the reference path.
+
+PAL frame timing: comparing the US and PAL function maps and their generated MIPS translations
+locates the VBlank counter at 0x317ca8, the limiter's WaitVBlank return at 0x317c30, WaitVBlank
+at 0x370598, CTimer::Update at 0x2f4b40, its timer read at 0x451f08 and its second timer-ensure
+return at 0x2f4de4. The CTimer globals used by the frame-rate hooks are 0x300 above their US
+addresses. All 40 instruction patches in the PAL config were mapped through matched functions and
+their original words checked against both ELFs; the wheel hooks use PAL addresses and initialize
+the constants those patches read. A hidden test with its own card and 1x rendering measured about
+165 game / host fps at the 165 cap, 60 at the 60 cap, then 164 / 166 after switching back to 165.
+At the user's 6x resolution and 8x MSAA the same test measured roughly 47 game fps. The US mission
+script timing hooks have not been adapted: the PAL MAIN.SCM differs from the US file, so mission
+timers and high-frame-rate behaviour still need separate verification.
+
+For the PAL F2 enhancements, the matched functions place CWeapon::Fire at 0x2c1170
+(US 0x2c0f98), with NPC drive-by return addresses 0x21689c and 0x2169bc (US 0x2168b4 and
+0x2169d4). The corresponding generated code was checked at both call sites. The ped-pool
+pointer is at 0x487d94 (US 0x487a94), checked against the matched function 0x20c3e8 /
+0x20c400. These addresses alone are insufficient to enable the drive-by hook: its weapon-info
+table and behaviour still need PAL verification.
+
+PAL F2 work: matched instructions in both ELFs locate the weapon-info pointer at 0x712a70.
+The traffic / ped constants are 0x48a984 / 0x48a980 (their ELF float values are 0.7 / 0.4;
+unlike many neighbouring globals they moved by 0x304), LOD scale is 0x488af8, spawn chances
+0x487798, pools 0x487d94 / 0x487d98, and TheCamera 0x6f47d0. The car / ped spawners and
+vehicle removal are 0x430598 / 0x2b1980 / 0x433680. A hidden PAL run with an isolated card
+reported world settings enabled and valid; changing traffic/peds/draw from 100/100/150 to
+250/200/200 changed the published chances and the LOD multiplier to 2.0. The drive-by hook
+installed, but no NPC drive-by occurred in that test, so its rate has not been verified in combat.
+The PAL button-prompt font and text globals are 0x48a4d8 and 0x48a5a0; matched text / rendering
+functions are 0x3b0050, 0x261d78, 0x2fbfe8 and 0x2fc048. A test installed the atlas, switched
+between keyboard and Xbox, and expanded the five documented control strings correctly; rendering
+the resulting glyphs in each gameplay context still needs visual checks. PAL camera view-window,
+sphere visibility and cutscene bar functions are 0x1ab9c0, 0x3818d8 and 0x280660 respectively;
+their hooks were installed for the display options. Other F2 hooks and gameplay scenarios still
+need separate PAL verification.
+
+PAL controls / F2 audio: matched PAL instructions place the player and camera globals at
+0x4e4c10 / 0x6f47d0, pad 0 at 0x514aa8, and the vehicle follow camera at 0x29fc90. The free-aim
+hooks use 0x3babd8, 0x378fb8, 0x2d0a48 and 0x1f1680; the two return addresses 0x375d24 and
+0x2c497c were checked against their PAL JAL instructions. A hidden test found both camera / aim
+hooks and saw W produce the forward pad value; vehicle camera and free-aim shots still need a
+gameplay test. The music/effects setters are 0x2fa790 / 0x2fa718, called from the audio menu at
+0x2af15c / 0x2af174; cSampleManager is at 0x4cdd08. The PAL menu calls and corresponding globals
+were checked in generated code. In an isolated test, setting music to 25% and effects to 50%
+changed the game's respective levels to 32 and 64 out of 127.
+
+PAL HUD hooks use the matched CHud / radar / text / 2D functions at 0x31c808, 0x3216e0,
+0x261d78, 0x2fbfe8 and 0x2fc048; their frame-end callback runs before the prompt callback so
+both see the same frame. The PAL view-window and cutscene-bar hooks are installed separately.
+An isolated F2 test changed aspect 4:3 to 21:9 and cutscene bars on to off, changed the prompt
+set between keyboard, PlayStation and Xbox, and saw the expected state through the control
+channel. These checks do not replace a visual survey of every HUD, menu and weapon context.
+In a further isolated gameplay check at 21:9, switching HUD from 4:3 to screen edges moved the
+radar and money/weapon display toward the sides while keeping the radar round; the player moved
+with the simulated stick. The PAL intro movie hook was also checked both enabled and skipped.
+No NPC drive-by or free-aim shot was exercised in this run.
+
+PAL movie playback: matching function bodies identifies CMoviePlayer::Play at 0x40dbc0
+(US 0x40d8b8). The PAL host hook now handles the PAL disc's STINGSP.PSS and INTROP.PSS.
+A hidden test with `VCS_SKIP_MOVIES=0` decoded 268 logo frames in 10.8 s with none dropped;
+with `VCS_SKIP_MOVIES=1` both PAL movies were reported skipped.
+
+Experimental DLSS neural rendering (2026-11-10): an isolated D3D11 PAL copy with ReShade 6.8,
+DLSS5-Feeder 1.19.1-beta.1, Lumenite Kernel and RenoDX 7.0.0-rc8 ran on the user's RTX 4080
+(driver 610.88) with the user's existing modified DLSSNR runtime. ReShade logged feature 18
+evaluations and `NR-VERDICT state=ENGAGED`; the feeder reported moving optical-flow vectors and
+about 2.4-2.8 ms GPU per frame at the hidden test's 640x448 swapchain, holding around 60 fps
+after startup. This is DLAA plus neural rendering of the finished picture, not native DLSS
+upscaling or frame generation. Generic Depth delivered an all-zero buffer in gameplay even with
+aspect filtering disabled and depth copied before clears/fullscreen draws. It is not a correct
+depth-guided integration: at 21:9 the selected GS depth target was 1120x512/513 while the hidden
+swapchain was 640x448. Real display resolution, HUD and moving-scene quality need verification.
+The optional player copy and the injected files were retired on the user's request; the original
+binary was not modified.
+AMDLSS5 2.0's documented generic route requires DirectX 12 plus FSR 3.1; this port's Windows
+backend is D3D11 and no Radeon was available for a test.
+
+Bloom toggle (2026-11-10): F2 Graphics > Bloom defaults to the original effect. The renderer
+recognises the bloom downsample, threshold, four blur passes and final additive blend as described
+in 6g; when disabled it omits only that final blend and still writes the effect buffers back for
+later GS readers. On SLES_546.22, F12 draw logs of an isolated running game recorded 11 native
+bloom draws with the setting on and 10 with it off; the trails pass stayed at 3 draws in both.
+The setting can change while the game runs and is stored as `display.bloom` in vcs.ini.
+
+PAL trainer (SLES_546.22): the F5 menu was drawn but the PAL frame hook at 0x272578 did not
+call the trainer or the script rig, so `ready` remained false even in gameplay. Matched US/PAL
+function instructions identify the PAL script-space pointer at 0x48771c, active/idle script lists
+at 0x4cd6c4/0x4cd6c8, next script id at 0x48772c, mission flag at 0x4cd6e7, player pointer at
+0x4e4c10, clock at 0x4cd448, text table at 0x48a5a0, model table at 0x486818 and streaming pointer
+at 0x48a2f8. The PAL camera height function is 0x2a3070 and TheCamera is 0x6f47d0. The rig and
+trainer now run at the PAL frame kick; scripts use the same slot layout in the tested gameplay.
+
+In the PAL test, script opcode 0x014c reported success but did not restore the spawned car's
+health at vehicle+0x278 (400 remained 400). The PAL repair action writes 1000 there on the game
+thread, as the existing vehicle-invincibility tick already does; a hidden isolated gameplay test
+measured 400 -> 1000 and confirmed invincibility restored 350 -> 1000. `tools/trainer_pal_check.py`
+repeats those checks against an already running isolated test instance. Heal, money, spawning,
+boost, weapon, teleport, clock, weather, invincibility and free camera were also exercised.
+The PAL disc's mission script differs from the US script: the special Last Stand credits fallback
+uses US script offsets and remains unverified for PAL; do not treat this test as a mission survey.

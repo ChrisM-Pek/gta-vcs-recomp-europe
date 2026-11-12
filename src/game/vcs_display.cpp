@@ -38,7 +38,11 @@ namespace vcs
 {
     namespace
     {
+#ifdef VCS_EXPERIMENTAL_PAL
+        constexpr uint32_t kPrefsPointer = 0x0048F6D0u;
+#else
         constexpr uint32_t kPrefsPointer = 0x0048F3D0u; // -> the game's preferences / menu object
+#endif
         constexpr uint32_t kWidescreenField = 0x30u;    // int: 1 = the game's (Vert-) widescreen; FUN_002af658 reads it
         constexpr uint32_t kRamMask = 0x01FFFFFFu;
 
@@ -191,14 +195,31 @@ namespace vcs
 
     void installDisplayHooks(PS2Runtime &runtime)
     {
+#ifdef VCS_EXPERIMENTAL_PAL
+        runtime.replaceFunction(0x001AB9C0u, &setViewWindow);
+#else
         runtime.replaceFunction(0x001AB9E0u, &setViewWindow);
+#endif
         if (const char *e = std::getenv("VCS_WIDE_CULL"); e && *e == '0')
             g_wideCull = false;
+#ifdef VCS_EXPERIMENTAL_PAL
+        runtime.replaceFunction(0x003818D8u, &sphereVisible);
+#else
         runtime.replaceFunction(0x003816F8u, &sphereVisible); // VCS_TRACE_VISIBLE replaces it again, calling prepareSphereTest
+#endif
         if (const char *e = std::getenv("VCS_WIDESCREEN"); e && *e) // testing: the PS2's own (Vert-, anamorphic) mode
             g_gamePreference.store(std::strcmp(e, "game") == 0 ? -1 : *e == '0' ? 0 : 1, std::memory_order_relaxed);
         if (g_gamePreference.load(std::memory_order_relaxed) >= 0)
-            runtime.replaceFunction(0x002AF660u, &setWidescreenPreference);
+            runtime.replaceFunction(
+#ifdef VCS_EXPERIMENTAL_PAL
+                0x002AF838u,
+#else
+                0x002AF660u,
+#endif
+                &setWidescreenPreference);
+#ifdef VCS_EXPERIMENTAL_PAL
+        runtime.replaceFunction(0x00280660u, &cutsceneBars);
+#else
         runtime.replaceFunction(0x002804C8u, &cutsceneBars);
         // VCS's render targets by what they are (game-internals.md 6g; docs/FULLY_NATIVE.md step 3d). The reflection map
         // is only ever sampled (vehicles' paint), so it follows "Internal resolution: Match window" like the picture.
@@ -215,6 +236,7 @@ namespace vcs
         // game-internals.md 6). VCS_CSR_FENCE=1: fence as before.
         if (!std::getenv("VCS_CSR_FENCE"))
             runtime.addCsrReadWithoutFence(0x00370714u);
+#endif
     }
 
     void applyDisplay(uint8_t *rdram)

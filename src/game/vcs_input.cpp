@@ -102,10 +102,15 @@ namespace vcs::input
 
         // ---- The game (game-internals.md 12, 12b) --------------------------------------------------------------------
         constexpr uint32_t kRamMask = 0x01FFFFFFu;
-        constexpr uint32_t kPlayerPed = 0x004E4910u;   // CWorld::Players[0].m_pPed
+#ifdef VCS_EXPERIMENTAL_PAL
+        constexpr uint32_t kRegionOffset = 0x300u;
+#else
+        constexpr uint32_t kRegionOffset = 0u;
+#endif
+        constexpr uint32_t kPlayerPed = 0x004E4910u + kRegionOffset;   // CWorld::Players[0].m_pPed
         constexpr uint32_t kPedVehicle = 0x480u;       // the vehicle it is in (0 on foot)
         constexpr uint32_t kPedState = 0x8C4u;         // 0x37 driving
-        constexpr uint32_t kTheCamera = 0x006F44D0u;
+        constexpr uint32_t kTheCamera = 0x006F44D0u + kRegionOffset;
         constexpr uint32_t kLooksAtPlayer = kTheCamera + 0x888u; // 0 under a script camera
         constexpr uint32_t kCam = kTheCamera + 0x70u;  // the active CCam: +0 mode, +0x78 alpha (pitch), +0x7C beta (heading),
                                                        // +0x134 FOV
@@ -114,15 +119,15 @@ namespace vcs::input
         // camera 46, binoculars 47, 45; they turn by +0x78 / +0x7C as the follow camera, and 7 / 46 / 47 zoom (+0x134)
         bool scopeMode(uint32_t mode) { return mode == 7 || mode == 8 || mode == 34 || (mode >= 45 && mode <= 47); }
         bool zoomMode(uint32_t mode) { return mode == 7 || mode == 46 || mode == 47; }
-        constexpr uint32_t kScopeZoom = 0x00487E2Cu; // the FOV a zooming scope eases toward
-        constexpr uint32_t kPad0 = 0x005147A8u;        // CPad 0: +0x96 DisablePlayerControls (s16)
-        constexpr uint32_t kCamStickLocked = 0x00488EB4u; // the follow camera ignores the stick's turn while set
-        constexpr uint32_t kCamTable = 0x00487B30u;    // the follow camera's tuning, outdoors (+0x3C indoors): +0x34 / +0x38
+        constexpr uint32_t kScopeZoom = 0x00487E2Cu + kRegionOffset; // the FOV a zooming scope eases toward
+        constexpr uint32_t kPad0 = 0x005147A8u + kRegionOffset;        // CPad 0: +0x96 DisablePlayerControls (s16)
+        constexpr uint32_t kCamStickLocked = 0x00488EB4u + kRegionOffset; // the follow camera ignores the stick's turn while set
+        constexpr uint32_t kCamTable = 0x00487B30u + kRegionOffset;    // the follow camera's tuning, outdoors (+0x3C indoors): +0x34 / +0x38
                                                        // the pitch limits up / down
-        constexpr uint32_t kCamIndoors = 0x00489F7Cu;  // the table indoors when neither 0 nor 4 (FUN_0029dab0)
-        constexpr uint32_t kFrameCounter = 0x004CD124u; // CTimer::m_FrameCounter
-        constexpr uint32_t kUserPause = 0x004CD2ACu;   // CTimer::m_UserPause (the pause menu), m_CodePause: bytes
-        constexpr uint32_t kCodePause = 0x004CD11Cu;
+        constexpr uint32_t kCamIndoors = 0x00489F7Cu + kRegionOffset;  // the table indoors when neither 0 nor 4 (FUN_0029dab0)
+        constexpr uint32_t kFrameCounter = 0x004CD124u + kRegionOffset; // CTimer::m_FrameCounter
+        constexpr uint32_t kUserPause = 0x004CD2ACu + kRegionOffset;   // CTimer::m_UserPause (the pause menu), m_CodePause: bytes
+        constexpr uint32_t kCodePause = 0x004CD11Cu + kRegionOffset;
         uint8_t *g_rdram = nullptr;
 
         uint32_t rd32(uint32_t a)

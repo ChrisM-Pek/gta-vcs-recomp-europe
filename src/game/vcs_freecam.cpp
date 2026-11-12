@@ -23,11 +23,19 @@ namespace vcs::freecam
     {
         constexpr uint32_t kRamMask = 0x01FFFFFFu;
         // TheCamera and its CCams (game-internals.md 12b)
+#ifdef VCS_EXPERIMENTAL_PAL
+        constexpr uint32_t kTheCamera = 0x006F47D0u;
+#else
         constexpr uint32_t kTheCamera = 0x006F44D0u;
+#endif
         constexpr uint32_t kActiveCam = kTheCamera + 0x50u; // byte: which of Cams[3] is active
         constexpr uint32_t kCams = kTheCamera + 0x70u, kCamSize = 0x270u;
         constexpr uint32_t kCamFront = 0x10u, kCamSource = 0x20u, kCamUp = 0x60u, kCamFov = 0x134u, kCamTarget = 0x1A0u;
+#ifdef VCS_EXPERIMENTAL_PAL
+        constexpr uint32_t kCamHeightRoutines = 0x002A3070u;
+#else
         constexpr uint32_t kCamHeightRoutines = 0x002A2ED0u; // CCam::ProcessSpecialHeightRoutines(cam), right after
+#endif
                                                              // CCam::Process (FUN_00294540)
 
         constexpr float kTurnRate = 2.5f;   // radians a second, the stick at full tilt (the game's own top speed)

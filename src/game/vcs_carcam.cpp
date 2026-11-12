@@ -18,8 +18,14 @@ namespace vcs::carcam
     namespace
     {
         constexpr uint32_t kRamMask = 0x01FFFFFFu;
+#ifdef VCS_EXPERIMENTAL_PAL
+        constexpr uint32_t kRegionOffset = 0x300u;
+        constexpr uint32_t kFollowCar = 0x0029FC90u;
+#else
+        constexpr uint32_t kRegionOffset = 0u;
         constexpr uint32_t kFollowCar = 0x0029FAF0u; // the camera behind a vehicle (modes 18 / 22), a0 the CCam
-        constexpr uint32_t kTheCamera = 0x006F44D0u;
+#endif
+        constexpr uint32_t kTheCamera = 0x006F44D0u + kRegionOffset;
         constexpr uint32_t kActiveCam = kTheCamera + 0x50u; // byte: which of Cams[3] is active
         constexpr uint32_t kCams = kTheCamera + 0x70u, kCamSize = 0x270u;
         // the CCam: +0 mode, +0x70 the entity it follows, +0x74 3 while the player may turn it (the stick counts only
@@ -28,15 +34,15 @@ namespace vcs::carcam
         constexpr uint32_t kCamTargetEntity = 0x70u, kCamControl = 0x74u, kCamAlpha = 0x78u, kCamBeta = 0x7Cu;
         constexpr uint32_t kCamPitchSpeed = 0x130u, kCamHeadingSpeed = 0x140u, kCamTarget = 0x1A0u;
         constexpr uint32_t kCamPoints[2] = {0x220u, 0x230u};
-        constexpr uint32_t kLookBehind = 0x006F4D4Cu;  // set: the heading is taken from Front (looking behind)
-        constexpr uint32_t kLastAlpha = 0x00487E88u;   // last update's alpha / beta: a change below a small step is
-        constexpr uint32_t kLastBeta = 0x00487E8Cu;    // undone (snapped back to these)
+        constexpr uint32_t kLookBehind = 0x006F4D4Cu + kRegionOffset;  // set: the heading is taken from Front (looking behind)
+        constexpr uint32_t kLastAlpha = 0x00487E88u + kRegionOffset;   // last update's alpha / beta: a change below a small step is
+        constexpr uint32_t kLastBeta = 0x00487E8Cu + kRegionOffset;    // undone (snapped back to these)
         // the camera's tuning per vehicle class (9 rows of 0x3C from 0x487BE8): +0x2C the cap of its turn toward where
         // the vehicle drives, a step
-        constexpr uint32_t kPullCap = 0x00487C14u, kTuningRow = 0x3Cu;
+        constexpr uint32_t kPullCap = 0x00487C14u + kRegionOffset, kTuningRow = 0x3Cu;
         constexpr int kClasses = 9;
-        constexpr uint32_t kTimeStep = 0x004CD110u; // CTimer::ms_fTimeStep (1.0 = 1/50 s)
-        constexpr uint32_t kFrameCounter = 0x004CD124u; // CTimer::m_FrameCounter
+        constexpr uint32_t kTimeStep = 0x004CD110u + kRegionOffset; // CTimer::ms_fTimeStep (1.0 = 1/50 s)
+        constexpr uint32_t kFrameCounter = 0x004CD124u + kRegionOffset; // CTimer::m_FrameCounter
         constexpr uint32_t kEntityPos = 0x30u, kEntityForward = 0x10u, kMoveSpeed = 0x140u;
         constexpr uint32_t kVehicleType = 0x354u;   // 4: a boat (the camera follows its nose, not where it moves)
 

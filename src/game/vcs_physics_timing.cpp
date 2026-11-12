@@ -41,15 +41,28 @@ namespace vcs
 {
     namespace
     {
+#ifdef VCS_EXPERIMENTAL_PAL
+        constexpr uint32_t kApplyTurnForce = 0x00348058u;
+        constexpr uint32_t kBodyPushReturn = 0x003F39DCu;
+        constexpr uint32_t kBrakeWobbleReturn = 0x0033C03Cu;
+        constexpr uint32_t kProcessWheelCar = 0x003E6F20u;
+        constexpr uint32_t kProcessWheelBike = 0x003E7920u;
+#else
         constexpr uint32_t kApplyTurnForce = 0x00347E78u;  // CPhysical::ApplyTurnForce(f12-f14 force, f15-f17 point, a0)
         constexpr uint32_t kBodyPushReturn = 0x003F36D4u;  // FUN_003F34F0's call: the push from a body under a wheel
         constexpr uint32_t kBrakeWobbleReturn = 0x0033BE5Cu; // CBike::ProcessControl's call: the brake wobble (3.)
         constexpr uint32_t kProcessWheelCar = 0x003E6C18u; // CVehicle::ProcessWheel
         constexpr uint32_t kProcessWheelBike = 0x003E7618u;
+#endif
         constexpr uint32_t kBrakeSlots = 0x0007FF00u;      // the patched ProcessWheels' rolling-resistance constants
         constexpr float kBrakeConstants[] = {0.54f, 0.09f, 0.9f, 0.18f}; // as the game loaded them (0x3F0A3D71 ...)
+#ifdef VCS_EXPERIMENTAL_PAL
+        constexpr uint32_t kTimeStep = 0x004CD410u;
+        constexpr uint32_t kFrameCounter = 0x004CD424u;
+#else
         constexpr uint32_t kTimeStep = 0x004CD110u;        // CTimer::ms_fTimeStep (1.0 = 1/50 s)
         constexpr uint32_t kFrameCounter = 0x004CD124u;    // CTimer::m_FrameCounter
+#endif
         constexpr float kPs2Step = 50.0f / 30.0f;          // a 30 fps frame
 
         PS2Runtime::RecompiledFunction g_origTurnForce = nullptr, g_origWheelCar = nullptr, g_origWheelBike = nullptr;

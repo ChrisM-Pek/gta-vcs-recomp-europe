@@ -29,8 +29,13 @@ namespace vcs::volume
 {
     namespace
     {
+#ifdef VCS_EXPERIMENTAL_PAL
+        constexpr uint32_t kSampleManager = 0x004CDD08u;
+        constexpr uint32_t kMenuPrefs = 0x0048F6D0u;
+#else
         constexpr uint32_t kSampleManager = 0x004CDA08u; // cSampleManager
         constexpr uint32_t kMenuPrefs = 0x0048F3D0u;     // pointer to the menu's prefs (0 until the menu exists)
+#endif
         bool g_enabled = false;
 
         struct Level
@@ -48,8 +53,13 @@ namespace vcs::volume
             std::atomic<int> adopted{-1}; // a change in the pause menu, for the host thread
         };
         Level g_levels[2] = {
+#ifdef VCS_EXPERIMENTAL_PAL
+            {"audio.music_volume", "music", 5, 0x3C, 0x002FA790u, 0x002AF15Cu},
+            {"audio.sfx_volume", "effects", 4, 0x38, 0x002FA718u, 0x002AF174u},
+#else
             {"audio.music_volume", "music", 5, 0x3C, 0x002FA5B0u, 0x002AEF84u},
             {"audio.sfx_volume", "effects", 4, 0x38, 0x002FA538u, 0x002AEF9Cu},
+#endif
         };
 
         int toGame(int percent) { return (percent * 127 + 50) / 100; }

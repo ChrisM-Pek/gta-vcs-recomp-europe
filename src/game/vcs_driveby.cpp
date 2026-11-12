@@ -34,12 +34,21 @@ namespace vcs::driveby
 {
     namespace
     {
+#ifdef VCS_EXPERIMENTAL_PAL
+        constexpr uint32_t kFire = 0x002C1170u;
+        constexpr uint32_t kFromCar = 0x0021689Cu;
+        constexpr uint32_t kFromOther = 0x002169BCu;
+        constexpr uint32_t kTimeMs = 0x004CD404u;
+        constexpr uint32_t kWeaponInfo = 0x00712A70u;
+        constexpr uint32_t kPedPool = 0x00487D94u;
+#else
         constexpr uint32_t kFire = 0x002C0F98u;        // CWeapon::Fire(weapon a0, shooter a1, source a2)
         constexpr uint32_t kFromCar = 0x002168B4u;     // its call in FUN_00216768 (the NPC drive-by), return address
         constexpr uint32_t kFromOther = 0x002169D4u;   // its call in FUN_002168E8 (the same for the other vehicle kinds)
         constexpr uint32_t kTimeMs = 0x004CD104u;      // CTimer::m_snTimeInMilliseconds
         constexpr uint32_t kWeaponInfo = 0x00712770u;  // *(*this + 4) + type * 0x70; +0xC the firing rate (ms)
         constexpr uint32_t kPedPool = 0x00487A94u;     // *(*this): the first ped, 0xD20 each
+#endif
         constexpr uint32_t kPedSize = 0xD20u;
         constexpr double kPs2Interval = 1000.0 / 30.0; // a frame on the PS2
         constexpr double kTolerance = 2.0;             // ms: the clock's whole milliseconds (33 / 34 ms frames at 30 fps)

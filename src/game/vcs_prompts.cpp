@@ -56,6 +56,16 @@ namespace vcs::prompts
     namespace
     {
         constexpr uint32_t kRamMask = 0x01FFFFFFu;
+#ifdef VCS_EXPERIMENTAL_PAL
+        constexpr uint32_t kExpandKey = 0x003B0050u;
+        constexpr uint32_t kFontRender = 0x00261D78u;
+        constexpr uint32_t kIm2DRender = 0x002FBFE8u, kIm2DRenderIndexed = 0x002FC048u;
+        constexpr uint32_t kGlyphBatch = 0x003E0124u;
+        constexpr uint32_t kFontStyles = 0x0048A4D8u;
+        constexpr uint32_t kPad0Mode = 0x00514AA8u + 0x92u;
+        constexpr uint32_t kTextTable = 0x0048A5A0u;
+        constexpr uint32_t kImageItem = 0x00490110u;
+#else
         constexpr uint32_t kExpandKey = 0x003AFD78u;     // (src after "~k~ ", out): the C<n><ACTION> text into out
         constexpr uint32_t kFontRender = 0x00261BE8u;    // render(font, string, x, y, colour, rect, ?, shadow)
         constexpr uint32_t kIm2DRender = 0x002FBE08u, kIm2DRenderIndexed = 0x002FBE68u;
@@ -64,6 +74,7 @@ namespace vcs::prompts
         constexpr uint32_t kPad0Mode = 0x005147A8u + 0x92u; // CPad 0: the controller configuration (u16)
         constexpr uint32_t kTextTable = 0x0048A2A0u;     // -> the text table: {entries, count}; entry {u32 text, key[8]}
         constexpr uint32_t kImageItem = 0x0048FE10u;     // the menu's image item class (help-bar buttons)
+#endif
         constexpr uint32_t kTable = 0x00061000u;         // our copy of the font's glyph table (guest scratch)
         constexpr uint16_t kTokenBase = 0xE000u;
         constexpr uint16_t kTokenV = 255;                // the tokens' texture row

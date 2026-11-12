@@ -138,7 +138,8 @@ namespace screens
                 const std::string tag = "VERSION " + app.updatedTo + " INSTALLED";
                 ui::pill({r.x, y, ui::pillWidth(tag), px(22)}, tag, theme::kTeal);
                 y += px(34);
-                text(r, y, "Restart the launcher to use the new version, then update the build.", theme::kFaint);
+                text(r, y, app.updatedBuild ? "The game is built. Restart the launcher to use the new version." :
+                                              "Restart the launcher to use the new version, then update the build.", theme::kFaint);
                 if (action(r, y, "Restart", ButtonStyle::Primary, theme::icon::kRefresh))
                     restartLauncher(app);
             }
@@ -162,13 +163,13 @@ namespace screens
             if (app.canUpdate())
             {
                 const Rect line{r.x, y, r.w, px(30)};
-                ui::label(kFontBody, px(theme::kBody), {line.x, line.y, line.w - px(60), line.h}, theme::kText, "Check for a new release at start");
+                ui::label(kFontBody, px(theme::kBody), {line.x, line.y, line.w - px(60), line.h}, theme::kText, "Check for updates at start");
                 changed |= ui::toggle("#check-updates", {line.right() - px(44), line.y, px(44), line.h}, app.settings.checkUpdates);
                 y += px(34);
             }
             if (app.canUpdate())
             {
-                text(r, y, "One request to GitHub; nothing about you or your PC is sent.", theme::kFaint);
+                text(r, y, "Checks GitHub using your existing Git authentication.", theme::kFaint);
                 if (action(r, y, app.busy() && app.task->kind == "update_check" ? "Checking..." : "Check now", ButtonStyle::Secondary, theme::icon::kSync, !app.busy()))
                     app.startUpdateCheck(false);
             }

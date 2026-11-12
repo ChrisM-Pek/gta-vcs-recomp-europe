@@ -29,7 +29,7 @@ namespace screens
                 return t.result["message"].str().empty() ? "The build tools are installed." : t.result["message"].str();
             if (t.kind == "update")
                 return t.result["restart"].boolean()
-                           ? "Updated to " + t.result["version"].str() + ". Restart the launcher to use it, then update the build."
+                           ? "Updated to " + t.result["version"].str() + (t.result["built"].boolean() ? ". The game is built; restart the launcher." : ". Restart the launcher to use it, then update the build.")
                            : "You already have the newest release (" + t.result["version"].str() + ").";
             if (t.kind == "install")
                 return "The game's files are in place.";

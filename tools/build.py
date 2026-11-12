@@ -71,6 +71,7 @@ def main():
     ap.add_argument("--recompile-if-needed", nargs="?", const="", metavar="ISO",
                     help="recompile first only when the generated code is not current")
     ap.add_argument("--launcher", action="store_true", help="build the launcher (VCSLauncher.exe) instead of the game")
+    ap.add_argument("--launcher-staged", action="store_true", help=argparse.SUPPRESS)
     ap.add_argument("--progress", choices=("text", "json"), default="text", help="json: events for the launcher too")
     a = ap.parse_args()
     if a.progress == "json":
@@ -93,7 +94,7 @@ def main():
         sys.exit(install_deps(env))
     tc.fix_future_files()  # else Ninja re-runs CMake until it gives up (a release zip from another time zone)
     if a.launcher:  # its own packages, checked in build_launcher - not the game's (CI builds it on a bare system)
-        sys.exit(0 if build_launcher(env, a.verbose) else 1)
+        sys.exit(0 if build_launcher(env, a.verbose, a.launcher_staged) else 1)
     if not tc.IS_WINDOWS and not os.path.isfile(os.path.join(tc.BUILD_DIR, "build.ninja")) and not tc.check_linux_deps(env):
         tc.fail("missing build dependencies (above)")
     if a.iop_tests:
@@ -180,17 +181,19 @@ def write_build_info(iso, pal=False):
 LAUNCHER_BUILD = os.path.join(tc.BUILD, "launcher")
 
 
-def build_launcher(env, verbose):
+def build_launcher(env, verbose, staged=False):
     """launcher/ is a CMake project of its own (no generated code, no disc): build/launcher, the exe in the
     repository root."""
     tc.stage("launcher", "Building the launcher")
     if not tc.IS_WINDOWS and not tc.check_linux_deps(env, tc.LAUNCHER_LINUX_DEPS):
         tc.fail("missing packages for the launcher (above)", "missing_packages")
-    if tc.drop_foreign_cache(LAUNCHER_BUILD, os.path.join(tc.ROOT, "launcher")) or tc.stale_tools(LAUNCHER_BUILD) or \
-            tc.drop_other_compiler(LAUNCHER_BUILD, env) is not None or tc.python_changed(LAUNCHER_BUILD) or \
-            not os.path.isfile(os.path.join(LAUNCHER_BUILD, "build.ninja")):
-        cmd = ["cmake", "-S", os.path.join(tc.ROOT, "launcher"), "-B", LAUNCHER_BUILD, "-G", "Ninja",
-               "-DCMAKE_BUILD_TYPE=Release"] + tc.launcher_compiler_defines(env) + tc.deps_defines() + \
+    build_dir = os.path.join(tc.BUILD, "launcher-update") if staged else LAUNCHER_BUILD
+    output_dir = os.path.join(tc.BUILD, "launcher-staged") if staged else tc.ROOT
+    if tc.drop_foreign_cache(build_dir, os.path.join(tc.ROOT, "launcher")) or tc.stale_tools(build_dir) or \
+            tc.drop_other_compiler(build_dir, env) is not None or tc.python_changed(build_dir) or \
+            not os.path.isfile(os.path.join(build_dir, "build.ninja")):
+        cmd = ["cmake", "-S", os.path.join(tc.ROOT, "launcher"), "-B", build_dir, "-G", "Ninja",
+               "-DCMAKE_BUILD_TYPE=Release", "-DVCS_LAUNCHER_OUTPUT_DIR=" + output_dir.replace(os.sep, "/")] + tc.launcher_compiler_defines(env) + tc.deps_defines() + \
               tc.python_defines()
         if os.environ.get("VCS_WAYLAND_PROTOCOLS_DIR"):  # a release built on an older distribution (CI)
             cmd.append("-DVCS_WAYLAND_PROTOCOLS_DIR=" + os.environ["VCS_WAYLAND_PROTOCOLS_DIR"])
@@ -198,7 +201,7 @@ def build_launcher(env, verbose):
         if tc.run_with_progress(cmd, log, "[build] configure launcher", env=env) != 0:
             print(tc.tail(log, 30))
             tc.fail("CMake configure of the launcher failed (build/configure_launcher.log)", tc.configure_failure(log), log)
-    if not tc.cmake_build(env, "VCSLauncher", "build_launcher.log", verbose, build_dir=LAUNCHER_BUILD):
+    if not tc.cmake_build(env, "VCSLauncher", "build_launcher.log", verbose, build_dir=build_dir):
         return False
     print("[build] ok: " + tc.exe("VCSLauncher"))
     tc.event(result="ok", exe=tc.exe("VCSLauncher"))

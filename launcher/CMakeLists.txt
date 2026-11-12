@@ -214,7 +214,8 @@ file(CONFIGURE OUTPUT "${VCS_LAUNCHER_SHADERS}/launcher_version.h" CONTENT "#def
 
 target_include_directories(VCSLauncher PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}" "${VCS_ROOT}/src" "${VCS_LAUNCHER_SHADERS}")
 # next to tools/ and the source, where a release has it (the launcher finds the repository from its own folder)
-set_target_properties(VCSLauncher PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${VCS_ROOT}")
+set(VCS_LAUNCHER_OUTPUT_DIR "${VCS_ROOT}" CACHE PATH "Where the launcher executable is written")
+set_target_properties(VCSLauncher PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${VCS_LAUNCHER_OUTPUT_DIR}")
 if(MSVC)
     # one self-contained exe: the static C++ runtime, nothing to install
     set_property(TARGET VCSLauncher PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreaded")

@@ -1424,3 +1424,12 @@ turned stick (the pull-in toward the player), through the game's own switch for 
   closed row cuts it to "(integr", Mesa's name being longer than the box; left as it is, for the user to decide.
   0.2.5's draft notes: the graphics card bullet describes the list by name, for both systems (it still said Fastest /
   Power saving / System default, which no release ever had).
+
+## 2026-11-12 - Private Git checkout updates from the launcher
+
+- The user wants startup checks and updates of this project from the private GitHub repository. A Git checkout follows
+  `ChrisM-Pek/gta-vcs-recomp` main through the existing `private` or `origin` remote, using Git's existing credentials;
+  the launcher defaults to a startup check. An available update is applied only on request and only as a fast-forward,
+  without overwriting local work. The chosen disc determines the rebuilt game; the launcher is built in a separate
+  staging directory before replacing the running executable, with a restart offered. Release folders retain the
+  existing release updater. The check and application are described in LAUNCHER.md.

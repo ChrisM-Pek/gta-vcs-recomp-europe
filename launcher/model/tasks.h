@@ -50,7 +50,7 @@ namespace launcher
     {
         std::string afterLaunch = "minimize"; // minimize, close, stay
         std::string opt;                      // "" (keep the build's), lto, none, pgo
-        bool checkUpdates = false;            // ask GitHub for a newer release when the launcher starts
+        bool checkUpdates = true;             // check the private repository when the launcher starts
         bool reduceMotion = false;            // the launcher's animations off; this alone decides (off until set)
         std::string theme = "system";         // system (Windows' app mode), light, dark
     };
@@ -115,6 +115,7 @@ namespace launcher
         bool updateQuiet = false;
         // an update put in place (update.py apply said restart): the version; this launcher is the old one until then
         std::string updatedTo;
+        bool updatedBuild = false;
         std::filesystem::path restartTarget() const; // the new launcher: root's VCSLauncher.exe, or $APPIMAGE
         // the new launcher started (--after-update <our pid>: it waits for us to end); the caller closes this one
         bool restart(std::string &error);

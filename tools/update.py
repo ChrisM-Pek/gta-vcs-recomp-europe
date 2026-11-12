@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Update a release folder to the newest release on GitHub. Only when asked; nothing is sent but the request itself.
+"""Check and update a Git checkout or a release folder.
 
     python tools/update.py check               the newest release vs this one (RELEASE.json's version)
     python tools/update.py apply [--zip FILE]  download the newest release's zip (or use FILE) and put it in place
@@ -10,7 +10,8 @@
 apply replaces the release's files with the new release's, removes the files the old release had and the new one
 doesn't (RELEASE.json lists them), and keeps everything else: build/ (the built game, vcs.ini, the launcher's
 settings), generated/, your disc, anything you added. The game then needs building again (the launcher says so;
-it is incremental). A git clone isn't a release: update it with git pull.
+it is incremental). A Git checkout checks the private main branch with Git credentials; apply fast-forwards only,
+then builds the game and a staged launcher. Local tracked changes stop it and Git protects untracked files.
 
 Linux releases are an AppImage (tools/release.py): a read-only image holding the launcher and the release's files.
 The game is built in a folder of its own ($XDG_DATA_HOME/VCSRecomp/install, VCS_INSTALL_DIR), which the launcher fills
@@ -25,6 +26,7 @@ import json
 import os
 import re
 import shutil
+import subprocess
 import sys
 import time
 import urllib.error
@@ -38,6 +40,93 @@ RELEASE_JSON = os.path.join(tc.ROOT, "RELEASE.json")
 UPDATE_DIR = os.path.join(tc.BUILD, "update")
 KEEP = ("build/", "generated/")  # never replaced or removed
 ASSET_SUFFIX = "-windows.zip" if tc.IS_WINDOWS else "-x86_64.AppImage"
+PRIVATE_REPO = "chrism-pek/gta-vcs-recomp"
+
+
+def git(*args, check=True):
+    env = dict(os.environ, GIT_TERMINAL_PROMPT="0", GCM_INTERACTIVE="Never")
+    try:
+        result = subprocess.run(["git", "-C", tc.ROOT, *args], capture_output=True, text=True,
+                                encoding="utf-8", errors="replace", env=env, timeout=90)
+    except (OSError, subprocess.TimeoutExpired) as e:
+        tc.fail("Git could not check the private repository: " + str(e), "git_update")
+    if check and result.returncode:
+        tc.fail("Git could not update the private repository: " + result.stderr.strip(), "git_update")
+    return result
+
+
+def private_remote():
+    for remote in ("private", "origin"):
+        result = git("remote", "get-url", remote, check=False)
+        url = result.stdout.strip().lower()
+        if result.returncode == 0 and re.fullmatch(
+                r"(?:https://github\.com/|ssh://git@github\.com/|git@github\.com:)" +
+                re.escape(PRIVATE_REPO) + r"(?:\.git)?/?", url):
+            return remote
+    tc.fail("The private GitHub repository is not configured as remote 'private' or 'origin'.", "git_update")
+
+
+def git_update_status():
+    remote = private_remote()
+    branch = git("branch", "--show-current").stdout.strip()
+    if branch != "main":
+        tc.fail("Switch to the main branch before updating this project.", "git_update")
+    tracking = "refs/remotes/" + remote + "/main"
+    tc.stage("check", "Checking the private repository")
+    git("fetch", "--no-tags", remote, "+refs/heads/main:" + tracking)
+    current = git("rev-parse", "HEAD").stdout.strip()
+    latest_commit = git("rev-parse", tracking).stdout.strip()
+    if git("merge-base", "--is-ancestor", latest_commit, current, check=False).returncode == 0:
+        return remote, tracking, current, latest_commit, False
+    if git("merge-base", "--is-ancestor", current, latest_commit, check=False).returncode != 0:
+        tc.fail("The local and remote branches have diverged; resolve them in Git before updating.", "git_update")
+    return remote, tracking, current, latest_commit, True
+
+
+def check_git():
+    _, _, current, latest_commit, newer = git_update_status()
+    message = "A newer commit is available." if newer else "The private repository has no newer commits."
+    print("[update] " + message)
+    tc.event(result="ok", newer=newer, current=current[:7], latest=latest_commit[:7],
+             url="https://github.com/ChrisM-Pek/gta-vcs-recomp/commits/main/", message=message, git=True)
+
+
+def apply_git(iso):
+    if not iso:
+        tc.fail("Choose the game disc before updating the build.", "no_disc")
+    import vcs_disc
+    disc = vcs_disc.check(iso)
+    if not disc["ok"]:
+        tc.fail(disc["message"], "wrong_disc")
+    _, tracking, _, latest_commit, newer = git_update_status()
+    if not newer:
+        tc.event(result="ok", version=latest_commit[:7], restart=False, git=True)
+        return
+    if git("status", "--porcelain", "--untracked-files=no").stdout.strip():
+        tc.fail("The project has uncommitted changes. Commit or save them before updating.", "git_update")
+    tc.stage("apply", "Updating the project")
+    git("merge", "--ff-only", tracking)
+    tc.stage("compile", "Building the updated game")
+    if subprocess.call(tc.PY + [tc.tool("build.py"), "--recompile-if-needed", iso, "--progress", "json"], cwd=tc.ROOT):
+        tc.fail("The project was updated but the game build failed. Use Update the build to retry.", "build_failed")
+    tc.stage("launcher", "Building the updated launcher")
+    if subprocess.call(tc.PY + [tc.tool("build.py"), "--launcher", "--launcher-staged", "--progress", "json"], cwd=tc.ROOT):
+        tc.fail("The game was updated but the launcher build failed. Rebuild the launcher and restart it.", "build_failed")
+    staged = tc.exe(os.path.join(tc.BUILD, "launcher-staged", "VCSLauncher"))
+    target = tc.exe(os.path.join(tc.ROOT, "VCSLauncher"))
+    old = target + ".old"
+    try:
+        if os.path.exists(target):
+            os.replace(target, old)
+        try:
+            os.replace(staged, target)
+        except OSError:
+            if os.path.exists(old):
+                os.replace(old, target)
+            raise
+    except OSError as e:
+        tc.fail("The updated launcher could not be put in place: " + str(e), "update_incomplete")
+    tc.event(result="ok", version=latest_commit[:7], restart=True, git=True, built=True)
 
 
 def this_release():
@@ -74,6 +163,9 @@ def latest(repo):
 def check():
     mine = this_release()
     if not mine:
+        if os.path.exists(os.path.join(tc.ROOT, ".git")):
+            check_git()
+            return
         message = ("This is a git clone, not a release: update it with git pull, then build again."
                    if os.path.exists(os.path.join(tc.ROOT, ".git")) else "No RELEASE.json: not a release folder.")
         print("[update] " + message)
@@ -245,9 +337,12 @@ def install(source, target):
     tc.event(result="ok", version=new.get("version", ""), written=written, removed=removed)
 
 
-def apply(zip_path=None, appimage_path=None):
+def apply(zip_path=None, appimage_path=None, iso=None):
     mine = this_release()
     if not mine:
+        if os.path.exists(os.path.join(tc.ROOT, ".git")):
+            apply_git(iso)
+            return
         tc.fail("not a release folder (no RELEASE.json): a git clone updates with git pull", "git_checkout")
     if not tc.IS_WINDOWS:
         apply_appimage(mine, appimage_path)
@@ -324,6 +419,7 @@ def main():
     p = sub.add_parser("apply")
     p.add_argument("--zip", help="a release zip to apply instead of downloading the newest")
     p.add_argument("--appimage", help="Linux: an AppImage to put in place instead of downloading the newest")
+    p.add_argument("--iso", help="the selected disc image (Git checkout updates)")
     p = sub.add_parser("install")
     p.add_argument("--from", dest="source", required=True, help="the release's files (an AppImage's)")
     p.add_argument("--to", dest="target", required=True, help="the install folder")
@@ -335,7 +431,7 @@ def main():
     if a.cmd == "check":
         check()
     else:
-        apply(a.zip, a.appimage)
+        apply(a.zip, a.appimage, a.iso)
 
 
 if __name__ == "__main__":

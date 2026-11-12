@@ -13,6 +13,15 @@ European disc: the launcher self-test and a complete `--build` both pass, the di
 the doctor reports the built game current. A second build reused the generated code, and `--play` started the PAL game
 hidden with an isolated card (81 frames advanced). The European port remains experimental (game-internals.md, PAL section).
 
+For a Git checkout, the launcher checks the private `ChrisM-Pek/gta-vcs-recomp` main branch at startup by default,
+using the existing Git credentials (no token stored by the launcher). Settings can disable the startup check. When a
+new commit is available, Update now fetches and fast-forwards only: tracked uncommitted changes and diverged branches
+stop the update, and Git protects untracked files from being overwritten. The game is built for the selected disc and
+the launcher is compiled into a staging folder before its running executable is replaced; restart to use it. Saves,
+settings, disc images and generated/build folders are not removed. An offline or unauthenticated check reports the Git
+error. Release-folder updates retain the release mechanism described below. `tools/test_git_update.py` exercises the
+Git path with temporary local repositories, including failed builds and local modifications.
+
 Status (2026-11-01): rebuilt as a native app of its own - its own window, Direct3D 11 renderer, DirectWrite text and
 animated UI, after uppies - with a rethought flow (Setup, Home, Task); before, SDL3 + Dear ImGui (2026-10-30, checked
 end to end from a release zip in a fresh folder, below). Windows and Linux (2026-11-01: X11 and Wayland, Vulkan,

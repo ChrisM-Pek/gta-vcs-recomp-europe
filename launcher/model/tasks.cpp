@@ -91,6 +91,8 @@ namespace launcher
             {"disc_not_found", {"The disc image is gone", "It was moved or deleted: choose it again on the Disc step."}},
             {"wrong_disc", {"This is not the supported disc",
                             "Choose a supported USA or Europe (SLES-54622) image."}},
+            {"git_update", {"Could not update the project",
+                            "Check your GitHub connection and Git authentication. Local changes must be committed before updating."}},
             {"download_failed", {"A download failed",
                                  "The first build downloads libraries. Check the internet connection and try again "
                                  "(a release with a deps folder needs none)."}},
@@ -352,7 +354,7 @@ namespace launcher
 #ifdef _WIN32
         return true;
 #else
-        return !payload.empty();
+        return !payload.empty() || std::filesystem::exists(root / ".git");
 #endif
     }
 
@@ -541,6 +543,7 @@ namespace launcher
         if (t.kind == "update" && t.ok() && t.result["restart"].boolean())
         {
             updatedTo = t.result["version"].str(); // in place: this launcher is the old one until it restarts
+            updatedBuild = t.result["built"].boolean();
             updateInfo = Json();
         }
         if (t.kind == "rip" && t.ok() && t.result.has("iso"))
@@ -552,7 +555,7 @@ namespace launcher
         if (t.kind == "update_check" && t.ok() && !updateQuiet && !t.result["newer"].boolean())
             say(t.result["message"].str().empty() ? "You have the latest release." : t.result["message"].str());
         // a quiet check that found nothing new, or failed, leaves no trace
-        if (t.kind == "update_check" && updateQuiet && (!t.ok() || !t.result["newer"].boolean()))
+        if (t.kind == "update_check" && updateQuiet && t.ok() && !t.result["newer"].boolean())
             task.reset();
         else if ((t.kind == "backup_list" || t.kind == "rip_list" || t.kind == "update_check" || t.kind == "backup" ||
                   t.kind == "restore") && t.ok())
@@ -625,7 +628,13 @@ namespace launcher
         runTool("update_check", "Checking for updates", {toolPath(root, "update.py"), "check"});
     }
 
-    void App::startUpdate() { runTool("update", "Updating", {toolPath(root, "update.py"), "apply"}); }
+    void App::startUpdate()
+    {
+        std::vector<std::string> args = {toolPath(root, "update.py"), "apply"};
+        if (disc.ok)
+            args.insert(args.end(), {"--iso", pathText(iso)});
+        runTool("update", "Updating", args);
+    }
 
     void App::startBuildDirCheck(const fs::path &path)
     {

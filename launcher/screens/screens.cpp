@@ -388,11 +388,11 @@ namespace screens
     {
         shell.pending = [] {
             fs::path picked;
-            if (platform::openFileDialog(picked, "Choose an HD texture pack (the HD HUD pack's zip or 7z)",
-                                         {{"Texture pack (*.zip)", "*.zip"}, {"Texture pack (*.7z)", "*.7z"}, {"All files", "*"}}))
+            if (platform::openFileDialog(picked, "Choose a mod (the HD HUD pack's zip or 7z)",
+                                         {{"Texture pack (*.zip, *.7z)", "*.zip;*.7z"}, {"All files", "*"}}))
             {
                 shell.app->startModsInstall(picked);
-                shell.modsAsked = false; // the status again afterwards
+                shell.modsAsked = false; // the list again afterwards
             }
         };
     }
@@ -584,6 +584,8 @@ namespace screens
         {
             if (which == "restore")
                 shell.restoreName = "2026-10-31_21-04-12";
+            if (which == "modsremove")
+                shell.modsRemoveId = app.mods["mods"].size() ? app.mods["mods"][0]["id"].str() : std::string("SLUS-21590");
             if (which == "cancel" && !app.task)
                 demoTask(app, "running");
             openDialog(which == "restore" ? Dialog::Restore
@@ -620,6 +622,13 @@ namespace screens
     {
         shell.app = &app;
         const platform::Input &in = platform::input;
+        // --hover X,Y (screenshots and docs): the mouse parked there, so a tooltip is in the picture
+        if (shell.options.hoverX >= 0 && shell.options.hoverY >= 0)
+        {
+            platform::input.mouseX = shell.options.hoverX;
+            platform::input.mouseY = shell.options.hoverY;
+            platform::input.mouseInside = true;
+        }
         const Rect window{0, 0, float(platform::window.width), float(platform::window.height)};
         // the launcher's own setting decides, both ways (Windows' "Animate controls and elements inside windows" is
         // off on many PCs tuned for speed - it only gives the starting value)

@@ -82,8 +82,9 @@ python tools/backup.py create|list|restore   # memory card backups (VCS_DATA_DIR
 python tools/setup_vs.py status|install [--dry-run]   # Visual Studio Build Tools (+ clang) from Microsoft, elevated
 python tools/hlsl_dxbc.py ... [--check-fxc FXC]       # HLSL -> DXBC through Windows' d3dcompiler_47.dll (no Windows SDK)
 python tools/update.py check|apply [--zip F]  # a release folder to the newest GitHub release (not a clone)
-python tools/mods.py status|install|remove [--build DIR]  # HD texture packs (the 2D layer): a .zip or .7z next to the
-                                             # built game's textures/, the game's HD textures (HUD) setting turned on
+python tools/mods.py list|install|enable|disable|remove|hd [--build DIR]  # the game's mods: a .zip or .7z installed into the
+                                             # build's textures/, switched on or off (textures/ <-> textures-off/), removed;
+                                             # the game's own switch is Mods > HD textures (HUD) in F2
 python tools/rip_disc.py list|rip E: OUT.iso  # a PS2 disc in a DVD drive to an .iso; report.py zips logs for bug reports
 python tools/framerate_audit.py [--steps 15,30,60,100]   # behaviour per simulated second at forced time steps
 python tools/run.py 60 name                 # run 60 s with the window, log to build/run/name.log (0 s: until it exits; --hidden for tests)

@@ -1451,7 +1451,7 @@ turned stick (the pull-in toward the player), through the game's own switch for 
   data; only the old TCC bit of the name differs, which PCSX2 itself ignores). An own naming scheme would have
   worked too, but every pack in the wild would have had to be converted, and the hash is what makes a texture
   recognisable across discs and languages.
-- **Off by default** (authentic unless asked for: the project's rule), Graphics > Image quality > HD textures (HUD).
+- **Off by default** (authentic unless asked for: the project's rule), Mods > HD textures (HUD).
 - **Alpha stays in the PS2's 0..128 scale** (these packs are dumped from it) instead of PCSX2's 0..255: the port's
   shaders use the PS2's scale, and rescaling would make every HUD glyph look too opaque or too faint.
 - **Caps**: 8x the PS2 texture and 2048 a side, larger images area-averaged down on load - a 4096x4096 font atlas is
@@ -1461,14 +1461,19 @@ turned stick (the pull-in toward the player), through the game's own switch for 
 - The first use of each texture decodes its pack PNG on the GS stage (a one-off hitch of a few tens of ms for a
   4096x4096 file). What would change it: a background decode with the PS2 texture shown until it is ready, if players
   notice the pause menu's first opening.
-## 2026-11-12 - The launcher's Mods sheet: the pack is linked, not shipped, and its setting turned on
+## 2026-11-12 - Mods: installed and switched in the launcher, one switch in the game
 
 - Players want the HD HUD in one step, but the pack is third-party art: the launcher's **Mods** sheet (title bar, next
-  to Saves and Settings) links the pack's GTAForums page, installs a chosen `.zip` or `.7z` with `tools/mods.py` into
-  the build folder's `textures/` (where the game reads packs), and turns the game's Graphics > Image quality >
-  **HD textures (HUD)** setting on, so the next start shows it. Nothing of the game or the pack is redistributed;
-  *Remove the textures* deletes `textures/` and the game falls back to its PS2 art.
-- Why in the launcher and not in the game: the pack is a folder next to vcs.exe, the launcher is what owns that folder
-  and knows whether the game runs - and the game stays authentic by default (the setting off until a pack is
-  installed).
+  to Saves and Settings) links the pack's GTAForums page and installs a chosen `.zip` or `.7z` with `tools/mods.py`
+  into the build folder (the game's `textures/`), turning the game's **Mods > HD textures (HUD)** setting on so the
+  next start shows it. Nothing of the game or the pack is redistributed.
+- **One row a mod, with a switch**: a texture mod lives in `textures/<id>/` (the id is PCSX2's game folder,
+  SLUS-21590) and its switch moves that folder to `textures-off/<id>/` - nothing is copied or deleted, both ways are
+  instant, and the game, which only scans `textures/`, follows without a rebuild. `mods.json` in the build folder keeps
+  the names, kinds, sources and dates the sheet shows. The game's own setting stays the single "use HD textures or
+  not" (the authentic default), so the launcher decides *which* packs are there and the game decides *whether* to use
+  them.
+- **Prepared for other kinds**: `tools/mods.py` has a `kind` per mod and one place to detect it (`detect()`), one to
+  install and one to switch it; today only `textures`, and a second kind is a case in those three places. The sheet
+  lists whatever the tool reports, so a new kind needs no UI work.
 - What would change it: packs shipped with their authors' permission, or the game offering to install one itself.

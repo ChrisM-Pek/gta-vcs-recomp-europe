@@ -244,11 +244,12 @@ namespace vcs::hudtex
         using settings::Type;
         settings::Spec s;
         s.key = "display.hud_textures";
-        s.page = "Graphics";
-        s.section = "Image quality";
+        s.page = "Mods";
+        s.section = "Texture packs";
         s.label = "HD textures (HUD)";
-        s.help = "Draws the HUD, texts, radar and menus from a high-resolution texture pack (PCSX2's texture replacements, "
-                 "in a textures folder next to the game) when one is installed. Off is the PS2's own art.";
+        s.help = "Draws the HUD, texts, radar and menus from a high-resolution texture pack: install one in the "
+                 "launcher's Mods tab (or put its textures folder next to the game), PCSX2's packs work as they are. "
+                 "Off is the PS2's own art.";
         s.type = Type::Choice;
         s.choices = {{"PS2 (original)", 0}, {"HD pack", 1}};
         s.defaultValue = 0;

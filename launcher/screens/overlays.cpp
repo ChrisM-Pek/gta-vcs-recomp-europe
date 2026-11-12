@@ -147,15 +147,14 @@ namespace screens
         }
         case Dialog::ModsRemove:
         {
-            const int r = dialogBox(window, t, "Remove the HD textures?",
-                                    {{"The game goes back to its PS2 HUD, texts, radar and menus. The pack's files are "
-                                      "deleted; you can install them again later.", 0}},
+            const int r = dialogBox(window, t, "Remove this mod?",
+                                    {{shell.modsRemoveId + " is deleted from the game's folder; it goes back to what it "
+                                      "shows without it. You can install it again later.", 0}},
                                     {{"Remove", ButtonStyle::Danger, 1}, {"Cancel", ButtonStyle::Ghost, 0}});
             if (r == 1)
             {
-                app.startModsRemove();
+                app.startModsRemove(shell.modsRemoveId);
                 shell.modsAsked = false;
-                shell.sheet = Sheet::None;
             }
             if (r >= 0)
                 shell.dialog = Dialog::None;

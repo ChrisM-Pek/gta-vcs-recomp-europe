@@ -88,6 +88,7 @@ namespace screens
         float dialogT = 0;
 
         std::string restoreName, ripDrive;
+        std::string modsRemoveId; // the mod the Mods sheet's Remove asked about
         bool showDrives = false;
         bool showLog = false;
         bool backupsAsked = false;

@@ -134,9 +134,10 @@ namespace launcher
                                    "Something held some of them open (often an antivirus or a cloud-synced folder); "
                                    "the folder is still the old release. Close the game and update again, or extract "
                                    "the new release's zip into a new folder."}},
-            {"not_a_pack", {"That archive isn't a texture pack",
-                            "A pack holds a textures folder with replacement images (the HD HUD pack's zip or 7z does), "
-                            "or images named as PCSX2 names a texture."}},
+            {"not_a_mod", {"That archive isn't a mod this launcher knows",
+                           "A texture pack holds a textures folder with replacement images (the HD HUD pack's zip or "
+                           "7z does), or images named as PCSX2 names a texture."}},
+            {"no_mod", {"That mod isn't there any more", "Refresh the Mods tab: the folder was removed or moved."}},
             {"archive_unsupported", {"The archive can't be unpacked",
                                      "Windows' built-in tar and 7-Zip both open a .7z; on Linux install p7zip. Or unzip "
                                      "the pack yourself and install the .zip."}},
@@ -558,13 +559,19 @@ namespace launcher
             chooseDisc(pathFrom(t.result["iso"].str()));
         if (t.kind == "backup" && t.ok())
             say("Saves backed up: " + t.result["path"].str());
-        if ((t.kind == "mods_status" || t.kind == "mods_install" || t.kind == "mods_remove") && t.ok())
+        if ((t.kind == "mods_status" || t.kind == "mods_install" || t.kind == "mods_toggle" || t.kind == "mods_remove" ||
+             t.kind == "mods_hd") && t.ok())
             mods = t.result;
         if (t.kind == "mods_install" && t.ok())
-            say("HD textures installed (" + std::to_string(static_cast<long long>(t.result["installed"].num())) +
-                " files): the game uses them at its next start");
+            say("Mod installed (" + std::to_string(static_cast<long long>(t.result["installed"].num())) +
+                " files): the game uses it at its next start");
+        if (t.kind == "mods_toggle" && t.ok())
+            say(t.result["id"].str() + (t.result["enabled"].boolean() ? " enabled" : " disabled"));
         if (t.kind == "mods_remove" && t.ok())
-            say("The HD textures were removed: the game goes back to its PS2 HUD");
+            say(t.result["id"].str() + " removed");
+        if (t.kind == "mods_hd" && t.ok())
+            say(t.result["hd"].boolean() ? "HD textures (HUD) on: the game takes it at its next start"
+                                         : "HD textures (HUD) off: the game goes back to its PS2 art");
         if (t.kind == "restore" && t.ok())
             say("Saves restored (the card before it was backed up too)");
         if (t.kind == "update_check" && t.ok() && !updateQuiet && !t.result["newer"].boolean())
@@ -573,7 +580,8 @@ namespace launcher
         if (t.kind == "update_check" && updateQuiet && t.ok() && !t.result["newer"].boolean())
             task.reset();
         else if ((t.kind == "backup_list" || t.kind == "rip_list" || t.kind == "update_check" || t.kind == "backup" ||
-                  t.kind == "restore" || t.kind == "mods_status" || t.kind == "mods_install" || t.kind == "mods_remove") && t.ok())
+                  t.kind == "restore" || t.kind == "mods_status" || t.kind == "mods_install" || t.kind == "mods_toggle" ||
+                  t.kind == "mods_remove" || t.kind == "mods_hd") && t.ok())
             task.reset(); // their results show elsewhere
         refresh();
     }
@@ -637,21 +645,33 @@ namespace launcher
 
     void App::startReport() { runTool("report", "Making a report", {toolPath(root, "report.py")}); }
 
-    // The Mods sheet: tools/mods.py works on the launcher's build folder, where the game reads textures/.
+    // The Mods sheet: tools/mods.py manages what the game reads from its textures folder, in the launcher's build.
     void App::startModsStatus()
     {
-        runTool("mods_status", "Checking the texture packs", {toolPath(root, "mods.py"), "--build", pathText(build), "status"});
+        runTool("mods_status", "Checking the mods", {toolPath(root, "mods.py"), "--build", pathText(build), "list"});
     }
 
     void App::startModsInstall(const std::filesystem::path &archive)
     {
-        runTool("mods_install", "Installing the texture pack",
+        runTool("mods_install", "Installing the mod",
                 {toolPath(root, "mods.py"), "--build", pathText(build), "install", pathText(archive)});
     }
 
-    void App::startModsRemove()
+    void App::startModsToggle(const std::string &id, bool on)
     {
-        runTool("mods_remove", "Removing the textures", {toolPath(root, "mods.py"), "--build", pathText(build), "remove"});
+        runTool("mods_toggle", on ? "Enabling " + id : "Disabling " + id,
+                {toolPath(root, "mods.py"), "--build", pathText(build), on ? "enable" : "disable", id});
+    }
+
+    void App::startModsRemove(const std::string &id)
+    {
+        runTool("mods_remove", "Removing " + id, {toolPath(root, "mods.py"), "--build", pathText(build), "remove", id});
+    }
+
+    void App::startModsHd(bool on)
+    {
+        runTool("mods_hd", on ? "Turning HD textures on" : "Turning HD textures off",
+                {toolPath(root, "mods.py"), "--build", pathText(build), "hd", on ? "on" : "off"});
     }
 
     void App::startUpdateCheck(bool quiet)

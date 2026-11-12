@@ -1,21 +1,31 @@
 #!/usr/bin/env python3
-"""HD texture packs for the 2D layer (the game's HUD, texts, radar and menus; docs/NATIVE_RENDERER.md "HD textures for
-the 2D layer"). Optional: the game's own PS2 art is what it uses without one.
+"""Mods for the game - HD texture packs today, other kinds prepared for (docs/LAUNCHER.md "Mods").
 
-    python tools/mods.py status              what is installed, and whether the game uses it
-    python tools/mods.py install ARCHIVE     a pack as it is published (.zip or .7z)
-    python tools/mods.py remove              delete the installed textures
+    python tools/mods.py list [--build DIR]              the mods, their state, and the game's HD textures setting
+    python tools/mods.py install ARCHIVE [--name N] [--url U]   a pack as it is published (.zip or .7z)
+    python tools/mods.py enable ID | disable ID
+    python tools/mods.py remove ID
+    python tools/mods.py hd on|off                       the game's Graphics/Mods "HD textures" setting
 
-A pack is a set of PNG/DDS images named as PCSX2 names a texture, under `textures/<serial>/replacements/` in the
-archive - the layout PCSX2's packs come in. install unpacks it into the build folder, next to vcs.exe (where the game
-looks for `textures/`), and turns the game's Graphics > Image quality > **HD textures (HUD)** setting on, so the game
-uses it at its next start. Nothing outside textures/ is written and nothing of the game is touched. remove deletes
-that textures/ folder; the setting then simply finds no pack.
+A mod is a folder the game reads, with a manifest entry in `<build>/mods.json`:
 
-The launcher's Mods section runs this (docs/LAUNCHER.md); it is the same script by hand. On Windows a .7z is unpacked
-by the system's tar (bsdtar); on Linux 7z, 7za, 7zr or bsdtar, whichever is installed - a .zip needs nothing.
+    id         the folder's name (`textures/<id>` when on, `textures-off/<id>` when off). A texture pack takes the
+               name PCSX2 gives its game folder (SLUS-21590); a pack without one gets its archive's name.
+    kind       "textures" today: a PCSX2 texture-replacement tree (PNG/DDS images named as PCSX2 names a texture).
+               The layout is `textures/<id>/<serial>/replacements/...` or `textures/<id>/...` - the game scans
+               textures/ at any depth. Another kind is one case in `detect()` and in `enable()` when it comes.
+    enabled    the folder is under `textures/` (the game reads it) and, for a texture mod, the game's HD textures
+               setting is on.
+
+Installing unpacks the archive into a temporary folder, works out what it is, moves it under `textures/<id>`, turns
+the game's setting on, and records the name, kind, source and date in mods.json. Disabling moves the folder to
+`textures-off/<id>` - nothing is copied or deleted, so both ways are instant. Nothing outside `build/` is touched.
+
+The launcher's Mods sheet runs this (docs/LAUNCHER.md); it is the same script by hand. A .7z is unpacked by 7z, 7za,
+7zr, bsdtar or Windows' tar, whichever is there; a .zip needs nothing.
 """
 import argparse
+import datetime
 import json
 import os
 import re
@@ -30,33 +40,68 @@ import toolchain as tc  # noqa: E402
 
 TAG = "[mods]"
 REPLACEMENT = re.compile(r"^[0-9a-fA-F]+(?:-[0-9a-fA-F]+)?-[0-9a-fA-F]{8}$")
+SERIAL = re.compile(r"^[A-Z]{4}-\d{5}$")
 IMAGES = (".png", ".dds")
+KINDS = ("textures",)
 
 
-def target(build):
-    return os.path.join(build, "textures")
+# ---- storage -----------------------------------------------------------------------------------------------------
+def folders(build):
+    """(textures, textures-off): where the game reads mods, and where the disabled ones wait."""
+    return os.path.join(build, "textures"), os.path.join(build, "textures-off")
 
 
-def pack_folders(build):
-    """The packs under textures/: each top-level folder (a serial) or the 'installed' one the tool makes."""
-    root = target(build)
-    if not os.path.isdir(root):
-        return []
-    return sorted(d for d in os.listdir(root) if os.path.isdir(os.path.join(root, d)))
+def registry_path(build):
+    return os.path.join(build, "mods.json")
 
 
-def image_count(build):
+def load_registry(build):
+    try:
+        with open(registry_path(build), encoding="utf-8") as f:
+            data = json.load(f)
+        return data if isinstance(data, dict) and isinstance(data.get("mods"), list) else {"version": 1, "mods": []}
+    except (OSError, ValueError):
+        return {"version": 1, "mods": []}
+
+
+def save_registry(build, registry):
+    with open(registry_path(build), "w", encoding="utf-8", newline="\n") as f:
+        json.dump(registry, f, indent=1, sort_keys=True)
+        f.write("\n")
+
+
+def entries(build):
+    """{id: entry} from the registry, then the folders found that it does not know (a pack put there by hand)."""
+    registry = load_registry(build)
+    known = {m.get("id"): m for m in registry["mods"] if isinstance(m, dict) and m.get("id")}
+    on, off = folders(build)
+    found = []
+    for root, enabled in ((on, True), (off, False)):
+        if os.path.isdir(root):
+            for name in sorted(os.listdir(root)):
+                if os.path.isdir(os.path.join(root, name)):
+                    found.append((name, enabled))
+    mods = []
+    for name, enabled in found:
+        entry = dict(known.pop(name, {}))
+        entry.update(id=name, enabled=enabled)
+        entry.setdefault("kind", "textures")
+        entry.setdefault("name", "HD textures (%s)" % name if entry["kind"] == "textures" else name)
+        mods.append(entry)
+    return mods, registry
+
+
+def texture_count(folder):
     count = 0
-    for _, _, files in os.walk(target(build)):
+    for _, _, files in os.walk(folder):
         count += sum(1 for f in files if f.lower().endswith(IMAGES))
     return count
 
 
-def enabled(build):
+def hd_setting(build):
     """The game's setting: display.hud_textures=1 in build/vcs.ini (0 or absent = the PS2's own art)."""
-    ini = os.path.join(build, "vcs.ini")
     try:
-        with open(ini, encoding="utf-8", errors="replace") as f:
+        with open(os.path.join(build, "vcs.ini"), encoding="utf-8", errors="replace") as f:
             for line in f:
                 if line.strip().startswith("display.hud_textures="):
                     return line.split("=", 1)[1].strip() == "1"
@@ -65,11 +110,10 @@ def enabled(build):
     return False
 
 
-def set_enabled(build, on):
-    """One line of vcs.ini, as the game writes its settings: the rest of the file is kept as it is."""
+def set_hd_setting(build, on):
+    """One line of vcs.ini, as the game writes its settings: every other line is kept as it is."""
     ini = os.path.join(build, "vcs.ini")
-    lines = []
-    found = False
+    lines, found = [], False
     try:
         with open(ini, encoding="utf-8", errors="replace") as f:
             lines = f.readlines()
@@ -91,6 +135,7 @@ def set_enabled(build, on):
         f.writelines(out)
 
 
+# ---- unpacking ---------------------------------------------------------------------------------------------------
 def safe_name(name):
     """An archive member's relative path, or None for one that would land outside the folder it is unpacked into."""
     name = name.replace("\\", "/")
@@ -111,13 +156,12 @@ def unzip(archive, dest):
                     continue
                 relative = safe_name(info.filename)
                 if relative is None:
-                    tc.fail("the archive has a file outside its folder: " + info.filename, "not_a_pack")
+                    tc.fail("the archive has a file outside its folder: " + info.filename, "not_a_mod")
                 path = os.path.join(dest, relative)
                 os.makedirs(os.path.dirname(path), exist_ok=True)
                 with zf.open(info) as src, open(path, "wb") as out:
                     shutil.copyfileobj(src, out)
         return
-    # not a zip: 7-Zip, or the system's bsdtar (Windows' tar handles .7z)
     last = ""
     for attempt in (["7z", "x", "-y", "-o" + dest, archive], ["7za", "x", "-y", "-o" + dest, archive],
                     ["7zr", "x", "-y", "-o" + dest, archive], ["bsdtar", "-xf", archive, "-C", dest],
@@ -132,8 +176,11 @@ def unzip(archive, dest):
                                                     " (" + last.splitlines()[-1] + ")" if last else ""), "archive_unsupported")
 
 
-def look_for_pack(extract):
-    """Where the pack is in the unpacked archive: its own textures/ tree (PCSX2's layout), or loose replacement images."""
+def detect(extract):
+    """What kind of mod the unpacked archive is, and the folder to install: ("textures", folder), or (None, ...).
+
+    "textures": a PCSX2 pack - a textures/ tree, or loose images named as PCSX2 names a texture. Another kind is one
+    more case here (with its folder) and in enable() / disable() below."""
     tree = os.path.join(extract, "textures")
     if os.path.isdir(tree):
         return "textures", tree
@@ -142,16 +189,37 @@ def look_for_pack(extract):
         for f in files:
             if f.lower().endswith(IMAGES) and REPLACEMENT.match(os.path.splitext(f)[0]):
                 loose.append(os.path.join(base, f))
-    return ("loose", loose) if loose else (None, None)
+    if loose:
+        # loose images: PCSX2's replacement names in a replacements/ folder of their own
+        folder = os.path.join(extract, "__loose", "replacements")
+        os.makedirs(folder)
+        for image in loose:
+            shutil.copyfile(image, os.path.join(folder, os.path.basename(image)))
+        return "textures", os.path.join(extract, "__loose")
+    return None, None
+
+
+def plan(source, archive):
+    """The mod's id and the folder to install: (id, root).
+
+    A PCSX2 pack keeps its game folder: `textures/SLUS-21590/replacements/*.png` installs as `textures/SLUS-21590/`
+    (the same shape PCSX2 itself uses, so `textures/` can be copied to PCSX2 as it is). Anything else - loose
+    replacement images, several game folders in one archive - gets the archive's name as its folder, with the tree
+    under it (the game scans textures/ at any depth)."""
+    children = [c for c in sorted(os.listdir(source)) if os.path.isdir(os.path.join(source, c))]
+    if len(children) == 1 and SERIAL.match(children[0]):
+        return children[0], os.path.join(source, children[0])
+    return sanitize(archive), source
+
+
+def sanitize(name):
+    stem = os.path.splitext(os.path.basename(name))[0]
+    return re.sub(r"[^A-Za-z0-9._-]+", "-", stem).strip("-") or "pack"
 
 
 def copy_into(source, out):
-    """One file or a tree into `out`, counting what was written (a file already there is replaced)."""
+    """The tree's files into `out`, counting what was written."""
     written = 0
-    if os.path.isfile(source):
-        os.makedirs(out, exist_ok=True)
-        shutil.copyfile(source, os.path.join(out, os.path.basename(source)))
-        return 1
     for base, _, files in os.walk(source):
         relative = os.path.relpath(base, source)
         folder = out if relative == "." else os.path.join(out, relative)
@@ -162,82 +230,137 @@ def copy_into(source, out):
     return written
 
 
-def install(build, archive):
+# ---- commands ----------------------------------------------------------------------------------------------------
+def install(build, archive, name=None, url=None):
     archive = os.path.abspath(archive)
     if not os.path.isfile(archive):
-        tc.fail("archive not found: " + archive, "not_a_pack")
+        tc.fail("archive not found: " + archive, "not_a_mod")
     build = os.path.abspath(build)
-    if not os.path.isfile(os.path.join(build, "vcs.exe")):
-        tc.fail("no game in " + tc.show(build) + ": build the game first, then install the pack", "no_game")
+    if not any(os.path.isfile(os.path.join(build, exe)) for exe in ("vcs.exe", "vcs")):
+        tc.fail("no game in " + tc.show(build) + ": build the game first, then install the mod", "no_game")
     tc.stage("check", "Reading the pack")
-    print("%s installing %s into %s" % (TAG, os.path.basename(archive), tc.show(target(build))))
-    work = tempfile.mkdtemp(prefix="pack-", dir=build)
+    print("%s installing %s into %s" % (TAG, os.path.basename(archive), tc.show(folders(build)[0])))
+    work = tempfile.mkdtemp(prefix="mod-", dir=build)
     try:
         extract = os.path.join(work, "unpacked")
         os.makedirs(extract)
         unzip(archive, extract)
-        kind, found = look_for_pack(extract)
+        kind, source = detect(extract)
         if kind is None:
-            tc.fail("that archive isn't a texture pack: no textures folder and no replacement images", "not_a_pack")
-        tc.stage("install", "Installing the textures")
-        if kind == "textures":
-            written = copy_into(found, target(build))
-        else:
-            # loose images: PCSX2's replacement names in one folder of their own (the game scans textures/ at any depth)
-            folder = os.path.join(target(build), "installed", "replacements")
-            written = 0
-            for image in found:
-                written += copy_into(image, folder)
-        set_enabled(build, True)
-        total = image_count(build)
-        print("%s %d files installed; %d in %s; HD textures (HUD) on for the next start" % (
-            TAG, written, total, tc.show(target(build))))
-        tc.event(result="ok", installed=written, total=total, folder=tc.show(target(build)).replace(os.sep, "/"),
-                 packs=pack_folders(build), enabled=True)
+            tc.fail("that archive isn't a mod this launcher knows: no textures folder and no replacement images",
+                    "not_a_mod")
+        tc.stage("install", "Installing the mod")
+        ident, root = plan(source, archive)
+        on, off = folders(build)
+        for place in (on, off):  # a reinstall replaces the same mod, wherever it was
+            if os.path.isdir(os.path.join(place, ident)):
+                shutil.rmtree(os.path.join(place, ident))
+        os.makedirs(on, exist_ok=True)
+        written = copy_into(root, os.path.join(on, ident))
+        set_hd_setting(build, True)
+        mods, registry = entries(build)
+        entry = next((m for m in registry["mods"] if m.get("id") == ident), None) or {"id": ident}
+        entry.update(name=name or entry.get("name") or ("HD textures (%s)" % ident), kind=kind,
+                     source=os.path.basename(archive), installed=datetime.date.today().isoformat(),
+                     files=written, textures=texture_count(os.path.join(on, ident)))
+        if url:
+            entry["url"] = url
+        registry["mods"] = [m for m in registry["mods"] if m.get("id") != ident] + [entry]
+        save_registry(build, registry)
+        print("%s %d files installed as %s; HD textures on for the next start" % (TAG, written, ident))
+        tc.event(result="ok", id=ident, installed=written, mods=entries(build)[0], hd=True)
     finally:
         shutil.rmtree(work, ignore_errors=True)
 
 
-def remove(build):
+def set_enabled(build, ident, on):
     build = os.path.abspath(build)
-    root = target(build)
-    count = image_count(build)
-    if os.path.isdir(root):
-        shutil.rmtree(root)
-    print("%s removed %d textures (%s)" % (TAG, count, tc.show(root)))
-    tc.event(result="ok", removed=count, folder=tc.show(root).replace(os.sep, "/"))
+    on_dir, off_dir = folders(build)
+    source = os.path.join(off_dir if on else on_dir, ident)
+    if not os.path.isdir(source):
+        tc.fail("no mod called " + ident, "no_mod")
+    target = os.path.join(on_dir if on else off_dir, ident)
+    os.makedirs(os.path.dirname(target), exist_ok=True)
+    if os.path.isdir(target):
+        shutil.rmtree(target)
+    shutil.move(source, target)
+    if on:
+        set_hd_setting(build, True)  # an enabled texture mod with the setting off would do nothing
+    print("%s %s %s" % (TAG, ident, "enabled" if on else "disabled"))
+    tc.event(result="ok", id=ident, enabled=on, mods=entries(build)[0], hd=hd_setting(build))
 
 
-def status(build):
+def remove(build, ident):
     build = os.path.abspath(build)
-    count = image_count(build)
-    packs = pack_folders(build)
-    on = enabled(build)
-    if count:
-        print("%s %d textures installed (%s)%s" % (TAG, count, ", ".join(packs) or tc.show(target(build)),
-                                                   "" if on else ": HD textures (HUD) is off"))
+    removed = 0
+    for root in folders(build):
+        folder = os.path.join(root, ident)
+        if os.path.isdir(folder):
+            removed += texture_count(folder)
+            shutil.rmtree(folder)
+    mods, registry = entries(build)
+    registry["mods"] = [m for m in registry["mods"] if m.get("id") != ident]
+    save_registry(build, registry)
+    print("%s %s removed (%d textures)" % (TAG, ident, removed))
+    tc.event(result="ok", id=ident, removed=removed, mods=entries(build)[0], hd=hd_setting(build))
+
+
+def set_hd(build, on):
+    build = os.path.abspath(build)
+    set_hd_setting(build, on)
+    print("%s HD textures (HUD) %s" % (TAG, "on" if on else "off"))
+    tc.event(result="ok", hd=on, mods=entries(build)[0])
+
+
+def listing(build):
+    build = os.path.abspath(build)
+    mods, _ = entries(build)
+    for mod in mods:
+        folder = os.path.join(folders(build)[0 if mod["enabled"] else 1], mod["id"])
+        mod["textures"] = texture_count(folder)
+        mod["kind"] = mod.get("kind") or "textures"
+        mod.setdefault("name", "HD textures (%s)" % mod["id"] if mod["kind"] == "textures" else mod["id"])
+    hd = hd_setting(build)
+    if mods:
+        for mod in mods:
+            print("%s %s: %s, %s, %d textures%s" % (TAG, mod["id"], mod["name"], mod["kind"], mod["textures"],
+                                                    "" if mod["enabled"] else ", disabled"))
     else:
-        print("%s no texture pack installed" % TAG)
-    tc.event(result="ok", installed=count, packs=packs, enabled=on,
-             folder=tc.show(target(build)).replace(os.sep, "/"))
+        print("%s no mod installed" % TAG)
+    if mods and not hd:
+        print("%s the game's HD textures (HUD) setting is off" % TAG)
+    tc.event(result="ok", mods=mods, hd=hd, installed=sum(m["textures"] for m in mods),
+             enabled=any(m["enabled"] for m in mods))
 
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--build", help="the build folder (default: the one tools/build.py uses)")
     sub = ap.add_subparsers(dest="cmd", required=True)
-    sub.add_parser("status")
+    sub.add_parser("list")
+    sub.add_parser("status")  # the launcher's name for it (lists are the same)
     p = sub.add_parser("install")
     p.add_argument("archive")
-    sub.add_parser("remove")
+    p.add_argument("--name", help="what to call the mod (default: its folder)")
+    p.add_argument("--url", help="where it came from (shown by the launcher later)")
+    for name in ("enable", "disable", "remove"):
+        sub.add_parser(name).add_argument("id")
+    p = sub.add_parser("hd")
+    p.add_argument("state", choices=["on", "off"])
     a = ap.parse_args()
     build = a.build or tc.BUILD
     if a.cmd == "install":
-        install(build, a.archive)
+        install(build, a.archive, a.name, a.url)
+    elif a.cmd == "enable":
+        set_enabled(build, a.id, True)
+    elif a.cmd == "disable":
+        set_enabled(build, a.id, False)
     elif a.cmd == "remove":
-        remove(build)
+        remove(build, a.id)
+    elif a.cmd == "hd":
+        set_hd(build, a.state == "on")
     else:
-        status(build)
+        listing(build)
 
 
 if __name__ == "__main__":

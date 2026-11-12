@@ -424,7 +424,7 @@ a sharper image when one is available:
 - **Size.** At most 8x the PS2 texture and 2048 a side (a 4096x4096 font atlas would be 64 MB for pixels the HUD
   cannot show): larger images are downscaled by an area average when loaded. Alpha is kept as it is (0..128, the PS2's
   scale: these packs are dumped from it) - not rescaled like PCSX2 does for its own shaders.
-- **Setting.** Graphics > Image quality > **HD textures (HUD)**: PS2 (original, the default) / HD pack. `VCS_HUDTEX=0|1`
+- **Setting.** Mods > **HD textures (HUD)**: PS2 (original, the default) / HD pack. `VCS_HUDTEX=0|1`
   for one run; `VCS_HUDTEX_LOG=1` writes `[hudtex]` lines naming every 2D texture and whether a file was found;
   `VCS_HUDTEX_DUMP=<dir>` writes the PS2 textures the 2D layer draws, named exactly as PCSX2 names them - what a pack
   author starts from (upscale or redraw them, drop them into `textures/<serial>/replacements/`).

@@ -3,6 +3,7 @@
 #include "render/draw.h"
 #include "render/font.h"
 #include "ui/theme.h"
+#include "ui/widgets.h"
 
 #include <algorithm>
 
@@ -121,8 +122,14 @@ namespace ui
                 const render::Layer previous = render::setLayer(render::Layer::Overlay);
                 render::pushClipAbsolute({0, 0, render::draw.width, render::draw.height});
                 const float size = px(theme::kSmall);
-                const float w = render::measure(render::kFontBody, size, state.tooltipText) + px(20);
-                const float h = px(28);
+                // a long tooltip (a mod's description) wraps in a box; a short one is a line, as before
+                const float maxW = std::min(px(420), render::draw.width - px(24));
+                const float measured = render::measure(render::kFontBody, size, state.tooltipText);
+                const bool multi = measured > maxW - px(20);
+                const float w = multi ? maxW : measured + px(20);
+                const float inner = w - px(20);
+                const float textH = multi ? paragraphHeight(render::kFontBody, size, inner, state.tooltipText) : px(18);
+                const float h = std::max(px(28), textH + px(10));
                 float x = state.tooltipAnchor.cx() - w * 0.5f;
                 float y = state.tooltipAnchor.bottom() + px(8);
                 if (y + h > render::draw.height - px(4))
@@ -136,7 +143,11 @@ namespace ui
                 const Rect box = snap({x, y + (1 - t) * px(4), w, h});
                 render::shadow(box.offset(0, px(4)), theme::shade(0.67f), px(10), px(8));
                 render::rectEx(box, theme::kSurfaceTop, theme::kSurfaceTop, px(7), theme::ink(0.055f), hairline());
-                render::drawText(render::kFontBody, size, box.x + px(10), box.y + px(19), theme::kText, state.tooltipText);
+                if (multi)
+                    paragraph(render::kFontBody, size, {box.x + px(10), box.y + px(6), inner, 0}, theme::kText,
+                                       state.tooltipText);
+                else
+                    render::drawText(render::kFontBody, size, box.x + px(10), box.y + px(19), theme::kText, state.tooltipText);
                 render::popOpacity();
                 render::popClip();
                 render::setLayer(previous);

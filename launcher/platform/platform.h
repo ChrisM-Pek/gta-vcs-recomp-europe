@@ -144,7 +144,7 @@ namespace platform
     struct FileType
     {
         const char *name;
-        const char *pattern; // "*.iso"
+        const char *pattern; // "*.iso"; several endings: "*.zip;*.7z" (semicolons, both OSes: each backend converts)
     };
     bool openFileDialog(std::filesystem::path &out, const char *title, const std::vector<FileType> &types);
     bool saveFileDialog(std::filesystem::path &out, const char *title, const std::filesystem::path &suggested,

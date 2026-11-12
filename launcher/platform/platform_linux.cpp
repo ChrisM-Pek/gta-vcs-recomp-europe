@@ -200,9 +200,22 @@ namespace platform
                         const std::filesystem::path &start, const char *defaultExtension)
         {
             g_inDialog = true;
+            // a FileType's patterns, semicolon-separated as platform.h says: the portal takes one glob an entry, zenity
+            // and kdialog a space-separated list
+            auto patterns = [](const FileType &t) {
+                std::vector<std::string> list;
+                std::string rest = t.pattern;
+                for (size_t at = rest.find(';'); at != std::string::npos; at = rest.find(';'))
+                {
+                    list.push_back(rest.substr(0, at));
+                    rest = rest.substr(at + 1);
+                }
+                list.push_back(rest);
+                return list;
+            };
             std::vector<dbus::FileFilter> filters;
             for (const FileType &t : types)
-                filters.push_back({t.name, {t.pattern}});
+                filters.push_back({t.name, patterns(t)});
             const std::string folder = kind == DialogKind::Save ? start.parent_path().string() : start.string();
             const std::string name = kind == DialogKind::Save ? start.filename().string() : std::string();
             std::vector<std::string> picked;

@@ -13,6 +13,7 @@
 //       [--then S --at T]               switch to S after T seconds (transitions)
 //       [--frames N]                    N consecutive frames from the start (or from --then): F-000.png...
 //       [--size WxH] [--scale K]        logical size (1100x700) and pixels per unit (1)
+//       [--hover X,Y]                   the mouse parked there, so a tooltip is in the picture
 //       [--theme light|dark]            the palette (dark when not given, whatever launcher.ini or Windows say)
 //       [--clock S]                     Home's moving scene S seconds in (its jets, clouds, windows...), plus the run's time
 //       [--step N]                      the old page numbers: 0-3 the setup steps, 4 Saves, 5 Settings, 6 Help
@@ -200,6 +201,7 @@ namespace
         int frames = 0;
         int width = 1100, height = 700;
         float scale = 1;
+        float hoverX = -1, hoverY = -1; // the mouse parked there (a tooltip in a screenshot)
     };
 
     constexpr int kWidth = 1100, kHeight = 700, kMinWidth = 920, kMinHeight = 600;
@@ -392,6 +394,8 @@ namespace
             options.screen = shots->screen;
             options.demo = shots->demo;
             options.clock = shots->clock;
+            options.hoverX = shots->hoverX;
+            options.hoverY = shots->hoverY;
         }
         ui::state.wall = shots ? 0 : platform::now();
         screens::init(app, options);
@@ -586,6 +590,8 @@ int launcherMain(const std::vector<std::string> &argsIn)
             shots.scale = std::max(0.5f, float(std::atof(v.c_str())));
         if (const std::string v = argValue(args, "--size"); !v.empty())
             std::sscanf(v.c_str(), "%dx%d", &shots.width, &shots.height);
+        if (const std::string v = argValue(args, "--hover"); !v.empty()) // a tooltip in a picture: X,Y logical
+            std::sscanf(v.c_str(), "%f,%f", &shots.hoverX, &shots.hoverY);
         return gui(&shots, false);
     }
     if (hasArg(args, "--hidden"))

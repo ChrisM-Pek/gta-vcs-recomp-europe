@@ -21,6 +21,7 @@ namespace screens
         std::string screen, demo;
         bool screenshot = false; // no window: a fixed size, nothing outside the window
         double clock = 0;        // where Home's moving scene starts, seconds (--clock: a picture of a given moment)
+        float hoverX = -1, hoverY = -1; // --hover X,Y: the mouse parked there (a tooltip in a screenshot)
     };
 
     void init(launcher::App &app, const Options &options);

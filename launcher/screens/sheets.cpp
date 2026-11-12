@@ -105,9 +105,9 @@ namespace screens
             return y;
         }
 
-        // The Mods sheet (docs/LAUNCHER.md "Mods"): the 2D layer's HD textures. The pack is optional and belongs to its
-        // author, so the launcher only points at the page players get it from: install a chosen archive next to the
-        // game (tools/mods.py) and turn the game's own setting on.
+        // The Mods sheet (docs/LAUNCHER.md "Mods"): what the game reads from its textures folder, one row a mod, with
+        // its switch and Remove. The pack is optional and belongs to its author, so the launcher only points at the
+        // page players get it from; tools/mods.py does the installing and keeps the list in the build's mods.json.
         float mods(App &app, Rect r)
         {
             constexpr const char *kPackPage =
@@ -118,64 +118,103 @@ namespace screens
                 shell.modsAsked = true;
                 app.startModsStatus();
             }
-            section(r, y, "HD TEXTURES FOR THE HUD");
-            text(r, y, "The game draws its HUD, texts, radar and menus from the PS2's own textures, so they stay at the "
-                       "original 640x448 resolution however high the game is set. A high-resolution texture pack replaces "
-                       "them; one made for PCSX2 works as it is. It is optional, and the game is unchanged without one.");
-            y += px(4);
-            {
-                const float w = ui::buttonWidth("The HD HUD pack (GTAForums)", theme::icon::kLink);
-                const Rect link{r.x, y, w, px(38)};
-                if (ui::button("The HD HUD pack (GTAForums)", link, ButtonStyle::Secondary, theme::icon::kLink))
-                    launcher::openUrl(kPackPage);
-                ui::tooltip(ui::id("#mods-link"), link, "Opens gtaforums.com in the browser: download the pack there");
-                y += px(50);
-            }
-            {
-                const float w = ui::buttonWidth("Install a pack...", theme::icon::kPackage);
-                const Rect install{r.x, y, w, px(38)};
-                if (ui::button("Install a pack...", install, ButtonStyle::Primary, theme::icon::kPackage,
-                               !app.busy() && !app.gameRunning))
-                    chooseModPack();
-                ui::tooltip(ui::id("#mods-install"), install,
-                            app.gameRunning ? "Quit the game first: it reads the textures when it starts"
-                                            : "Choose the pack's .zip or .7z: it is put next to the game, and the "
-                                              "game's HD textures setting is turned on");
-                y += px(50);
-            }
-            divider(r, y);
-
             section(r, y, "INSTALLED");
             const std::string kind = app.busy() ? app.task->kind : std::string();
-            if (kind == "mods_status" || kind == "mods_install" || kind == "mods_remove")
+            if (kind == "mods_status" || kind == "mods_install" || kind == "mods_toggle" || kind == "mods_remove" ||
+                kind == "mods_hd")
             {
                 ui::spinner(r.x + px(9), y + px(11), px(7), theme::kDim, px(1.8f));
                 ui::label(kFontBody, px(theme::kBody), {r.x + px(26), y, r.w, px(22)}, theme::kDim,
-                          kind == "mods_install" ? "Installing..." : kind == "mods_remove" ? "Removing..." : "Checking...");
+                          kind == "mods_install" ? "Installing..." : kind == "mods_remove" ? "Removing..."
+                          : kind == "mods_toggle" ? "Updating..." : kind == "mods_hd" ? "Updating..." : "Checking...");
                 y += px(34);
             }
-            else if (app.mods["installed"].num() <= 0)
-                text(r, y, "No pack installed.", theme::kFaint);
             else
             {
-                std::string packs;
-                const launcher::Json &list = app.mods["packs"];
+                const launcher::Json &list = app.mods["mods"];
+                if (!list.size())
+                    text(r, y, "No mod installed.", theme::kFaint);
                 for (size_t i = 0; i < list.size(); ++i)
-                    packs += std::string(i ? ", " : "") + list[i].str();
-                y += row({r.x, y, r.w, 0}, "Textures",
-                         std::to_string(static_cast<long long>(app.mods["installed"].num())) +
-                             (packs.empty() ? "" : "  (" + packs + ")"));
-                y += px(2);
-                if (!app.mods["enabled"].boolean())
-                    text(r, y, "The game's setting is off: turn it on in the game, Graphics > Image quality > "
-                               "HD textures (HUD).", theme::kAmber);
-                else
-                    text(r, y, "On in the game: it reads them when it starts.", theme::kDim);
-                y += px(8);
-                if (app.gameRunning)
-                    text(r, y, "Quit the game to remove them.", theme::kAmber);
-                else if (action(r, y, "Remove the textures", ButtonStyle::Ghost, theme::icon::kCancel, !app.busy()))
-                    openDialog(Dialog::ModsRemove);
+                {
+                    const launcher::Json &mod = list[i];
+                    const std::string id = mod["id"].str();
+                    const bool on = mod["enabled"].boolean();
+                    const Rect item{r.x - px(10), y, r.w + px(20), px(62)};
+                    ui::pushId(int(i));
+                    const bool over = ui::mouseOver(item);
+                    rect(item, theme::ink(over ? 0.035f : 0.0f), px(10));
+                    drawIcon(kFontIcons, px(15), item.x + px(26), item.cy(), on ? theme::kPink : theme::kDim,
+                             theme::icon::kPackage);
+                    const float bw = ui::buttonWidth("Remove", theme::icon::kCancel);
+                    const Rect remove{r.right() - px(10) - bw, item.y + px(14), bw, px(34)};
+                    const Rect toggle{remove.x - px(58), item.y + px(12), px(44), px(34)};
+                    const float textW = toggle.x - (item.x + px(48)) - px(8);
+                    ui::label(kFontSemibold, px(theme::kBody), {item.x + px(48), item.y + px(9), textW, px(22)},
+                              on ? theme::kText : theme::kDim, mod["name"].str());
+                    ui::label(kFontBody, px(theme::kSmall), {item.x + px(48), item.y + px(31), textW, px(20)},
+                              theme::kFaint,
+                              std::to_string(static_cast<long long>(mod["textures"].num())) + " textures  \xC2\xB7  " +
+                                  mod["kind"].str() + (on ? "" : "  \xC2\xB7  off"));
+                    // what the mod is and where it came from: a tooltip over its name, never a block above the list
+                    {
+                        const Rect name{item.x + px(44), item.y, std::max(px(40), toggle.x - (item.x + px(44)) - px(6)),
+                                        item.h};
+                        const ui::Id info = ui::id("#mod-info", int(i));
+                        ui::interact(info, name, false);
+                        std::string infoText =
+                            "HD textures for the HUD, texts, radar and menus: a PCSX2 texture pack drawn instead of the "
+                            "PS2's own 640x448 art, sharp at any resolution. ";
+                        infoText += std::to_string(static_cast<long long>(mod["textures"].num())) + " textures";
+                        if (!mod["installed"].str().empty())
+                            infoText += ", installed " + mod["installed"].str();
+                        if (!mod["source"].str().empty())
+                            infoText += " from " + mod["source"].str();
+                        infoText += ". ";
+                        infoText += on ? "On: the game reads it when it starts." : "Off: the game shows its PS2 art.";
+                        ui::tooltip(info, item, infoText);
+                    }
+                    bool value = on;
+                    if (ui::toggle("#mod-on", toggle, value, !app.busy() && !app.gameRunning && !shell.pending))
+                        app.startModsToggle(id, value);
+                    if (ui::button("Remove", remove, ButtonStyle::Ghost, theme::icon::kCancel,
+                                   !app.busy() && !app.gameRunning))
+                    {
+                        shell.modsRemoveId = id;
+                        openDialog(Dialog::ModsRemove);
+                    }
+                    ui::popId();
+                    y += item.h + px(4);
+                }
+                if (list.size() && app.gameRunning)
+                    text(r, y, "Quit the game to change or remove a mod.", theme::kAmber);
+                if (list.size() && !app.mods["hd"].boolean())
+                {
+                    y += px(4);
+                    text(r, y, "The game's HD textures (HUD) setting is off, so it shows its PS2 art.", theme::kAmber);
+                    if (action(r, y, "Turn HD textures on", ButtonStyle::Secondary, theme::icon::kCheck,
+                               !app.busy() && !app.gameRunning))
+                        app.startModsHd(true);
+                }
+            }
+            divider(r, y);
+
+            // the pack is its author's, not the launcher's: the sheet points at its page and installs what is chosen
+            section(r, y, "INSTALL A MOD");
+            {
+                const float w = ui::buttonWidth("Install a mod...", theme::icon::kPackage);
+                const Rect install{r.x, y, w, px(38)};
+                if (ui::button("Install a mod...", install, ButtonStyle::Primary, theme::icon::kPackage,
+                               !app.busy() && !app.gameRunning))
+                    chooseModPack();
+                ui::tooltip(ui::id("Install a mod..."), install,
+                            app.gameRunning ? "Quit the game first: it reads the mods when it starts"
+                                            : "Choose a texture pack's .zip or .7z: it is put next to the game, "
+                                              "switched on, and read at its next start");
+                const Rect link{r.x + w + px(8), y, ui::buttonWidth("HD HUD pack on GTAForums", theme::icon::kLink), px(38)};
+                if (ui::button("HD HUD pack on GTAForums", link, ButtonStyle::Ghost, theme::icon::kLink))
+                    launcher::openUrl(kPackPage);
+                ui::tooltip(ui::id("HD HUD pack on GTAForums"), link, "Its page on GTAForums opens in the browser: download it there");
+                y += px(50);
             }
             return y;
         }

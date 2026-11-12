@@ -222,8 +222,9 @@ dropped on uploads (lazy render-target patching).
         art at a modern internal resolution): a texture the HUD classifier names is drawn from a PCSX2
         texture-replacement pack, found by PCSX2's own hash of it (reproduced from the port's GS memory:
         `GSCpuBackend::Pcsx2TextureName`), uploaded at the replacement's size and drawn in the HUD layer with `texKey`,
-        size and clamp region rewritten (NATIVE_RENDERER.md "HD textures for the 2D layer"). Off by default (Graphics >
-        Image quality > HD textures (HUD)); `VCS_HUDTEX_DUMP` writes the PS2 textures for pack authors.
+        size and clamp region rewritten (NATIVE_RENDERER.md "HD textures for the 2D layer"). Off by default (the game's
+        F2 settings, Mods > HD textures (HUD)); `VCS_HUDTEX_DUMP` writes the PS2 textures for pack authors. Textures are
+        installed, switched and removed in the launcher's Mods tab (LAUNCHER.md, "Mods"; `tools/mods.py`).
         Checked with "HD HUD - SLUS-21590 - PS Icons" (160 files) on the PAL disc: both hashes match for every 2D
         texture the game drew (the HUD art is the same data on both discs; only the old TCC bit of the name differed),
         30+ textures replaced - font atlas 256x256 -> 2048x2048, digits 128x64 -> 1024x512, icons 16x16..64x64 ->
@@ -1280,7 +1281,7 @@ Python scripts still usable on their own. docs/LAUNCHER.md has the whole of it; 
 | `python tools/sendkey.py Return`, `python tools/screenshot.py f.png` | key press / screenshot (control channel if open, else the window) |
 | `python tools/eedis.py <elf> <addr or name>` | EE disassembly with function names |
 | `python tools/minidbg.py <exe> <iso>` | catch fail-fast crashes with a stack |
-| `VCS_HUDTEX=0|1` | Graphics > Image quality > HD textures (HUD): draw the 2D layer's textures from a PCSX2 texture pack (default 0 = the PS2's art) |
+| `VCS_HUDTEX=0|1` | Mods > HD textures (HUD): draw the 2D layer's textures from a PCSX2 texture pack (default 0 = the PS2's art) |
 | `VCS_HUDTEX_DIR=<dir>` | the pack's folder for one run (also `textures/` next to vcs.exe or in the data folder) |
 | `VCS_HUDTEX_LOG=1` | `[hudtex]` lines: every 2D texture by PCSX2's name, and the file used for it |
 | `VCS_HUDTEX_DUMP=<dir>` | write the PS2 textures the 2D layer draws, named as PCSX2 names them - a pack author's starting point (analysis only, never commit the output) |

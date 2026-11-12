@@ -503,6 +503,8 @@ namespace
         s.onChange = [](int v) { setEnv("PS2X_HW_SCALE", std::to_string(v)); }; // read when the renderer starts
         settings::add(s);
 
+        vcs::hudtex::registerSettings(); // the Mods page: HD textures for the HUD (game/vcs_hudtex.h)
+
         auto applyVolume = [](int) {
             auto gain = [](int percent) { return (percent / 100.0f) * (percent / 100.0f); }; // even steps to the ear
             ps2AudioSetVolume(gain(settings::value("audio.volume")), gain(settings::value("audio.movie_volume")));
@@ -739,7 +741,6 @@ namespace
         vcs::prompts::registerSettings(); // the Enhancements page: button prompts by device (game/vcs_prompts.h)
         vcs::world::registerSettings();   // Enhancements > World: density, draw distance (game/vcs_world_detail.h)
         vcs::driveby::registerSettings(); // Enhancements > Combat: drive-by fire rate (game/vcs_driveby.h)
-        vcs::hudtex::registerSettings();  // Graphics > Image quality: HD textures for the HUD (game/vcs_hudtex.h)
 
         s = {};
         s.key = "graphics.perf_overlay";

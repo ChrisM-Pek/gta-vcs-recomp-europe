@@ -198,11 +198,13 @@ What each step and sheet holds:
   5 no window / graphics / sound; `0xC...` a crash, with the log).
 - **Saves**: the card's folder, Back up now, the backups with Restore (asks first; tools/backup.py). The list includes
   the game's own `auto-*` backups, made before it deletes or overwrites a save (game-internals.md 10f).
-- **Mods**: the game's HUD, texts, radar and menus can be drawn from a high-resolution texture pack (NATIVE_RENDERER.md,
-  "HD textures for the 2D layer"). The pack is its author's, not the launcher's: the sheet links its page on GTAForums;
-  *Install a pack...* takes the pack's `.zip` or `.7z` and `tools/mods.py` unpacks it into the build folder (`textures/`
-  next to vcs.exe), turns the game's Graphics > Image quality > **HD textures (HUD)** setting on, and the game reads it
-  at its next start. What is installed is shown with *Remove the textures*; the game must be closed to change them.
+- **Mods**: a mod is a folder the game reads, kept in the build folder and recorded in `mods.json` (kinds in
+  `tools/mods.py`; `textures` - PCSX2 texture packs - today, another kind is a case there and no UI work). The sheet
+  lists the installed mods, one row each: its name, a switch that turns it on or off (`textures/<id>` moves to
+  `textures-off/<id>` - nothing is copied) and *Remove*. Hovering a row tells what the mod is and where it came from
+  (a tooltip, not a block above the list). *Install a mod...* takes the HD HUD pack's `.zip` or `.7z` (the button beside
+  it opens its GTAForums page); the game's own **Mods > HD textures (HUD)** setting (F2) is the global switch, and the
+  sheet offers to turn it on. The game must be closed to change the mods; the game reads them at its next start.
 - **Settings**: what the launcher does when the game starts, updates (check now, check at start, Update now when one
   is found - a dot on the title bar's Settings marks it), Appearance (System / Light / Dark), Reduce motion, a desktop
   shortcut.
@@ -368,7 +370,7 @@ recompiler, the runtime headers it compiles in, the translate / sync scripts; `r
 | `python tools/report.py [OUT]` | build logs, the newest four game logs (crash reports included), state files, doctor's JSON, Windows / CPU / GPU names; never the disc, generated code or the card |
 | `python tools/update.py check / apply [--zip F]` | GitHub's latest release vs RELEASE.json; apply replaces the release's files, removes the ones the new release dropped, keeps build/ and generated/ and anything added; files in use (the launcher, the running Python) are renamed `*.old` and removed next time, a file held open is tried again for a few seconds; a file it still can't write is skipped and named, `VERSION` / `RELEASE.json` stay the old ones and it fails with `update_incomplete` (the launcher offers the update again; issue 66); checks the `.sha256`; its result says `restart: true` when it put a new release in place (the launcher's Restart button) |
 | `python tools/rip_disc.py list / rip E: OUT.iso` | a disc's sectors (the size its ISO 9660 volume gives) to an .iso, retries, then the check |
-| `python tools/mods.py status / install ARCHIVE / remove [--build DIR]` | HD texture packs for the 2D layer: install unpacks a `.zip` (Python's zipfile) or `.7z` (7z, 7za, 7zr, bsdtar, or Windows' tar) into the build folder's `textures/`, only what is a pack (a `textures/` tree, or images named as PCSX2 names them), and turns the game's `display.hud_textures` setting on; remove deletes `textures/`; status says what is there |
+| `python tools/mods.py list / install ARCHIVE / enable ID / disable ID / remove ID / hd on\|off [--build DIR]` | mods: a folder the game reads (`textures/<id>`), recorded in `mods.json` with its kind, source and date; install unpacks a `.zip` (Python's zipfile) or `.7z` (7z, 7za, 7zr, bsdtar, or Windows' tar), works out what it is (a PCSX2 `textures/` tree, or images named as PCSX2 names a texture), and turns the game's `display.hud_textures` setting on; enable / disable move the folder to and from `textures-off/`; remove deletes it; list says what is there and whether the game's setting is on |
 | `python tools/deps.py list / fetch [DIR] / check [DIR]` | the FetchContent pins read from the CMake files (one list); nlohmann/json from its release archive (0.2 MB instead of a 188 MB clone) |
 | `python tools/release.py [--ref vX / --worktree] [--version X] [--launcher EXE]` | the release zip |
 | `python tools/vcs_disc.py check ISO [--json]` | the disc check, for scripts |
@@ -377,7 +379,8 @@ The launcher's command line: `--check`, `--build [--iso X]`, `--play [--iso X]`,
 exe prints to the terminal that started it only through AttachConsole; `--out` for scripts and CI), and
 `--screenshot F.png`: the window rendered offscreen into a texture and saved - tests never put a window on the desktop.
 `--screen` picks what is shown (`setup:folder|disc|tools|game`, `home`, `task`, `sheet:saves|mods|settings|help|folder`,
-`dialog:restore|modsremove|quit|cancel`, `gallery` - every widget in its states), `--demo` a sample state (`running`, `link`,
+`dialog:restore|modsremove|quit|cancel`, `gallery` - every widget in its states), `--hover X,Y` parks the mouse there
+(a tooltip in the picture), `--demo` a sample state (`running`, `link`,
 `firstlink`, `error`, `done`, `playing`, `update`, `updated` - an update in place with Restart / Later, `gameerror`,
 `stale` - Home with the build out of date), `--after-update PID` waits for PID to end first (the Restart button's), `--then S --at T` switches after T seconds and `--frames N` saves N
 consecutive frames (a transition, frame by frame), `--scale K` / `--size WxH` the pixels per unit and the logical size,

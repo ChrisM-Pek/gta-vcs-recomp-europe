@@ -1449,3 +1449,10 @@ turned stick (the pull-in toward the player), through the game's own switch for 
   `std::thread` 512 KB.
 - **The launcher keeps macOS' window buttons** (traffic lights over the UI's title bar, a full-size content view)
   instead of drawing Windows' on the right; Command counts as Ctrl for its shortcuts.
+
+## 2026-11-13 - macOS: vertical sync on by default (the user's decision)
+
+- Display > **Vertical sync** defaults to On on macOS only (`kVsyncDefault`, `src/main.cpp`); Windows and Linux keep
+  Off. The Enhanced and Light presets set it to that default too, so choosing one doesn't turn it off on a Mac, and
+  Authentic resets to it. A vcs.ini that names the setting keeps its value. The Metal backend logs the mode it presents
+  with (`[rhi] metal: vertical sync on|off`) at the first frame and at every change.

@@ -890,8 +890,12 @@ namespace rhi
                 if (m_layer)
                 {
                     const BOOL sync = mode == PresentMode::Vsync;
-                    if (m_layer.displaySyncEnabled != sync)
+                    if (m_layer.displaySyncEnabled != sync || !m_syncReported)
+                    {
                         m_layer.displaySyncEnabled = sync;
+                        m_syncReported = true;
+                        std::fprintf(stderr, "[rhi] metal: vertical sync %s\n", sync ? "on" : "off");
+                    }
                     if (m_drawable)
                         [m_cmd presentDrawable:m_drawable];
                 }
@@ -1240,6 +1244,7 @@ namespace rhi
             bool m_debug = false;
             bool m_stats = false;
             bool m_msaaClampReported = false;
+            bool m_syncReported = false; // the first frame's mode is logged, and every change after
             uint32_t m_width = 1, m_height = 1;
 
             std::unordered_map<const void *, id<MTLFunction>> m_functions;

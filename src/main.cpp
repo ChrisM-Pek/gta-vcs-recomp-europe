@@ -329,11 +329,18 @@ namespace
         const char *key;
         int value;
     };
+    // Vertical sync's default: On on macOS (the user's choice, 2026-11-13; DECISIONS.md), Off elsewhere. The presets
+    // that set it keep to it.
+#if defined(__APPLE__)
+    constexpr int kVsyncDefault = 1;
+#else
+    constexpr int kVsyncDefault = 0;
+#endif
     const Preset kEnhanced[] = {{"display.aspect", 0},   {"display.hud", 2},    {"display.scale", 0},
                                 {"display.msaa", 4},     {"display.aniso", 16}, {"display.timing", 1},
-                                {"display.fps", vcs::kCapRefresh}, {"display.vsync", 0}};
+                                {"display.fps", vcs::kCapRefresh}, {"display.vsync", kVsyncDefault}};
     const Preset kLight[] = {{"display.aspect", 0}, {"display.hud", 2},    {"display.scale", 1},  {"display.msaa", 1},
-                             {"display.aniso", 4},  {"display.timing", 1}, {"display.fps", 60}, {"display.vsync", 0}};
+                             {"display.aniso", 4},  {"display.timing", 1}, {"display.fps", 60}, {"display.vsync", kVsyncDefault}};
     const char *const kPresetKeys[] = {"display.aspect", "display.hud", "display.cutscene_bars", "display.scale", "display.msaa",
                                        "display.aniso",  "display.timing", "display.fps", "display.vsync"};
 
@@ -610,7 +617,7 @@ namespace
                  "delay, and for G-Sync / FreeSync monitors (with a cap a few fps below the refresh rate).";
         s.type = Type::Choice;
         s.choices = {{"Off", 0}, {"On", 1}, {"Off, allow tearing (VRR)", 2}};
-        s.defaultValue = 0;
+        s.defaultValue = kVsyncDefault;
         s.env = "VCS_VSYNC";
         s.onChange = [](int v) { present::setPresentMode(v); };
         settings::add(s);

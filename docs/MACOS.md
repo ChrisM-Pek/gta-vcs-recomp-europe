@@ -45,6 +45,8 @@ fetched or built by the build itself, pinned, and bundled by `tools/deps.py --pl
 - **Shaders** are the one HLSL source as MSL text (`tools/hlsl_msl.py`: glslang -> SPIR-V, with the dual-source patch
   of `hlsl_spirv.py` -> SPIRV-Cross), compiled by the OS at run time with fast math off (`MTLMathModeSafe`) - the
   Command Line Tools have no Metal compiler. All of the game's 39 take ~50 ms on an M1.
+- **Vertical sync is on by default** on macOS (Display > Vertical sync; DECISIONS.md 2026-11-13); the log says
+  `[rhi] metal: vertical sync on|off`.
 - **Hidden test runs** (`PS2X_HIDDEN=1`) draw into an offscreen back buffer, as with Vulkan.
 - **Threads**: macOS gives a `std::thread` 512 KB of stack. The game thread, the render worker and the GS stage are
   `ps2x::Thread`s with 16 MB, and ask for QoS user-interactive (performance cores).

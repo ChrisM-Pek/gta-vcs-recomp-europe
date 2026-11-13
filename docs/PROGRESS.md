@@ -1084,7 +1084,7 @@ Python scripts still usable on their own. docs/LAUNCHER.md has the whole of it; 
 | `PS2X_TRACE_RPC=n` | first n SIF RPC events |
 | `PS2X_LOG_MPG=1`, `PS2X_DUMP_MPG_DIR=d` | VU1 microcode uploads |
 | `VCS_GS_STATS=s` | GS state histogram |
-| `VCS_SELFTEST=1` | recompiled libgcc helpers vs native; RenderWare's clip flags (`VCLIPw`) on known vertices |
+| `VCS_SELFTEST=1` | recompiled libgcc helpers vs native; RenderWare's clip flags (`VCLIPw`) on known vertices; the MMI macros for PADDUH, PSUBUH, PABSW / H and PSxxVW against a scalar model (GitHub issue 80) |
 | `VCS_TRACE_IMMEDIATE=1` | callers of the Im2D / Im3D draw entries with their first arguments, counted every 5 s (which game code draws a primitive) |
 | `VCS_TRACE_DELAY=1`, `VCS_TRACE_SOUND=1` | DelayThread calls; EE sound driver commands |
 | `PS2X_TRACE_SPU=1`, `PS2X_TRACE_IOP_DMA=1` | IOP SPU2/DMA/interrupt tracing |

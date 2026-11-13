@@ -384,6 +384,9 @@ class Check:
             g.cmd("press q 1000")
             time.sleep(2.0)
 
+        # god mode: Vic died in about 1 round in 5 here on Linux (2026-11-14) and respawned at a hospital, where the
+        # mouse's turns then measured nothing (the camera at 1.00 m, 2.4 rad off its heading)
+        g.cmd("trainer toggle god 1")
         # the game's far view (Select steps through three; the near one, 2 m, does not reach this wall), taken on
         # open ground where nothing pulls the camera in
         level(575.0, 175.0)
@@ -436,6 +439,7 @@ class Check:
             g.cmd("press backspace 150")
             time.sleep(1.5)
             steps += 1
+        g.cmd("trainer toggle god 0")
 
     # ---- free aim (src/game/vcs_aim.cpp, game-internals.md 12c) ----
     PED_POOL, PED_SIZE = 0x487A94, 0xD20

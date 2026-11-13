@@ -421,6 +421,13 @@ a sharper image when one is available:
   coordinates (0..1) need no change and filtering samples the sharper texels. `VCS_HUDTEX=0|1` and the setting decide;
   installing the source again (`gsHwSetTexture2DSource`) makes textures already seen be asked again, so the setting and
   the pack can change while the game runs.
+- **Read in the background.** A pack's image is read on a thread of its own (`src/game/vcs_hudtex.cpp`), not on the GS
+  stage: decoding a 4096x4096 PNG there was a 50-200 ms hitch each time a new element showed. The first ask queues the
+  file and the PS2's art is drawn; the thread reads and prepares it, then `gsHwTexture2DReady(key)` has that texture
+  asked again at its next draw and the replacement appears - a frame or two later, and once. The texture's upload goes
+  to the helper threads (`makeTextureEarly`), so a 16 MB image does not hold a frame either. `VCS_HUDTEX_SYNC=1` reads
+  on the GS stage as before (to compare); the pause menu's first opening at 60 fps measured 35.8 ms there and 19.9 ms
+  with the background read (idle 17.3).
 - **Size.** At most 8x the PS2 texture and 2048 a side (a 4096x4096 font atlas would be 64 MB for pixels the HUD
   cannot show): larger images are downscaled by an area average when loaded. Alpha is kept as it is (0..128, the PS2's
   scale: these packs are dumped from it) - not rescaled like PCSX2 does for its own shaders.

@@ -21,11 +21,14 @@
 #include <atomic>
 #include <cstdio>
 #include <cstdlib>
+#include <condition_variable>
 #include <cstring>
+#include <deque>
 #include <filesystem>
 #include <memory>
 #include <mutex>
 #include <string>
+#include <thread>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -38,6 +41,7 @@ namespace vcs::hudtex
 
         std::atomic<bool> g_enabled{false}; // the setting (and the env override), read by the source (the GS stage)
         bool g_log = false;     // VCS_HUDTEX_LOG
+        bool g_sync = false;    // VCS_HUDTEX_SYNC=1: read ahead here, on the GS stage (the hitch, to compare against)
         std::string g_dumpDir;  // VCS_HUDTEX_DUMP: the PS2 textures the 2D layer draws, as pack authors need them
         std::unordered_set<std::string> g_dumped;
         std::mutex g_mutex;     // the pack's map, the dumps and its lazy load
@@ -46,6 +50,38 @@ namespace vcs::hudtex
         std::string g_packFolder;
         std::vector<fs::path> g_roots;
         std::unordered_map<std::string, bool> g_logged; // texture name -> logged (diagnosis)
+
+        // A pack's image, read and prepared for the renderer.
+        struct Prepared
+        {
+            uint32_t width = 0, height = 0;
+            std::shared_ptr<std::vector<uint32_t>> pixels;
+        };
+        // The images are read on a thread of their own: a 4096x4096 PNG decoded on the GS stage at a HUD element's first
+        // draw was a 50-100 ms hitch (tools/... and the user's report, 2026-11-12). Until an image is ready its texture
+        // draws the PS2's art; when it is, gsHwTexture2DReady() has that texture asked again and the replacement shows.
+        // Never destroyed: the reading thread can outlive the rest of the game's static state at exit.
+        struct AsyncState
+        {
+            std::mutex mutex;
+            std::condition_variable ready;
+            struct Job
+            {
+                std::string name;
+                fs::path path;
+                uint32_t ps2Width = 0, ps2Height = 0;
+                uint64_t key = 0;
+            };
+            std::deque<Job> jobs;
+            std::unordered_map<std::string, Prepared> prepared; // read, waiting for its texture
+            std::unordered_set<std::string> reading;            // being read now
+            bool started = false;
+        };
+        AsyncState &asyncState()
+        {
+            static AsyncState *state = new AsyncState();
+            return *state;
+        }
 
         bool onTexture2DThunk(const GSHwTexture2D &texture, GSHwTexture2DImage &out);
         // The renderer only does the work (a read-back, a decode, the source) while the source is installed: nullptr
@@ -133,7 +169,7 @@ namespace vcs::hudtex
         // which is how the GS stage's textures are stored. The replacement keeps the PS2 texture's alpha scale (0..128:
         // these packs are dumped from it), so nothing is rescaled. Larger than 8x the PS2 texture or than 2048 a side is
         // downscaled by an area average (a 4096x4096 font atlas would cost 64 MB for pixels the HUD cannot show).
-        bool prepare(const uint8_t *rgba, int w, int h, uint32_t ps2W, uint32_t ps2H, GSHwTexture2DImage &out)
+        bool prepare(const uint8_t *rgba, int w, int h, uint32_t ps2W, uint32_t ps2H, Prepared &out)
         {
             const uint32_t capW = std::min<uint32_t>(2048u, ps2W * 8u), capH = std::min<uint32_t>(2048u, ps2H * 8u);
             const float scale = std::min({1.0f, static_cast<float>(capW) / static_cast<float>(w),
@@ -175,6 +211,52 @@ namespace vcs::hudtex
             return true;
         }
 
+        // The reading thread: one image at a time, in the order the HUD first asked for them.
+        void readJob(AsyncState::Job job)
+        {
+            int w = 0, h = 0;
+            std::vector<uint8_t> rgba;
+            std::string ext = job.path.extension().string();
+            std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char ch) { return char(std::tolower(ch)); });
+            const bool read = (ext == ".dds" ? platform::readDds(job.path.string().c_str(), w, h, rgba)
+                                             : platform::readPng(job.path.string().c_str(), w, h, rgba)) &&
+                              !rgba.empty();
+            Prepared prepared;
+            const bool made = read && prepare(rgba.data(), w, h, job.ps2Width, job.ps2Height, prepared);
+            uint32_t width = prepared.width, height = prepared.height;
+            {
+                AsyncState &async = asyncState();
+                std::lock_guard<std::mutex> lock(async.mutex);
+                async.reading.erase(job.name);
+                if (made)
+                    async.prepared[job.name] = std::move(prepared);
+            }
+            if (!made)
+            {
+                std::fprintf(stderr, "[hudtex] %s could not be read\n", job.name.c_str());
+                return;
+            }
+            if (g_log)
+                std::fprintf(stderr, "[hudtex] %s read (%ux%u)\n", job.name.c_str(), (unsigned)width, (unsigned)height);
+            gsHwTexture2DReady(job.key); // that texture asks again at its next 2D draw and takes the image
+        }
+
+        void readingThread()
+        {
+            AsyncState &async = asyncState();
+            for (;;)
+            {
+                AsyncState::Job job;
+                {
+                    std::unique_lock<std::mutex> lock(async.mutex);
+                    async.ready.wait(lock, [&async] { return !async.jobs.empty(); });
+                    job = std::move(async.jobs.front());
+                    async.jobs.pop_front();
+                }
+                readJob(std::move(job));
+            }
+        }
+
         // The GS stage's source (gsHwSetTexture2DSource): PCSX2's name for the texture -> the pack's file for it.
         bool onTexture2D(const GSHwTexture2D &texture, GSHwTexture2DImage &out)
         {
@@ -211,28 +293,61 @@ namespace vcs::hudtex
                 found = g_pack.find(name);
             }
             bool loaded = false;
-            if (found != g_pack.end())
+            if (found != g_pack.end() && g_sync) // VCS_HUDTEX_SYNC=1: read here, on the GS stage (the 50-100 ms hitch,
+                                                 // kept to compare against; the background read is the default)
             {
                 int w = 0, h = 0;
                 std::vector<uint8_t> rgba;
-                const std::string ext = found->second.extension().string();
-                const bool png = ext == ".png" || ext == ".PNG";
-                if ((png ? platform::readPng(found->second.string().c_str(), w, h, rgba)
-                         : platform::readDds(found->second.string().c_str(), w, h, rgba)) &&
-                    !rgba.empty())
-                    loaded = prepare(rgba.data(), w, h, texture.width, texture.height, out);
+                std::string ext = found->second.extension().string();
+                std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char ch) { return char(std::tolower(ch)); });
+                Prepared prepared;
+                if ((ext == ".dds" ? platform::readDds(found->second.string().c_str(), w, h, rgba)
+                                   : platform::readPng(found->second.string().c_str(), w, h, rgba)) &&
+                    !rgba.empty() && prepare(rgba.data(), w, h, texture.width, texture.height, prepared))
+                {
+                    out.width = prepared.width;
+                    out.height = prepared.height;
+                    out.pixels = std::move(prepared.pixels);
+                    loaded = out.width && out.height && out.pixels && !out.pixels->empty();
+                }
+            }
+            else if (found != g_pack.end())
+            {
+                // read in the background: taken now if it is ready, else put in the queue and the PS2 art stays for a
+                // frame or two (the renderer asks again once it is read)
+                AsyncState &async = asyncState();
+                std::lock_guard<std::mutex> lock(async.mutex);
+                if (auto it = async.prepared.find(name); it != async.prepared.end())
+                {
+                    out.width = it->second.width;
+                    out.height = it->second.height;
+                    out.pixels = std::move(it->second.pixels); // the renderer takes it: this texture's only ask
+                    async.prepared.erase(it);
+                    loaded = out.width && out.height && out.pixels && !out.pixels->empty();
+                }
+                else if (!async.reading.count(name))
+                {
+                    async.reading.insert(name);
+                    async.jobs.push_back({name, found->second, texture.width, texture.height, texture.key});
+                    if (!async.started)
+                    {
+                        async.started = true;
+                        std::thread(&readingThread).detach();
+                    }
+                    async.ready.notify_one();
+                }
             }
             if (g_log && !g_logged[named])
             {
                 g_logged[named] = true;
                 std::string what = "no file";
                 if (found != g_pack.end())
-                    what = loaded ? found->second.filename().string() + " -> " + std::to_string(out.width) + "x" +
-                                        std::to_string(out.height)
-                                  : "file not loadable";
+                    what = "reading " + found->second.filename().string();
                 std::fprintf(stderr, "[hudtex] %ux%u psm %u: %s %s\n", (unsigned)texture.width, (unsigned)texture.height,
                              (unsigned)(texture.bits & 0x3Fu), named.c_str(), what.c_str());
             }
+            if (g_log && loaded)
+                std::fprintf(stderr, "[hudtex] %s -> %ux%u\n", named.c_str(), (unsigned)out.width, (unsigned)out.height);
             return loaded;
         }
 
@@ -261,6 +376,7 @@ namespace vcs::hudtex
     void install(const fs::path &exeDir, const fs::path &dataDir)
     {
         g_log = std::getenv("VCS_HUDTEX_LOG") != nullptr;
+        g_sync = std::getenv("VCS_HUDTEX_SYNC") != nullptr;
         if (const char *dir = std::getenv("VCS_HUDTEX_DUMP"); dir && *dir) // pack authors: the PS2 textures, named as PCSX2 names them
         {
             std::error_code error;

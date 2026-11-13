@@ -116,6 +116,10 @@ struct GSHwTexture2D
     const uint32_t *pixels = nullptr; // RGBA8
     uint64_t tex0Hash = 0, clutHash = 0;
     uint32_t bits = 0;
+    // [gta-recomp] the renderer's key for this texture: what gsHwTexture2DReady() takes when an image is read in the
+    // background (a 4096x4096 pack image decoded on the GS stage is a 50-100 ms hitch when a HUD element first shows;
+    // read on a thread of the source's own instead, the PS2 texture is drawn until it is ready)
+    uint64_t key = 0;
 };
 struct GSHwTexture2DImage
 {
@@ -124,6 +128,9 @@ struct GSHwTexture2DImage
 };
 using GSHwTexture2DFn = bool (*)(const GSHwTexture2D &texture, GSHwTexture2DImage &out);
 void gsHwSetTexture2DSource(GSHwTexture2DFn fn);
+// [gta-recomp] The source has finished reading the image for the texture `key` (in the background): ask the source
+// about that texture again at its next 2D draw (gsHwSetTexture2DSource does not have to be called again). Any thread.
+void gsHwTexture2DReady(uint64_t key);
 // [gta-recomp] Textures replaced by one so far, and the number of 2D textures the source was asked about (checks).
 uint64_t gsHwTexture2DReplaced();
 uint64_t gsHwTexture2DAsked();

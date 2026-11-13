@@ -54,6 +54,11 @@ namespace
     std::atomic<GSHwTexture2DFn> g_texture2dSource{nullptr};
     std::atomic<uint32_t> g_texture2dGeneration{0};
     std::atomic<uint64_t> g_texture2dReplaced{0}, g_texture2dAsked{0};
+    // [gta-recomp] gsHwTexture2DReady: textures whose image the source finished reading in the background, taken by the
+    // game thread at the next 2D draw (the count is read per draw: no lock while nothing is ready)
+    std::mutex g_texture2dReadyMutex;
+    std::vector<uint64_t> g_texture2dReadyKeys;
+    std::atomic<uint32_t> g_texture2dReadyCount{0};
     constexpr uint64_t kGlyphAtlasKey = 0xF1F1F1F100000000ull; // its texture key: no GS texture key has these high bits
     std::atomic<uint32_t> g_outputW{0}, g_outputH{0};   // [gta-recomp] gsHwSetOutputSize
     std::atomic<float> g_aspectWidening{1.0f};          // [gta-recomp] gsHwSetAspectWidening
@@ -253,6 +258,12 @@ void gsHwSetTexture2DSource(GSHwTexture2DFn fn)
 }
 uint64_t gsHwTexture2DReplaced() { return g_texture2dReplaced.load(std::memory_order_relaxed); }
 uint64_t gsHwTexture2DAsked() { return g_texture2dAsked.load(std::memory_order_relaxed); }
+void gsHwTexture2DReady(uint64_t key)
+{
+    std::lock_guard<std::mutex> lock(g_texture2dReadyMutex);
+    g_texture2dReadyKeys.push_back(key);
+    g_texture2dReadyCount.store(static_cast<uint32_t>(g_texture2dReadyKeys.size()), std::memory_order_relaxed);
+}
 void gsHwSetOutputSize(uint32_t width, uint32_t height)
 {
     g_outputW.store(width, std::memory_order_relaxed);
@@ -3009,6 +3020,19 @@ namespace
             const GSHwTexture2DFn source = g_texture2dSource.load(std::memory_order_relaxed);
             if (!source || !s.tme || s.texIsRt || s.fst)
                 return;
+            // an image the source read in the background is ready: that texture asks again (its next draw takes it)
+            if (g_texture2dReadyCount.load(std::memory_order_relaxed))
+            {
+                std::vector<uint64_t> ready;
+                {
+                    std::lock_guard<std::mutex> lock(g_texture2dReadyMutex);
+                    ready.swap(g_texture2dReadyKeys);
+                    g_texture2dReadyCount.store(0, std::memory_order_relaxed);
+                }
+                for (const uint64_t key : ready)
+                    if (const auto it = m_tex2d.find(key); it != m_tex2d.end() && !it->second.hdKey)
+                        it->second.asked = false;
+            }
             const auto found = m_tex2d.find(s.texKey);
             if (found == m_tex2d.end() || !found->second.stored)
                 return;
@@ -3042,6 +3066,7 @@ namespace
                 texture.tex0Hash = named ? name.tex0Hash : 0u;
                 texture.clutHash = named ? name.clutHash : 0u;
                 texture.bits = named ? name.bits : 0u;
+                texture.key = s.texKey;
                 GSHwTexture2DImage image;
                 const uint32_t capW = std::min(kTex2DMaxSide, ps2W * kTex2DMaxScale);
                 const uint32_t capH = std::min(kTex2DMaxSide, ps2H * kTex2DMaxScale);
@@ -3057,6 +3082,9 @@ namespace
                     tc.w = image.width;
                     tc.h = image.height;
                     tc.pixels = std::move(*image.pixels); // the source hands it over (asked once)
+                    // a 16 MB texture created on the main thread (2048x2048) held a frame ~5-15 ms: the helper threads
+                    // make it, as the other textures are made (PS2X_HW_EARLY_TEXTURES; the main thread otherwise)
+                    makeTextureEarly(tc, false);
                     f.cmds.push_back({CmdType::TexCreate, static_cast<uint32_t>(f.textures.size())});
                     f.textures.push_back(std::move(tc));
                     rec.hdW = image.width;

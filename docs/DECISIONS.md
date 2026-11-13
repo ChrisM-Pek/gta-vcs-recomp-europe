@@ -1458,9 +1458,12 @@ turned stick (the pull-in toward the player), through the game's own switch for 
   64 MB of pixels for a HUD drawn at 24-40 px a glyph.
 - **The geometry does not change**: the layer still snaps its vertices to the PS2's pixel coverage (that is what
   lines the radar's mask, scissor and map up). So the art gets sharper, the layout stays the PS2's.
-- The first use of each texture decodes its pack PNG on the GS stage (a one-off hitch of a few tens of ms for a
-  4096x4096 file). What would change it: a background decode with the PS2 texture shown until it is ready, if players
-  notice the pause menu's first opening.
+- The pack's images are **read in the background** (2026-11-12, a second pass): the first ask of a texture queues its
+  file on a reading thread and the PS2's art is drawn until the image is ready (a frame or two later), then the
+  replacement appears. Decoding a 4096x4096 PNG on the GS stage was a 50-200 ms hitch each time a new HUD element
+  showed; measured at 60 fps, the pause menu's first opening went from a 35.8 ms frame to 19.9 (idle 17.3). The
+  texture's own upload goes to the helper threads (`makeTextureEarly`), so a 16 MB image does not hold a frame
+  either. `VCS_HUDTEX_SYNC=1` reads on the GS stage as before, to compare.
 ## 2026-11-12 - Mods: installed and switched in the launcher, one switch in the game
 
 - Players want the HD HUD in one step, but the pack is third-party art: the launcher's **Mods** sheet (title bar, next

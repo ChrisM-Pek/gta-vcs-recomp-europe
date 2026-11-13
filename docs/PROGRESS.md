@@ -1285,3 +1285,4 @@ Python scripts still usable on their own. docs/LAUNCHER.md has the whole of it; 
 | `VCS_HUDTEX_DIR=<dir>` | the pack's folder for one run (also `textures/` next to vcs.exe or in the data folder) |
 | `VCS_HUDTEX_LOG=1` | `[hudtex]` lines: every 2D texture by PCSX2's name, and the file used for it |
 | `VCS_HUDTEX_DUMP=<dir>` | write the PS2 textures the 2D layer draws, named as PCSX2 names them - a pack author's starting point (analysis only, never commit the output) |
+| `VCS_HUDTEX_SYNC=1` | read the pack's images on the GS stage (the 50-200 ms hitch per new HUD element) instead of the background thread, to compare |

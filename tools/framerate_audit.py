@@ -6,8 +6,9 @@
 Each step N is its own game run in frame-rate independent timing with VCS_TIMESTEP=N: CTimer is given exactly 1/N s
 per frame (in whole milliseconds, carried) and the game runs unpaced, so behaviour can be compared per simulated
 second at the equivalent of any frame rate on this machine. Simulated time is the game's own clock
-(CTimer::m_snTimeInMilliseconds, 0x4CD104). Input is injected over the control channel (PS2X_INPUT=injected: the
-keyboard / pad are ignored). From a copy of the Fort Baxter card; noon, sunny, invincible.
+(CTimer::m_snTimeInMilliseconds). Input is injected over the control channel (PS2X_INPUT=injected: the keyboard / pad
+are ignored). From a copy of the Fort Baxter card; noon, sunny, invincible. The build's disc region is read from
+build_info.json: on the European build every game address below moves by 0x300 (game-internals.md 14).
 
 Scenarios (each from a fresh teleport, so earlier ones don't leak into later ones):
   fall    the player dropped from 30 m above the ground: time to fall 15 m, where he lands
@@ -56,12 +57,29 @@ import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import rig  # noqa: E402
+import toolchain as tc  # noqa: E402
 
 ROOT = rig.ROOT
-CLOCK_MS = 0x4CD104      # CTimer::m_snTimeInMilliseconds
+
+
+def region_offset():
+    """The European build's (SLES_546.22) game globals are 0x300 above the US build's (game-internals.md 14): read
+    which one the build is from build_info.json."""
+    try:
+        with open(os.path.join(tc.BUILD, "build_info.json"), encoding="utf-8") as f:
+            return 0x300 if json.load(f).get("region") == "pal" else 0
+    except (OSError, ValueError):
+        return 0
+
+
+REGION = region_offset()
+CLOCK_MS = 0x4CD104 + REGION      # CTimer::m_snTimeInMilliseconds
 PED_VEHICLE = 0x450      # ped -> its vehicle (found by scanning the ped for the car's address, game-internals.md 12)
 MOVE_SPEED = 0x140       # CPhysical move speed (x, y, z), units per 1/50 s (z found mid-fall at +0x148)
-FRAME_COUNTER = 0x4CD124  # CTimer::m_FrameCounter
+FRAME_COUNTER = 0x4CD124 + REGION  # CTimer::m_FrameCounter
+VEHICLE_POOL = 0x487A98 + REGION   # CPool of vehicles
+SCRIPT_SPACE = 0x48741C + REGION   # -> MAIN.SCM in memory
+MISSION_START = 0x4CD3D8 + REGION  # IP of the loaded mission
 # open ground for the on-foot and car runs (spots from the world tour, checked by screenshot): x, y, heading - a long
 # straight pavement beside the open tarmac near the airport (the Fort Baxter door faces a fence; -675,-75 is sea)
 FOOT_SPOT = (-1425.0, -575.0, 90.0)
@@ -265,7 +283,7 @@ def vehicle_run(s, name, model, act, body_at=None, extra="", spot=CAR_SPOT):
                             S.op(S.CREATE_CAR, S.i(model), S.f(x + 4.0), S.f(y), S.f(z), S.LOCAL0) +
                             S.op(S.WARP_CHAR_INTO_CAR, S.PLAYER, S.LOCAL0), 1)
     car = ints[0]
-    pool = g.u32(0x487A98)
+    pool = g.u32(VEHICLE_POOL)
     vehicle = g.u32(pool) + (car >> 8) * 0x8C0  # CPool: slot = handle >> 8 (game-internals.md 12)
     s.wait_sim(2.0)
     for _ in range(3):  # a warp right after getting out of the last vehicle can be lost: until he sits in this one
@@ -424,7 +442,7 @@ def water_run(s, name, model):
     px, py, water = s.pos()
     ints, _ = g.scm_outputs(S.op(S.REQUEST_MODEL, S.i(model)) + S.op(S.LOAD_ALL_MODELS_NOW) +
                             S.op(S.CREATE_CAR, S.i(model), S.f(px + 10.0), S.f(py - 20.0), S.f(water + 8.0), S.LOCAL0), 1)
-    vehicle = g.u32(g.u32(0x487A98)) + (ints[0] >> 8) * 0x8C0
+    vehicle = g.u32(g.u32(VEHICLE_POOL)) + (ints[0] >> 8) * 0x8C0
     path = os.path.join(ROOT, "build", "audit", "trace_%d_%s.txt" % (s.step, name))
     g.cmd("trace %s 0x%x 16 0x%x 3 0x%x 3" % (path, vehicle, vehicle + 0x70, vehicle + 0x140))
     g.cmd("pokef 0x%x 0 0.3 0" % (vehicle + MOVE_SPEED))  # 0.3 units per 1/50 s = 15 m/s north
@@ -471,7 +489,7 @@ def scenario_rotor(s):
     ints, _ = g.scm_outputs(S.op(S.REQUEST_MODEL, S.i(MAVERICK)) + S.op(S.LOAD_ALL_MODELS_NOW) +
                             S.op(S.CREATE_CAR, S.i(MAVERICK), S.f(x), S.f(y), S.f(-100.0), S.LOCAL0) +
                             S.op(S.WARP_CHAR_INTO_CAR, S.PLAYER, S.LOCAL0), 1)
-    vehicle = g.u32(g.u32(0x487A98)) + (ints[0] >> 8) * 0x8C0
+    vehicle = g.u32(g.u32(VEHICLE_POOL)) + (ints[0] >> 8) * 0x8C0
     rows, t0 = [], s.clock()
     while s.clock() - t0 < 4.0:
         rows.append((s.clock() - t0, g.peekf(vehicle + VEHICLE_HEALTH, 1)[0]))
@@ -489,7 +507,7 @@ def scenario_rotor(s):
     return {"health_per_s": (a[1] - b[1]) / (b[0] - a[0]), "seconds_900_to_300": b[0] - a[0], "health_after_4s": rows[-1][1]}
 
 
-OBJECT_POOL = 0x487AA4  # CPool of objects: 475 entries of 0x220 bytes (game-internals.md 12)
+OBJECT_POOL = 0x487AA4 + REGION  # CPool of objects: 475 entries of 0x220 bytes (game-internals.md 12)
 FERRIS_CARRIAGE = 7069  # the model of the ferris wheel's 12 carriages, which turn in the plane x = 342.19
 FERRIS_SPOT = (342.0, -250.0)  # on the ground beside the wheel
 
@@ -538,7 +556,7 @@ def scenario_ferris(s):
     return {"riding_s": riding, "drift": "%.2f m" % max(d for _, d in drift)}
 
 
-CAM_BETA = 0x6F44D0 + 0x70 + 0x7C  # TheCamera's active CCam: beta, the heading from the target to the camera (12b)
+CAM_BETA = 0x6F44D0 + REGION + 0x70 + 0x7C  # TheCamera's active CCam: beta, the heading from the target to the camera (12b)
 
 
 def wrapped(a):
@@ -614,7 +632,7 @@ def scenario_heat(s):
     rate $G15AC is only recomputed once the player is on the forklift, so it can be set (game-internals.md 11f).
     Leaves the mission running: keep it the last scenario."""
     g, S = s.g, rig.Scm
-    space = g.u32(0x48741C)
+    space = g.u32(SCRIPT_SPACE)
 
     def gv(n):
         return space + 4 * n
@@ -622,7 +640,7 @@ def scenario_heat(s):
     state = gv(0x159E)
     g.mission(47)
     for i in range(240):  # the opening cutscene (skipped), then state 0's "get in the truck" loop at mission +0x3BEE..
-        base = g.u32(0x4CD3D8)
+        base = g.u32(MISSION_START)
         if any(0x3BEE <= sc[2] - base <= 0x3C40 for sc in g.scripts()):
             break
         if i % 6 == 3:

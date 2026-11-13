@@ -2105,7 +2105,8 @@ which REN_C7, SRANGE, MAR_A5, LAN_C5 and DIA_C3 use for their meters. Some missi
   for the next pass), moves the IP on and returns 0, as the handler would. Only when the frame is not the PS2's
   (independent timing, or original timing at 60); original timing at 30 runs the game's handlers. Measured at 1/144:
   floor 0.4496 a second, heat 29.5. `tools/framerate_audit.py` scenario `heat` and `--sites` (every listed instruction
-  found in its mission as the game decodes it).
+  found in its mission as the game decodes it). The European build uses the same table and installs the same hooks with
+  the PAL addresses (section 14).
 - The mission is read to ScriptSpace + `*(0x4CD3D8)` (an IP; 0x3CAE3, right after the main section) by
   LOAD_AND_LAUNCH_MISSION_INTERNAL (0x3B2208), which starts it there; mission-relative labels resolve against it.
 
@@ -2867,9 +2868,40 @@ addresses. All 40 instruction patches in the PAL config were mapped through matc
 their original words checked against both ELFs; the wheel hooks use PAL addresses and initialize
 the constants those patches read. A hidden test with its own card and 1x rendering measured about
 165 game / host fps at the 165 cap, 60 at the 60 cap, then 164 / 166 after switching back to 165.
-At the user's 6x resolution and 8x MSAA the same test measured roughly 47 game fps. The US mission
-script timing hooks have not been adapted: the PAL MAIN.SCM differs from the US file, so mission
-timers and high-frame-rate behaviour still need separate verification.
+At the user's 6x resolution and 8x MSAA the same test measured roughly 47 game fps.
+
+PAL mission script timing (2026-11-13): the US per-frame mission meter fix (section 11f) now runs
+on the European build too. The report was the one the US fix addressed - a mission with a timer /
+meter fills or empties faster at 60 fps or more - and the PAL build had none of it installed
+(`main.cpp`'s PAL branch never called `installScriptTimingHooks`).
+
+- **The scripts are the same at the sites.** Both MAIN.SCM files (extracted with
+  `tools/vcs_disc.py`) have 101 missions with the same names and order. The mission table's own
+  offsets move by -7 bytes from mission 86 and -14 from 91 (the PAL file is 14 bytes shorter), but
+  every one of the 30 instructions in `vcs_script_timing.cpp`'s table has identical bytes at the
+  same mission-relative offset in both files (the mission table at 0x767C decoded and each site's
+  16 bytes compared). So the table needs no PAL variant; only the globals and handlers move.
+- **The globals** are the US ones +0x300: script space 0x48771C, mission start / running
+  0x4CD6D8 / 0x4CD6E7, CTimer ms / step 0x4CD404 / 0x4CD410. Read from the PAL `ProcessOneCommand`
+  (FUN_00256260, 164 bytes, otherwise instruction-for-instruction the US FUN_002560d8):
+  `lui v0, 0x48; lw v1, 30492(v0)` where US has `lw v1, 29724(v0)` = 0x48741C. The array-index
+  dummy is 0x50C440, from PAL FUN_00255180's `lui v0, 0x51; jr ra; addiu v0, v0, -15296` (US
+  FUN_00254FF8: -16064 -> 0x50C140).
+- **The handlers** are the PAL script command table's: PAL FUN_00256260 computes the entry as
+  `lui v0, 0x4c; addiu v0, v0, -4576` -> 0x4BEE20 (US 0x4BEAF0), 8-byte entries (int16 script
+  offset, uint16 flags, handler). The entries for 0004 / 0005 / 0035 / 0036 -> 0x3B14B0, 0007 ->
+  0x3B1520, 0008 / 002A -> 0x3B1598, 0009 / 002B -> 0x3B1610, 000A / 002C -> 0x3B1688, 000C /
+  002E -> 0x3B1778 (US + 0x2D8). All six are functions in the PAL generated code, so
+  `lookupFunction` finds them.
+- **Checked** with `tools/framerate_audit.py`, which now reads the region from `build_info.json` and
+  adds 0x300 to its absolute addresses: PHI_A2's heat in a hidden run with `VCS_TIMESTEP`
+  (independent timing, game unpaced) measured a floor of 0.450/s and 30.0/s of heat at 1/30, and
+  0.452/s and 29.6/s at 1/144; with `VCS_SCRIPT_TIMESTEP=0` at 1/144 the floor runs 2.160/s (4.8x,
+  the value the US build had before the fix), so the scaling is what changes it. At the real 60 fps
+  cap (independent timing, no forced step) the same run measured 0.450/s of floor, 30.3/s of heat,
+  59 game frames a second and the game clock at 0.99 s per host second.
+  `python tools/framerate_audit.py --sites` checks every listed instruction in the running PAL game
+  (and the US one); the run here found all 30, in their missions, as the game decodes them.
 
 For the PAL F2 enhancements, the matched functions place CWeapon::Fire at 0x2c1170
 (US 0x2c0f98), with NPC drive-by return addresses 0x21689c and 0x2169bc (US 0x2168b4 and

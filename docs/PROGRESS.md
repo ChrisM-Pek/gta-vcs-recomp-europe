@@ -12,6 +12,10 @@
   mission and audio-wait signatures were found in the PAL script and its hooks installed. These four behaviours still
   need targeted PAL gameplay/reference checks. The upstream RSL recording memory limit applies to the RSL path; PAL's
   experimental startup does not currently install that path, so do not claim its US memory measurements for PAL.
+- Mission timers and per-frame mission meters move at the same speed at any frame rate on the European build too: the
+  PAL branch now installs the US script-timing fix (the PAL MAIN.SCM's missions have identical bytes at its 30 listed
+  instructions) with the PAL script globals and command-table handlers (game-internals.md 14). `tools/framerate_audit.py`
+  reads the build's region and its `heat` scenario measures the same meter on either disc.
 
 ## Phase 0 - setup (done)
 - Repo, GPL-3.0, `.gitignore` blocking game files; `tools/vcs_disc.py`

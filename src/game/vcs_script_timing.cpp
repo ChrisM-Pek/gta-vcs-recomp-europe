@@ -13,6 +13,13 @@
 // offset and checked against its decoded opcode and operands before it is touched; anything else runs the game's
 // handler. In original timing at 30 fps nothing is scaled (the step is the PS2's anyway, and the game's own handlers
 // keep that path exact).
+//
+// European build (VCS_EXPERIMENTAL_PAL, docs/game-internals.md 14): the same missions and instructions. The two
+// MAIN.SCM files' mission tables name the same 101 missions and every listed site's bytes are identical at the same
+// mission-relative offset (tools/framerate_audit.py --sites checks each in the running game); only the globals and the
+// handlers move. The CTimer / script globals are 0x300 above the US ones (ProcessOneCommand reads the script space at
+// 0x48741c US / 0x48771c PAL); the handlers are the PAL script command table's (0x4BEE20, from FUN_00256260's
+// `lui 0x4c; addiu -4576`) entries for the opcodes below.
 #include "game/vcs_script_timing.h"
 
 #include "game/vcs_framerate.h"
@@ -32,16 +39,31 @@ namespace vcs
 {
     namespace
     {
+#ifdef VCS_EXPERIMENTAL_PAL
+        // SLES_546.22: the mission and CTimer globals are 0x300 above the US build's; the handler addresses are the
+        // entries of the PAL script command table (0x4BEE20) for 0004 / 0005 / 0035 / 0036, 0007, 0008 / 002A,
+        // 0009 / 002B, 000A / 002C and 000C / 002E. The array-index dummy is the PAL parser's (FUN_00255180).
+        constexpr uint32_t kScriptSpace = 0x0048771Cu;   // -> MAIN.SCM in memory; an IP is an offset from it
+        constexpr uint32_t kMissionStart = 0x004CD6D8u;  // IP of the loaded mission's first byte
+        constexpr uint32_t kMissionRunning = 0x004CD6E7u; // u8
+        constexpr uint32_t kTimeStep = 0x004CD410u;      // CTimer::ms_fTimeStep (1.0 = 1/50 s)
+        constexpr uint32_t kTimeMs = 0x004CD404u;        // CTimer::m_snTimeInMilliseconds
+        constexpr uint32_t kDummyVariable = 0x0050C440u; // where FUN_00255180 points an out-of-range array index
+
+        // the handlers (PAL command table 0x4BEE20); the IP is past the opcode when they run
+        constexpr uint32_t kHandlerSet = 0x003B14B0u;      // 0004 / 0005 / 0035 / 0036: dst = src (32-bit copy)
+        constexpr uint32_t kHandlerAddInt = 0x003B1520u;   // 0007
+        constexpr uint32_t kHandlerAddFloat = 0x003B1598u; // 0008 / 002A
+        constexpr uint32_t kHandlerSubInt = 0x003B1610u;   // 0009 / 002B
+        constexpr uint32_t kHandlerSubFloat = 0x003B1688u; // 000A / 002C
+        constexpr uint32_t kHandlerMulFloat = 0x003B1778u; // 000C / 002E
+#else
         constexpr uint32_t kScriptSpace = 0x0048741Cu;   // -> MAIN.SCM in memory; an IP is an offset from it
         constexpr uint32_t kMissionStart = 0x004CD3D8u;  // IP of the loaded mission's first byte
         constexpr uint32_t kMissionRunning = 0x004CD3E7u; // u8
         constexpr uint32_t kTimeStep = 0x004CD110u;      // CTimer::ms_fTimeStep (1.0 = 1/50 s)
         constexpr uint32_t kTimeMs = 0x004CD104u;        // CTimer::m_snTimeInMilliseconds
-        constexpr float kPs2Step = 50.0f / 30.0f;          // a 30 fps frame
-        constexpr uint32_t kDummyVariable = 0x0050C140u;  // where FUN_00254ff8 points an out-of-range array index
-
-        // CRunningScript (game-internals.md 11b)
-        constexpr uint32_t kScriptIp = 0x10u, kScriptLocals = 0x54u, kScriptFrame = 0x1FCu;
+        constexpr uint32_t kDummyVariable = 0x0050C140u; // where FUN_00254ff8 points an out-of-range array index
 
         // the handlers (opcode table 0x4BEAF0, game-internals.md 11b); the IP is past the opcode when they run
         constexpr uint32_t kHandlerSet = 0x003B11D8u;      // 0004 / 0005 / 0035 / 0036: dst = src (32-bit copy)
@@ -50,6 +72,11 @@ namespace vcs
         constexpr uint32_t kHandlerSubInt = 0x003B1338u;   // 0009 / 002B
         constexpr uint32_t kHandlerSubFloat = 0x003B13B0u; // 000A / 002C
         constexpr uint32_t kHandlerMulFloat = 0x003B14A0u; // 000C / 002E
+#endif
+        constexpr float kPs2Step = 50.0f / 30.0f; // a 30 fps frame
+
+        // CRunningScript (game-internals.md 11b)
+        constexpr uint32_t kScriptIp = 0x10u, kScriptLocals = 0x54u, kScriptFrame = 0x1FCu;
 
         struct Operand
         {

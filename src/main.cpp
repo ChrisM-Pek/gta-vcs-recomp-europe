@@ -29,6 +29,7 @@
 #include "game/vcs_framerate.h"
 #include "game/vcs_physics_timing.h"
 #include "game/vcs_script_fixes.h"
+#include "game/vcs_script_timing.h"
 #include "game/vcs_movie.h"
 #include "game/vcs_hud.h"
 #include "game/vcs_hudtex.h"
@@ -964,6 +965,7 @@ int main(int argc, char *argv[])
 #ifdef VCS_EXPERIMENTAL_PAL
         vcs::installFrameRateHooks(runtime);
         vcs::installPhysicsTimingHooks(runtime);
+        vcs::installScriptTimingHooks(runtime); // per-frame mission meters on the time step (game/vcs_script_timing.h)
         vcs::installScriptFixHooks(runtime);
         vcs::installDisplayHooks(runtime);
         vcs::installHudHooks(runtime);

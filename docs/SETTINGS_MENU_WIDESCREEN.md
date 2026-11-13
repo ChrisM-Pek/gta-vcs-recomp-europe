@@ -241,6 +241,9 @@ switch pages.
 
 Display > Screen > **Window mode**: Windowed / Full screen (`display.window=0|1`, `VCS_FULLSCREEN=0|1` for one run),
 and **Alt+Enter** switches at any time, also with a menu open; the choice is saved like any setting.
+- The default is Full screen since 2026-11-13 (the user's choice; it was Windowed). A vcs.ini that already says
+  `display.window=0` stays windowed. Shown test runs (`VCS_TEST_VISIBLE=1`) get `VCS_FULLSCREEN=0` from
+  `toolchain.test_window`, so they stay a window; hidden runs never go full screen anyway.
 - Full screen is borderless at the desktop's resolution on the monitor the window is on (SDL3's fullscreen with no
   display mode, `platform::setFullscreen`). No mode change: switching and Alt+Tab are instant, other monitors stay as
   they are, and the D3D11 flip-model swapchain just resizes. The Internal resolution / Match window aspect follow the

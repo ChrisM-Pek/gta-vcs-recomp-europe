@@ -227,6 +227,8 @@ def test_window(env, visible=False):
     game in Windows). visible=True or VCS_TEST_VISIBLE=1 shows the window."""
     if visible or os.environ.get("VCS_TEST_VISIBLE") == "1":
         env.pop("PS2X_HIDDEN", None)
+        # players start in full screen (2026-11-13); a shown test run stays a window at its own size
+        env.setdefault("VCS_FULLSCREEN", "0")
         return env
     env["PS2X_HIDDEN"] = "1"
     env.setdefault("PS2X_AUDIO", "1")

@@ -452,7 +452,7 @@ namespace
                  "and Alt+Tab are instant). Alt+Enter switches too.";
         s.type = Type::Choice;
         s.choices = {{"Windowed", 0}, {"Full screen", 1}};
-        s.defaultValue = 0;
+        s.defaultValue = 1; // full screen since 2026-11-13 (the user's choice); test runs pin VCS_FULLSCREEN=0
         s.env = "VCS_FULLSCREEN";
         s.onChange = [](int v) { platform::setFullscreen(v != 0); };
         s.read = [] { return platform::fullscreen() ? 1 : 0; };

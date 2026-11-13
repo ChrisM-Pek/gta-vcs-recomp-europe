@@ -1456,3 +1456,9 @@ turned stick (the pull-in toward the player), through the game's own switch for 
   Off. The Enhanced and Light presets set it to that default too, so choosing one doesn't turn it off on a Mac, and
   Authentic resets to it. A vcs.ini that names the setting keeps its value. The Metal backend logs the mode it presents
   with (`[rhi] metal: vertical sync on|off`) at the first frame and at every change.
+
+## 2026-11-13 - Full screen by default (the user's decision)
+
+- Display > Screen > **Window mode** defaults to Full screen (borderless, on the monitor the window was last on) on
+  every platform; it was Windowed. A vcs.ini that names the setting keeps its value, so a player who chose Windowed
+  stays windowed. Shown test runs keep a window (`toolchain.test_window` sets `VCS_FULLSCREEN=0` unless given).

@@ -12,7 +12,13 @@ on:
     tags: ["v*"]
   pull_request:
     paths: ["launcher/**", "tools/**", "src/disc/**", "src/util/sha1.h", ".github/workflows/launcher.yml"]
+  # a manual run builds every platform, or the ones named (gh workflow run launcher.yml -f platforms=macos): each
+  # makes its release file as an artifact for testing; only a tag publishes
   workflow_dispatch:
+    inputs:
+      platforms:
+        description: "Platforms to build: all, or any of linux windows macos"
+        default: all
 
 permissions:
   contents: write
@@ -21,6 +27,7 @@ jobs:
   # Ubuntu 22.04 on purpose: the AppImage's launcher needs the glibc of the system it was built on, and 22.04's (2.35)
   # makes it run on Ubuntu 22.04, Debian 12 and everything newer (tools/release.py refuses a newer one)
   linux:
+    if: github.event_name != 'workflow_dispatch' || inputs.platforms == 'all' || contains(inputs.platforms, 'linux')
     runs-on: ubuntu-22.04
     env:
       WAYLAND_PROTOCOLS: "1.45"
@@ -90,6 +97,7 @@ jobs:
             build/dist/*.AppImage.sha256
 
   windows:
+    if: github.event_name != 'workflow_dispatch' || inputs.platforms == 'all' || contains(inputs.platforms, 'windows')
     runs-on: windows-2022
     steps:
       - uses: actions/checkout@v4
@@ -147,6 +155,7 @@ jobs:
   # glslang + SPIRV-Cross built from pinned sources (tools/shader_tools.py, cached). A virtual Mac may have no Metal
   # device: the self-test then reports the renderer as skipped (VCS_SELFTEST_NO_GPU) instead of failing.
   macos:
+    if: github.event_name != 'workflow_dispatch' || inputs.platforms == 'all' || contains(inputs.platforms, 'macos')
     runs-on: macos-15
     env:
       VCS_SELFTEST_NO_GPU: "1"

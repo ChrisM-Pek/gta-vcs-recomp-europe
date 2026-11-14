@@ -545,6 +545,14 @@ dropped on uploads (lazy render-target patching).
       and 2030 / 2007 / 450 ms. The banknote spray (FUN_0032FD78, a script command's flying notes) runs on PS2 frames
       only with their steps summed - not triggered in a run. Checked harmless: FUN_002ED8E8 (the player's nearby
       lists), the hit-scan shot's `frame & 3`; no light counts frames (only the explosion's).
+- [x] **Rain pulsing and vanishing above 30 fps** (2026-11-14, the user's report; game-internals.md 4 "Rain"): the 35
+      rain streaks of CWeather::RenderRainStreaks (FUN_003E52C8) each restart on a 1-in-16 roll per frame and live 4 s,
+      so at 144 fps they all started within ~0.1 s and fell past the camera together: ~1.5 s of rain, ~3 s of none,
+      for minutes. `vcs_effects_timing.cpp` 13: the roll only counts on PS2 frames. Measured standing in the rain
+      (`build/analysis/rain_probe.py`, streaks at the camera's height every 0.12 s for 30 s; mean / sd / share of
+      samples with almost none, first 15 s then the next 15): 30 fps 10.0 / 7.9 / 28%, 11.0 / 3.7 / 0%; 144 fps before
+      11.6 / 14.0 / 52%, 11.2 / 13.1 / 48%; 144 fps now 9.8 / 6.7 / 21%, 10.6 / 4.7 / 3%. The short pulse when rain
+      starts and the camera-facing sheets are the PS2's own.
 - [x] **Reduce Post Processing Effects** (2026-11-14, the user's request; DECISIONS.md): one toggle in Enhancements >
       Effects (off by default, applied at once) that puts the motion blur, particles and effects back as before these
       fixes. Checked at 144 fps in a rainy drive, switched off / on / off through the rig: exhaust 274 / 69-75 / 271-274
@@ -1137,7 +1145,7 @@ Python scripts still usable on their own. docs/LAUNCHER.md has the whole of it; 
 | `VCS_MUSIC_TIMESTEP=0` | radio stations off the air advance a frame's worth per frame, as on the PS2 (game-internals.md 9; the reference) |
 | `VCS_PARTICLE_TIMING=0` | particles fade, grow and spawn once a frame (before 2026-11-14: smoke 1/4.8 as long at 144 fps, fires thin) |
 | `VCS_REDUCE_POSTFX=1` | Enhancements > Effects > Reduce Post Processing Effects for one run: the motion blur, particles and effects once a frame as before 2026-11-13 / 14 (live in the menu) |
-| `VCS_EFFECTS_TIMING=0` | lightning, sun glare, clouds, camera shake, the video overlay, the photo flash, the HUD bar flash, peds fading, streaks, rubbish, steam after rain, explosions (bursts, length, flicker) and the banknote spray step once a frame (before 2026-11-14) |
+| `VCS_EFFECTS_TIMING=0` | lightning, sun glare, clouds, camera shake, the video overlay, the photo flash, the HUD bar flash, peds fading, streaks, rubbish, steam after rain, rain streaks starting, explosions (bursts, length, flicker) and the banknote spray step once a frame (before 2026-11-14) |
 | `VCS_EFFECTS_LOG=1` | every 30 s of real time: frames and PS2 frames a second, lightning bursts (count, length), cloud turn / spin a second, and each effect's steps / rolls that took effect a second (with `VCS_EFFECTS_TIMING=0`: the per-frame counts) |
 | `VCS_PARTICLE_LOG=1` | every 10 s of game clock: AddParticle calls / passed per second by return address (`*` = throttled), and particles died per second and their mean lifetime by type |
 | `VCS_TURN_LOG=<model>` | every ApplyTurnForce on vehicles of that model (212 = PCJ-600): caller, its change to the yaw / pitch rate (sum by caller to find a per-frame push) |

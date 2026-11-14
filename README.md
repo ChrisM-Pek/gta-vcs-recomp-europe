@@ -56,6 +56,20 @@ too. Updates replace the AppImage itself (*Settings > Check now*); the next star
 what changed is rebuilt. Without FUSE (some containers and minimal systems), start it with
 `--appimage-extract-and-run`.
 
+## Install on macOS: the launcher (easiest)
+
+1. Download the newest `VCS-Recomp-<version>-macos-arm64.dmg` from the [Releases](../../releases) page. It needs a Mac
+   with Apple Silicon (M1 or later) and macOS 13 or newer.
+2. Open it and drag **VCSLauncher** onto the **Applications** folder next to it, then eject the disk image.
+3. Start it from Applications. The launcher isn't signed by an Apple developer yet, so the first time macOS refuses
+   it: open *System Settings > Privacy & Security* and choose *Open Anyway* (once). The first start puts the game's
+   files in `~/Library/Application Support/VCSRecomp/install`, where the game is built, then walks you through the
+   same steps as on Windows; the build tools are Apple's free Command Line Tools (*Install the Command Line Tools*
+   runs macOS' own installer).
+
+Updates (*Settings > Check now*) replace the app in Applications; that is also why it has to be there, not started
+from the disk image or Downloads.
+
 ## Install by hand (Windows and Linux)
 
 The release zip contains the full source: the steps below work in it too, and in a git clone.

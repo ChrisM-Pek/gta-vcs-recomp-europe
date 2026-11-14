@@ -322,13 +322,20 @@ repository root, ~1 MB stripped, 27 s from scratch on the dev laptop.
 - **Build tools step**: Apple's Command Line Tools - "Install the Command Line Tools" runs `build.py --install-deps`
   (`xcode-select --install`: macOS' own installer), then Check again. They are checked before `python3` is probed:
   without them `/usr/bin/python3` is a stub that opens that installer.
-- **A release** (`python3 tools/release.py --platform macos`): `VCS-Recomp-<v>-macos-arm64.zip` holding
-  `VCSLauncher.app`, signed ad-hoc (DECISIONS.md 2026-11-12), the release's files in `Contents/Resources/release`
-  (the source, `deps/` for macOS, licences; no Python: the Command Line Tools' is used). At first start the launcher
-  copies them into `~/Library/Application Support/VCSRecomp/install` and builds the game there, as from an AppImage.
-  Update (`update.py apply`) downloads the new zip, unzips it with `ditto` and puts the new bundle where the old one is
-  (`VCS_APP_BUNDLE`, which the launcher passes to its tools); an app macOS runs from a quarantined download in place
-  (App Translocation) is refused with "move it to Applications". The first start of an unsigned download needs
+- **A release** (`python3 tools/release.py --platform macos`): `VCS-Recomp-<v>-macos-arm64.dmg`, a disk image that
+  opens as one Finder window - `VCSLauncher.app` on the left, a link to Applications on the right, large icons, no
+  toolbar - to drag the one onto the other (DECISIONS.md 2026-11-14). `tools/dmg.py` makes it: the layout is the
+  image's `.DS_Store`, written by its own standard-library writer (no `dmgbuild`); the volume carries the launcher's
+  icon (`.VolumeIcon.icns`, the custom-icon flag set with `SetFile` on the mounted read-write image); then `hdiutil
+  convert` to ULMO (LZMA: 45 MB where the zip was 66). The release then mounts it and checks the app's signature in
+  it, the link and the layout (`python3 tools/dmg.py show X.dmg` prints the layout). The app is signed ad-hoc
+  (DECISIONS.md 2026-11-12), the release's files in `Contents/Resources/release` (the source, `deps/` for macOS,
+  licences; no Python: the Command Line Tools' is used). At first start the launcher copies them into
+  `~/Library/Application Support/VCSRecomp/install` and builds the game there, as from an AppImage; it runs that copy's
+  scripts with `python -B`, since a `__pycache__` written inside the bundle breaks its signature (it did, before
+  2026-11-14). Update (`update.py apply`) downloads the new image, mounts it out of Finder's sight, copies the app out
+  with `ditto` and puts it where the old one is (`VCS_APP_BUNDLE`, which the launcher passes to its tools); an app
+  macOS runs from a quarantined download in place (App Translocation) is refused with "move it to Applications". The first start of an unsigned download needs
   System Settings > Privacy & Security > Open Anyway. CI: the `macos` job (macos-15), which `publish` waits for.
 
 ## How it fits together

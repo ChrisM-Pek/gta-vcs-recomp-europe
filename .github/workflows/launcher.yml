@@ -189,7 +189,8 @@ jobs:
           path: ${{ runner.temp }}/shots
           if-no-files-found: ignore
 
-      # the app zip, self-tested as a player starts it. A manual run makes it too, as an artifact: only a tag publishes
+      # the disk image (the app next to an Applications link), self-tested as a player starts it. A manual run makes it
+      # too, as an artifact: only a tag publishes
       - name: Release app
         if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
         run: python3 tools/release.py --platform macos --ref ${{ github.ref_name }} --launcher VCSLauncher.app
@@ -199,8 +200,8 @@ jobs:
         with:
           name: release-macos
           path: |
-            build/dist/*.zip
-            build/dist/*.zip.sha256
+            build/dist/*.dmg
+            build/dist/*.dmg.sha256
 
   # every platform's files on one release, only when all were made: Windows, Linux and macOS ship together
   # The title as every release has it; the notes from docs/releases/<tag>.md when the tag has one (written for players),

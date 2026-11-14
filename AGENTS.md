@@ -80,6 +80,8 @@ python tools/release.py [--ref vX | --worktree]   # the Windows release zip (bui
                                              # the notes: docs/releases/<tag>.md (else GitHub generates them)
 python3 tools/release.py --platform linux [--worktree --allow-new-glibc]   # the Linux AppImage (CI builds it on
                                              # Ubuntu 22.04 for glibc 2.35; a v* tag publishes zip + AppImage together)
+python3 tools/release.py --platform macos [--worktree]   # the macOS .dmg: the app next to an Applications link
+                                             # (tools/dmg.py writes the Finder layout; `dmg.py show X.dmg` prints it)
 python tools/deps.py list|fetch|check        # the libraries CMake downloads; deps/ makes the build offline
 python tools/backup.py create|list|restore   # memory card backups (VCS_DATA_DIR honoured: test on copies)
 python tools/setup_vs.py status|install [--dry-run]   # Visual Studio Build Tools (+ clang) from Microsoft, elevated

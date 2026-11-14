@@ -28,11 +28,13 @@ appimagetool with the type 2 runtime (static: no libfuse2 needed), both pinned b
 
     python3 tools/release.py --platform macos [--ref TAG | --worktree] [--launcher APP]
 
-Writes build/dist/VCS-Recomp-<version>-macos-arm64.zip and its .sha256 (docs/MACOS.md): VCSLauncher.app, signed
-ad-hoc (DECISIONS.md 2026-11-12), with the release's files in Contents/Resources/release - the source, VERSION,
-RELEASE.json, deps/ for macOS (FFmpeg's source and the shader compilers' included), licences; no Python (the Command
-Line Tools' is used). The launcher copies them at start to ~/Library/Application Support/VCSRecomp/install, as the
-AppImage does. Zipped with ditto, which keeps the bundle's modes and signature.
+Writes build/dist/VCS-Recomp-<version>-macos-arm64.dmg and its .sha256 (docs/MACOS.md): a disk image that opens as
+a Finder window with VCSLauncher.app next to a link to Applications, to drag it there (tools/dmg.py; DECISIONS.md
+2026-11-14). The app is signed ad-hoc (DECISIONS.md 2026-11-12), with the release's files in
+Contents/Resources/release - the source, VERSION, RELEASE.json, deps/ for macOS (FFmpeg's source and the shader
+compilers' included), licences; no Python (the Command Line Tools' is used). The launcher copies them at start to
+~/Library/Application Support/VCSRecomp/install, as the AppImage does. The image is checked once made: mounted, the
+app's signature verified inside it, the link and the window's layout there.
 """
 import argparse
 import hashlib
@@ -50,6 +52,7 @@ import zipfile
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import deps  # noqa: E402
+import dmg  # noqa: E402
 import toolchain as tc  # noqa: E402
 
 DIST = os.path.join(tc.BUILD, "dist")
@@ -430,12 +433,18 @@ def release_macos(a, ref, version):
         tc.fail("the app's signature doesn't verify (above)", "release_failed")
     self_test_app(app)
     os.makedirs(a.out, exist_ok=True)
-    out = os.path.join(a.out, name + ".zip")
-    if os.path.exists(out):
+    out = os.path.join(a.out, name + ".dmg")
+    # the disk image players open: the app next to a link to Applications, to drag it there (tools/dmg.py)
+    print("[release] disk image (%d files)" % (len(files) + 1))
+    icon = os.path.join(app, "Contents", "Resources", "launcher.icns")
+    try:
+        dmg.create(stage, out, "VCS Launcher %s" % version, icon if os.path.isfile(icon) else None)
+        problems = dmg.check(out, "VCSLauncher.app")
+    except (RuntimeError, ValueError, OSError) as e:
+        tc.fail("the disk image: %s" % e, "release_failed")
+    if problems:
         os.remove(out)
-    print("[release] zipping %d files" % (len(files) + 1))
-    if subprocess.run(["/usr/bin/ditto", "-c", "-k", "--sequesterRsrc", "--keepParent", app, out]).returncode != 0:
-        tc.fail("ditto failed (above)", "release_failed")
+        tc.fail("the disk image: " + "; ".join(problems), "release_failed")
     shutil.rmtree(stage)
     digest = hashlib.sha256(open(out, "rb").read()).hexdigest()
     with open(out + ".sha256", "w", encoding="utf-8") as f:

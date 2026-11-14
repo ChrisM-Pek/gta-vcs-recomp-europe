@@ -1486,3 +1486,24 @@ turned stick (the pull-in toward the player), through the game's own switch for 
 - "Widescreen, light" is now **Balanced** (`presets.balanced`, was `presets.light`; also an action, never stored) and
   sets the internal resolution to 2x instead of 1x; the rest as before (Match window, HUD at the edges, no MSAA, 4x AF,
   independent timing at 60). The user's request.
+
+## 2026-11-14 - macOS releases are a disk image with an Applications link (the user's request; the rest Claude's)
+
+The user asked for an image that lets players move the launcher into Applications. The macOS release is now
+`VCS-Recomp-<v>-macos-arm64.dmg` instead of a zip: a Finder window with the app and a link to /Applications side by
+side. The zip goes - no macOS release had been published, so no installed launcher looks for it (`update.py` still
+takes a zip given by hand). Choices:
+
+- **The layout without dmgbuild**: Finder reads the window (icon view, size, no bars) and the icon positions from the
+  image's `.DS_Store`. The tools are standard library only (AGENTS.md), so `tools/dmg.py` writes that file itself (one
+  B-tree leaf; checked by reading Finder's own files back with the same code), instead of `dmgbuild` / `create-dmg`.
+  AppleScript to Finder (create-dmg's way) was left out: it needs a logged-in Finder, which CI's Macs don't
+  reliably give.
+- **No background picture** (an arrow): Finder finds it through an alias / bookmark to a file in the image, tied to
+  the mounted volume - much more than the layout for little gain; the two icons side by side say it. Possible later.
+- **HFS+, ULMO**: HFS+ as dmgbuild uses; ULMO (LZMA) needs macOS 10.15, the launcher needs 13 anyway.
+- **The volume icon** is set with `SetFile` (the Command Line Tools'); without it the image keeps the plain disk icon
+  and the release goes on.
+- **`python -B` for the bundle's own scripts**: the first start's `update.py install` runs from inside the app and
+  wrote `__pycache__` there, breaking the app's signature (found when the image's check refused the app). The launcher
+  passes `-B` when the script is the release's own copy (macOS bundle or AppImage).

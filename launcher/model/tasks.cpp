@@ -621,6 +621,10 @@ namespace launcher
         task->startTime = m_now;
         std::vector<std::string> argv = python;
         argv.push_back("-I");
+        // the release's own copy of the scripts (inside VCSLauncher.app, or the AppImage): no __pycache__ written
+        // there - in the app bundle it breaks the signature (a sealed resource added), so macOS would refuse the app
+        if (!payload.empty() && !args.empty() && args[0].rfind(pathText(payload), 0) == 0)
+            argv.push_back("-B");
         argv.insert(argv.end(), args.begin(), args.end());
         Process::Options options;
         options.cwd = root;

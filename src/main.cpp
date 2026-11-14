@@ -331,15 +331,12 @@ namespace
         int value;
     };
     // Vertical sync's default: On on macOS (the user's choice, 2026-11-13; DECISIONS.md), Off elsewhere. The presets
-    // that set it keep to it.
+    // that set it keep to it. (An Enhanced preset was removed on 2026-11-14, the user's choice; DECISIONS.md.)
 #if defined(__APPLE__)
     constexpr int kVsyncDefault = 1;
 #else
     constexpr int kVsyncDefault = 0;
 #endif
-    const Preset kEnhanced[] = {{"display.aspect", 0},   {"display.hud", 2},    {"display.scale", 0},
-                                {"display.msaa", 4},     {"display.aniso", 16}, {"display.timing", 1},
-                                {"display.fps", vcs::kCapRefresh}, {"display.vsync", kVsyncDefault}};
     const Preset kLight[] = {{"display.aspect", 0}, {"display.hud", 2},    {"display.scale", 1},  {"display.msaa", 1},
                              {"display.aniso", 4},  {"display.timing", 1}, {"display.fps", 60}, {"display.vsync", kVsyncDefault}};
     const char *const kPresetKeys[] = {"display.aspect", "display.hud", "display.cutscene_bars", "display.scale", "display.msaa",
@@ -417,19 +414,6 @@ namespace
         s.type = Type::Action;
         s.button = "Apply";
         s.onChange = [](int) { applyAuthentic(); };
-        settings::add(s);
-
-        s = {};
-        s.key = "presets.enhanced";
-        s.page = "Display";
-        s.section = "Presets";
-        s.label = "Enhanced";
-        s.help = "Widescreen in the window's shape with the HUD at the screen edges, rendered at the window's resolution, "
-                 "4x anti-aliasing, 16x texture filtering and frame-rate independent timing at the display's refresh rate. "
-                 "Needs a reasonably modern graphics card; resolution, anti-aliasing and timing apply after a restart.";
-        s.type = Type::Action;
-        s.button = "Apply";
-        s.onChange = [](int) { applyPreset("Enhanced", kEnhanced); };
         settings::add(s);
 
         s = {};

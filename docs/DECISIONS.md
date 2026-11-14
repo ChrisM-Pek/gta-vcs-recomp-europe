@@ -1476,3 +1476,10 @@ turned stick (the pull-in toward the player), through the game's own switch for 
   (`PS2X_HW_BLUR_HISTORY`, `VCS_PARTICLE_TIMING`, `VCS_EFFECTS_TIMING`) stay for testing.
 - The settings menu's label column widens per page (45% up to 60%) when a label needs it, so the setting's full name
   shows; pages whose labels fit keep 45%.
+
+## 2026-11-14 - No Enhanced preset (the user's decision)
+
+- Display > Presets loses **Enhanced** (Match window aspect and resolution, HUD at the edges, 4x MSAA, 16x AF, timing
+  at the display's refresh): the user asked for it to be removed entirely. Authentic (PS2) and Widescreen, light stay;
+  every setting Enhanced set is still on its own row. `presets.enhanced` was an action, never written to vcs.ini, so
+  nothing in a player's settings refers to it. `tools/controls_check.py` checks the Light preset in its place.

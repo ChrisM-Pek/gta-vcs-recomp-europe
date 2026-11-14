@@ -129,7 +129,7 @@ where your disc is.
 
 - **F2** opens the settings: presets, resolution, widescreen, frame rate, vsync, sound, and every key, mouse and
   gamepad binding. The defaults match the PS2 except the frame rate (60 fps, frame-rate independent); every other
-  improvement is an option you turn on (Display > Presets > Enhanced turns on the usual ones at once). Settings are
+  improvement is an option you turn on (Display > Presets has quick starting points). Settings are
   saved in `vcs.ini` next to the game.
 - **Alt+Enter** switches between full screen and the window.
 - **F5** opens the trainer ([docs/TRAINER.md](docs/TRAINER.md)).
@@ -141,8 +141,8 @@ where your disc is.
 
 The defaults are the PS2 game as it was, except the frame rate: 60 fps with frame-rate independent timing. Every
 other improvement below is an option in the settings menu (F2), and *Authentic (PS2)* goes back to the PS2's 30 fps.
-*Display > Presets* turns on the usual ones at once: **Enhanced** for a modern graphics card, **Widescreen, light**
-for older PCs and integrated graphics, **Authentic (PS2)** to go back.
+*Display > Presets* has **Widescreen, light** (widescreen and 60 fps for older PCs and integrated graphics) and
+**Authentic (PS2)** to go back.
 
 **Runs natively, on Windows and Linux.** The game's own code, recompiled to C++ and running on the PC, not in an
 emulator. The 3D world, characters, vehicles, HUD and menus are drawn by a native renderer - Direct3D 11 on Windows,

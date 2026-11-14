@@ -1120,9 +1120,11 @@ class Check:
             self.setting("keys.l12", 0)
 
             # settings: presets and reset
-            self.setting("presets.enhanced")
-            got = {k: self.setting(k) for k in ("display.aspect", "display.hud", "display.msaa", "display.timing")}
-            self.ok("Enhanced preset", got == {"display.aspect": "0", "display.hud": "2", "display.msaa": "4", "display.timing": "1"}, str(got))
+            self.setting("presets.light")
+            # (not display.fps: test runs pin VCS_FPS=30, and the environment wins)
+            got = {k: self.setting(k) for k in ("display.aspect", "display.hud", "display.timing", "display.aniso")}
+            self.ok("Widescreen, light preset", got == {"display.aspect": "0", "display.hud": "2", "display.timing": "1",
+                                                        "display.aniso": "4"}, str(got))
             self.setting("presets.authentic")
             got = {k: self.setting(k) for k in ("display.aspect", "display.hud", "display.msaa", "display.timing", "display.fps")}
             self.ok("Authentic preset", got == {"display.aspect": "43", "display.hud": "0", "display.msaa": "1", "display.timing": "0",

@@ -16,7 +16,13 @@ python3 tools/run.py 0 play                            # play (window; build/run
 
 The only thing to install is **Apple's Command Line Tools** (`xcode-select --install`, or Xcode): Apple clang 17+
 (LLVM 19: `preserve_none`, checked by CMake), Apple's linker (ld64), `make`, `git` and `python3`. Everything else is
-fetched or built by the build itself, pinned, and bundled by `tools/deps.py --platform macos` for offline builds:
+fetched or built by the build itself, pinned, and bundled by `tools/deps.py --platform macos` for offline builds.
+Xcode itself is never needed (checked 2026-11-14 on a Mac with both: `DEVELOPER_DIR=/Library/Developer/CommandLineTools`,
+`PATH` without Homebrew, `/usr/bin/python3`, a fresh `VCS_BUILD_DIR` - the shader tools, FFmpeg, the game and the
+launcher all built with the Command Line Tools' clang 21 and SDK, no Xcode path in the build files, the game ran 30 s
+on Metal and the launcher passed its self-test; the Metal shaders are compiled by macOS at start, not by Xcode's
+`metal`). That Mac's CMake / Ninja were still Homebrew's, found by their usual folder, so the download of them wasn't
+part of that check:
 
 | What | How |
 |---|---|

@@ -1591,3 +1591,20 @@ takes a zip given by hand). Choices:
   Windows and Linux only; nothing of it builds or runs here without an Apple host.
 - `VERSION` is `0.3.0-europe`, following the fork's tag scheme; the release notes are
   `docs/releases/v0.3.0-europe.md`. Nothing was pushed: the user wanted to try the build first.
+
+## 2026-11-14 - Release numbering for the European fork
+
+- **The number is the upstream release the build contains**, with the fork's suffix: merging upstream `X.Y.Z` and
+  releasing it gives `X.Y.Z-europe` (today `0.3.0-europe`, the first European release on upstream 0.3.0). The tag is
+  `v` + `VERSION`, and the notes are `docs/releases/v<VERSION>.md`; `tools/release.py` derives the zip's name and
+  `RELEASE.json` from the same number, so one bump is all it takes.
+- **Fork-only fixes between upstream releases take a fourth segment**: `X.Y.Z-europe.2`, `.3`, ... The earlier scheme -
+  bumping the patch (`0.2.5-europe` ... `0.2.10-europe`) - only worked while upstream stood at 0.2.4. Now that the fork
+  follows upstream's releases, a fork fix numbered `0.3.1-europe` would take the tag that a later upstream 0.3.1 merge
+  needs. A fourth segment always sorts after the release it fixes (`tools/update.py`'s `version_key` reads every
+  number), and it cannot be mistaken for an upstream version.
+- **A tag pushed on its own did not start the release workflow** (checked 2026-11-14, and true of 0.2.6-europe ...
+  0.2.10-europe: all of those were `workflow_dispatch` runs). `gh workflow run launcher.yml --ref vX` on the tag does
+  start it, and `publish` runs because the ref is the tag's. The workflow builds the Windows zip, the AppImage and,
+  since upstream's port came in, a macOS dmg. The European disc has not been tried on a Mac, so the dmg was removed
+  from this release: the fork ships Windows and Linux.

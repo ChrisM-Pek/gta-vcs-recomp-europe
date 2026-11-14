@@ -16,6 +16,13 @@
   with the wheel; a 60 fps run with `VCS_PARTICLE_LOG` / `VCS_EFFECTS_LOG` reported `[effects] 78.1 frames/s, 29.9
   PS2 frames/s ... glare rolls 29.9 shake rolls 29.9`, `[music-timing] stations off the air advance on the time step`
   and particle call sites throttled at their PAL return addresses - the new hooks run on the European disc.
+- The water cannon was measured in game: `tools/framerate_audit.py --only hose --steps 144` reached 26.8 m and put a
+  fire out in 2.49 s at the simulated 144 fps, against about 5.6 m before the fix (the PS2's reach at 30 fps is 26 m).
+  `tools/framerate_audit.py` reads the build's region now (the vehicle pool, the video flag, the cannons, the fires
+  and the clock move by 0x300 on the European disc). `tools/hose_check.py` was not adapted: on the European disc it
+  reported the mission never leaving its state global (0) although LOU_B1 was running (the girls' bar drained in the
+  log), so where the mission's globals sit there is still open - the water cannon itself is covered by
+  `framerate_audit.py --only hose`.
 - Not yet checked on the European disc: the missions the release fixes (Purple Haze, Hose the Hoes, Snitch Hitch, Kill
   Phil), the water cannon's reach in game, lightning / rain / trails on screen, the graphics-card choice and the full
   screen default. The user tries the build first; nothing was pushed.

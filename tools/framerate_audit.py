@@ -552,7 +552,7 @@ def scenario_hose(s):
                             S.op(S.CREATE_CAR, S.i(FIRE_TRUCK), S.f(x + 4.0), S.f(y), S.f(z), S.LOCAL0) +
                             S.op(S.WARP_CHAR_INTO_CAR, S.PLAYER, S.LOCAL0), 1)
     car = ints[0]
-    vehicle = g.u32(g.u32(0x487A98)) + (car >> 8) * 0x8C0
+    vehicle = g.u32(g.u32(VEHICLE_POOL)) + (car >> 8) * 0x8C0
     s.wait_sim(2.0)
     vx, vy, vz = g.peekf(vehicle + 0x30, 3)
     fx, fy, _ = g.peekf(vehicle + 0x10, 3)
@@ -807,6 +807,7 @@ def scenario_particles(s):
     return out
 
 
+VIDEO_FLAG = 0x481CD4 + REGION  # the video-cam overlay's "on" flag (vcs_effects_timing.cpp 5.)
 EFFECTS_LINE = re.compile(r"^\[effects\] \d+ s: [\d.]+ frames/s, ([\d.]+) PS2 frames/s; .*clouds turn (-?[\d.]+) / s, "
                           r"spin (-?[\d.]+) / s$", re.M)
 EFFECTS_COUNTS = re.compile(r"^\[effects\] taking effect, per second:(.*)$", re.M)
@@ -824,7 +825,7 @@ def scenario_effects(s):
     fx, fy, h = FOOT_SPOT
     s.place(fx, fy, heading=h)
     g.weather(2)
-    g.cmd("poke 0x481cd4 01000000")
+    g.cmd("poke %x 01000000" % VIDEO_FLAG)
     read = lambda: open(g.log_path, encoding="utf-8", errors="replace").read()
     n0, t0 = len(EFFECTS_LINE.findall(read())), s.clock()
     _, (px, py, pz), _ = g.player()
@@ -834,7 +835,7 @@ def scenario_effects(s):
             g.scm(rig.Scm.op(0x013C, rig.Scm.f(px + 20.0), rig.Scm.f(py), rig.Scm.f(pz), rig.Scm.i(1)))
             booms += 1
         s.wait_sim(0.5)
-    g.cmd("poke 0x481cd4 00000000")
+    g.cmd("poke %x 00000000" % VIDEO_FLAG)
     g.weather(0)
     text = read()
     lines, counts = EFFECTS_LINE.findall(text), EFFECTS_COUNTS.findall(text)

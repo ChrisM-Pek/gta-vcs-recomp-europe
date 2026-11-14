@@ -30,11 +30,17 @@ Scenarios (each from a fresh teleport, so earlier ones don't leak into later one
           wobble was put on the step), lean, roll at the end (up z), whether the rider came off
   rotor   a Maverick standing in an alley narrower than its rotor: the health its blades cost per second (per frame
           before 2026-11-10: 382 a second at 30 fps, 1590 at 144 - on fire within a second)
+  hose    a fire truck's water cannon: how far it reaches, then how long a fire 18 m ahead takes to put out (the
+          trail moved on once a frame before 2026-11-14: 7 m of reach at 144 fps against 26.8, the fire never out)
   carwater the car dropped into the sea at 15 m/s: its speed 1 s after it reaches the water (the water's drag)
   bikewater the PCJ-600 dropped into the sea: how deep it settles
   ferris  the player in a ferris wheel carriage for 10 s: how long he stays where he stood in it, how far he drifts
   carcam  the car camera after a left turn: how long its lag behind the car takes to halve once the car runs straight
   footcam the on-foot camera while the player runs to its right: how fast it turns after him
+  particles an idling car in the rain: exhaust, rain on its body and on the screen - made per second and how long
+          they live (once a frame before 2026-11-14: exhaust 83-102 ms at 144 fps against 270 at 30)
+  effects a storm with the video-cam overlay on: PS2 frames counted, cloud turn / spin, the overlay's flips and noise,
+          lightning's rolls - per second (once a frame before 2026-11-14)
   clock   game clock ms per frame vs the step; frames per simulated second
   heat    PHI_A2's heat bar: its floor and the heat at +1 a frame, per simulated second (starts the mission: last)
 
@@ -42,6 +48,8 @@ Scenarios (each from a fresh teleport, so earlier ones don't leak into later one
 
 checks instead that every per-frame mission meter src/game/vcs_script_timing.cpp puts on the time step is found where
 its table says (a game per mission, VCS_SCRIPT_TIMESTEP_CHECK=1).
+
+AUDIT_ENV="NAME=VALUE ..." passes more environment to the game (e.g. VCS_PARTICLE_TIMING=0 for the before).
 
 Prints, per scenario and metric, each step's value and its difference from the 30 fps result (the original frame
 rate), flagging differences over --tolerance (default 5%). Writes OUT/audit.json (OUT: build/audit/<date-time>).
@@ -91,7 +99,10 @@ RUNWAY_SPOT = (-1600.0, -1450.0, 0.0)
 
 class Session:
     def __init__(self, step, name, port):
-        env = {"VCS_ASPECT": "43", "VCS_TIMING": "1", "VCS_TIMESTEP": str(step), "VCS_FPS": "0", "PS2X_INPUT": "injected"}
+        env = {"VCS_ASPECT": "43", "VCS_TIMING": "1", "VCS_TIMESTEP": str(step), "VCS_FPS": "0", "PS2X_INPUT": "injected",
+               "VCS_PARTICLE_LOG": "1",  # a line every 10 s of game clock (scenario_particles)
+               "VCS_EFFECTS_LOG": "1"}   # every 30 s (scenario_effects)
+        env.update(dict(e.split("=", 1) for e in os.environ.get("AUDIT_ENV", "").split() if "=" in e))
         self.step = step
         self.in_car = False
         self.g = rig.Game.start(save=rig.default_save(), name=name, port=port,
@@ -507,6 +518,81 @@ def scenario_rotor(s):
     return {"health_per_s": (a[1] - b[1]) / (b[0] - a[0]), "seconds_900_to_300": b[0] - a[0], "health_after_4s": rows[-1][1]}
 
 
+FIRE_TRUCK = 194
+CANNONS, CANNON_SIZE = 0x4E3A60 + REGION, 0x250  # CWaterCannon x 3 (vcs_physics_timing.cpp 5.): +0 vehicle, +0x10 16 points
+FIRES = 0x51D7E0 + REGION  # CFireManager (0x51D7D0) + 0x10: 40 fires of 0x40 bytes; +0 burning, +1 script fire, +0x10 position,
+                  # +0x38 how hard it burns (water takes 0.012 x step a frame, it goes out below 0)
+START_SCRIPT_FIRE, REMOVE_SCRIPT_FIRE = 0x01BC, 0x01BE
+HOSE_FIRE_AHEAD = 18.0  # m in front of the truck: in reach at 30 fps (the stream's 26 m), out of it at 144 before
+
+
+def cannon_points(g, vehicle):
+    """The used points of the vehicle's water cannon: [(x, y, z)], or None when it has none."""
+    import struct
+    for n in range(3):
+        raw = g.peek(CANNONS + n * CANNON_SIZE, CANNON_SIZE)
+        if struct.unpack_from("<I", raw, 0)[0] != vehicle:
+            continue
+        return [struct.unpack_from("<3f", raw, 0x10 + 16 * i) for i in range(16) if struct.unpack_from("<I", raw, 0x210 + 4 * i)[0]]
+    return None
+
+
+def scenario_hose(s):
+    """The fire truck's water cannon (GitHub issue 144, Hose the Hoes): its trail of 16 points moved on every frame,
+    so the water reached 26 m at 30 fps and 5.6 m at 144 and the brothel's fires never went out. vcs_physics_timing.cpp
+    moves it on once per 1/30 s. Circle (Ctrl) held in a new fire truck for 2 s: how far the water reaches; then a
+    script fire HOSE_FIRE_AHEAD m ahead and Circle held until it is out (10 s at most): how long that took."""
+    import struct
+    g, S = s.g, rig.Scm
+    leave_vehicle(s)
+    x, y, h = CAR_SPOT
+    s.place(x, y, heading=h)
+    z = s.pos()[2] + 0.5
+    ints, _ = g.scm_outputs(S.op(S.REQUEST_MODEL, S.i(FIRE_TRUCK)) + S.op(S.LOAD_ALL_MODELS_NOW) +
+                            S.op(S.CREATE_CAR, S.i(FIRE_TRUCK), S.f(x + 4.0), S.f(y), S.f(z), S.LOCAL0) +
+                            S.op(S.WARP_CHAR_INTO_CAR, S.PLAYER, S.LOCAL0), 1)
+    car = ints[0]
+    vehicle = g.u32(g.u32(0x487A98)) + (car >> 8) * 0x8C0
+    s.wait_sim(2.0)
+    vx, vy, vz = g.peekf(vehicle + 0x30, 3)
+    fx, fy, _ = g.peekf(vehicle + 0x10, 3)
+    reach = 0.0
+    s.key("Ctrl", True)
+    t0 = s.clock()
+    while s.clock() - t0 < 2.0:
+        for p in cannon_points(g, vehicle) or []:
+            reach = max(reach, (p[0] - vx) * fx + (p[1] - vy) * fy)  # along the truck
+        time.sleep(0.01)
+    s.key("Ctrl", False)
+    s.wait_sim(2.0)  # the trail runs out
+    # a fire ahead, on the ground
+    fire_at = (vx + fx * HOSE_FIRE_AHEAD, vy + fy * HOSE_FIRE_AHEAD)
+    ints, _ = g.scm_outputs(S.op(START_SCRIPT_FIRE, S.f(fire_at[0]), S.f(fire_at[1]), S.f(-100.0), S.LOCAL0), 1)
+    handle = ints[0]
+    s.wait_sim(1.0)
+    record = None
+    for i in range(40):
+        raw = g.peek(FIRES + i * 0x40, 0x40)
+        px, py = struct.unpack_from("<2f", raw, 0x10)
+        if raw[0] and raw[1] and math.hypot(px - fire_at[0], py - fire_at[1]) < 2.0:
+            record = FIRES + i * 0x40
+    out = {"reach_m": reach}
+    if record is None:
+        out["error"] = "no fire"
+    else:
+        s.key("Ctrl", True)
+        t0 = s.clock()
+        while s.clock() - t0 < 10.0 and g.peek(record, 1)[0]:
+            time.sleep(0.01)
+        out_s = s.clock() - t0
+        s.key("Ctrl", False)
+        out["seconds_to_put_out"] = out_s if not g.peek(record, 1)[0] else 99.0
+    s.wait_sim(2.0)
+    leave_vehicle(s)
+    g.scm(S.op(REMOVE_SCRIPT_FIRE, S.i(handle)) + S.op(DELETE_CAR, S.i(car)))
+    return out
+
+
 OBJECT_POOL = 0x487AA4 + REGION  # CPool of objects: 475 entries of 0x220 bytes (game-internals.md 12)
 FERRIS_CARRIAGE = 7069  # the model of the ferris wheel's 12 carriages, which turn in the plane x = 342.19
 FERRIS_SPOT = (342.0, -250.0)  # on the ground beside the wheel
@@ -678,6 +764,97 @@ def scenario_heat(s):
     return {"floor_per_s": (b[1] - a[1]) / (b[0] - a[0]), "heat_per_s": (d[2] - c[2]) / (d[0] - c[0])}
 
 
+PARTICLE_LIVES = re.compile(r"^\[particles\] lifetimes by type \(died/s, mean ms\):(.*)$", re.M)
+
+
+def scenario_particles(s):
+    """Particles in the rain beside an idling car (vcs_particle_timing.cpp): CParticle::Update fades, grows and turns
+    each particle once a frame, and the continuous emitters spawn once a frame - before 2026-11-14 exhaust lived 83-102 ms
+    at 144 fps against 270 at 30, and 3-4x as many rain drops were made. Read from the game's VCS_PARTICLE_LOG lines
+    (one per 10 s of game clock): the second one after the car is in place lies wholly inside the scenario."""
+    g, S = s.g, rig.Scm
+    leave_vehicle(s)
+    s.in_car = False
+    g.weather(2)
+    x, y, h = CAR_SPOT
+    s.place(x, y, heading=h)
+    _, (px, py, pz), _ = g.player()
+    g.scm(S.op(S.REQUEST_MODEL, S.i(211)) + S.op(S.LOAD_ALL_MODELS_NOW) +
+          S.op(S.CREATE_CAR, S.i(211), S.f(px), S.f(py), S.f(pz + 1.0), S.LOCAL0) +
+          S.op(S.SET_CAR_PROOFS, S.LOCAL0, S.i(1), S.i(1), S.i(1), S.i(1), S.i(1)) +
+          S.op(S.WARP_CHAR_INTO_CAR, S.PLAYER, S.LOCAL0) + S.op(S.MARK_MODEL_AS_NO_LONGER_NEEDED, S.i(211)))
+    s.in_car = True
+    read = lambda: PARTICLE_LIVES.findall(open(g.log_path, encoding="utf-8", errors="replace").read())
+    n0, t0 = len(read()), s.clock()
+    while len(read()) < n0 + 2 and s.clock() - t0 < 30.0:
+        s.wait_sim(0.5)
+    lines = read()
+    g.weather(0)
+    leave_vehicle(s)
+    s.in_car = False
+    if len(lines) < n0 + 2:
+        raise RuntimeError("no particle log (VCS_PARTICLE_LOG) lines")
+    types = {int(t): (float(r), float(ms)) for t, r, ms in re.findall(r"(\d+):([\d.]+)/(\d+)", lines[n0 + 1])}
+    # exhaust dies by its fade (per frame before the fix); rain by the game clock, which the log reads at frame
+    # resolution (30 fps reads up to a frame longer: 67 / 275 ms against 56 / 235 at 144, with or without the fix) -
+    # so only its rate is compared
+    out = {}
+    for name, t, life in (("exhaust", 65, True), ("rain_body", 38, False), ("rain_screen", 85, False)):
+        if t in types:
+            out[name + "_per_s"] = types[t][0]
+            if life:
+                out[name + "_ms"] = types[t][1]
+    return out
+
+
+EFFECTS_LINE = re.compile(r"^\[effects\] \d+ s: [\d.]+ frames/s, ([\d.]+) PS2 frames/s; .*clouds turn (-?[\d.]+) / s, "
+                          r"spin (-?[\d.]+) / s$", re.M)
+EFFECTS_COUNTS = re.compile(r"^\[effects\] taking effect, per second:(.*)$", re.M)
+
+
+def scenario_effects(s):
+    """Effects that step or re-roll once a frame (vcs_effects_timing.cpp), in a storm with the video-cam overlay on
+    (flag 0x481CD4): the PS2 frames the fix counts, the clouds' turn and spin, the overlay's scanline flips and noise
+    rolls and lightning's rolls per second - 30 a second each at any frame rate (once a frame before 2026-11-14). The
+    turn follows the camera's heading (sin(heading - 0.85)), which settles a little differently per run: ~6%. Read
+    from VCS_EFFECTS_LOG's lines (one per 30 s of the clock): the second after the start lies wholly inside."""
+    g = s.g
+    leave_vehicle(s)
+    s.in_car = False
+    fx, fy, h = FOOT_SPOT
+    s.place(fx, fy, heading=h)
+    g.weather(2)
+    g.cmd("poke 0x481cd4 01000000")
+    read = lambda: open(g.log_path, encoding="utf-8", errors="replace").read()
+    n0, t0 = len(EFFECTS_LINE.findall(read())), s.clock()
+    _, (px, py, pz), _ = g.player()
+    booms = 0
+    while len(EFFECTS_LINE.findall(read())) < n0 + 2 and s.clock() - t0 < 75.0:
+        if s.clock() - t0 > booms * 5.0:  # a molotov (type 1) 20 m away every 5 s: its length and step count
+            g.scm(rig.Scm.op(0x013C, rig.Scm.f(px + 20.0), rig.Scm.f(py), rig.Scm.f(pz), rig.Scm.i(1)))
+            booms += 1
+        s.wait_sim(0.5)
+    g.cmd("poke 0x481cd4 00000000")
+    g.weather(0)
+    text = read()
+    lines, counts = EFFECTS_LINE.findall(text), EFFECTS_COUNTS.findall(text)
+    if len(lines) < n0 + 2 or len(counts) < n0 + 2:
+        raise RuntimeError("no effects log (VCS_EFFECTS_LOG) lines")
+    ps2, turn, spin = (float(v) for v in lines[n0 + 1])
+    per = {k.strip(): float(v) for k, v in re.findall(r"([a-z ]+?) ([\d.]+)", counts[n0 + 1])}
+    out = {"ps2_frames_per_s": ps2, "clouds_turn_per_s": turn, "clouds_spin_per_s": spin,
+           "video_flips_per_s": per.get("video flips", 0.0), "dash_rolls_per_s": per.get("dash rolls", 0.0),
+           "lightning_rolls_per_s": per.get("lightning rolls", 0.0)}
+    # explosions ended after the first line (before 2026-11-14 at 144 fps: 1.1 s and 157 steps, against 1.55 s and 46)
+    starts = [m.start() for m in EFFECTS_LINE.finditer(text)]
+    tail = text[starts[n0]:]
+    ex = re.findall(r"^\[effects\] explosions: \d+ ended, (\d+) ms, ([\d.]+) steps", tail, re.M)
+    if ex:
+        out["explosion_ms"] = sum(float(m) for m, _ in ex) / len(ex)
+        out["explosion_steps"] = sum(float(st) for _, st in ex) / len(ex)
+    return out
+
+
 def scenario_clock(s):
     c0, f0 = s.g.u32(CLOCK_MS), s.g.u32(FRAME_COUNTER)
     s.wait_sim(5.0)
@@ -701,23 +878,27 @@ SCENARIOS = {
     "brake": scenario_brake,
     "bikebrake": scenario_bikebrake,
     "rotor": scenario_rotor,
+    "hose": scenario_hose,
     "carwater": scenario_carwater,
     "bikewater": scenario_bikewater,
     "ferris": scenario_ferris,
     "carcam": scenario_carcam,
     "footcam": scenario_footcam,
+    "particles": scenario_particles,
+    "effects": scenario_effects,
     "heat": scenario_heat,  # starts a mission: last
 }
 
 
-def check_sites(port):
+def check_sites(port, only=None):
     """--sites: every per-frame meter instruction src/game/vcs_script_timing.cpp scales (its kSites) is where the table
     says, as the game decodes it: a game per listed mission with VCS_SCRIPT_TIMESTEP_CHECK=1, the mission launched, the
     log's "check: mission N +0x.. matches" lines counted against the table."""
     src = open(os.path.join(ROOT, "src", "game", "vcs_script_timing.cpp"), encoding="utf-8").read()
     table = {}
     for m, off in re.findall(r"^\s*\{(\d+), 0x([0-9A-Fa-f]+), 0x[0-9A-Fa-f]{4}, ", src, re.M):
-        table.setdefault(int(m), set()).add(int(off, 16))
+        if not only or int(m) in only:
+            table.setdefault(int(m), set()).add(int(off, 16))
     bad = 0
     for mission in sorted(table):
         g = rig.Game.start(save=rig.default_save(), name="sites_%d" % mission,
@@ -752,8 +933,8 @@ def main():
     ap.add_argument("--tolerance", type=float, default=0.05)
     ap.add_argument("--sites", action="store_true", help="only check the per-frame meter sites (check_sites)")
     a = ap.parse_args()
-    if a.sites:
-        sys.exit(0 if check_sites(47670) else 1)
+    if a.sites:  # --only: mission numbers here
+        sys.exit(0 if check_sites(47670, {int(m) for m in a.only.split(",") if m}) else 1)
     out = a.out or os.path.join(ROOT, "build", "audit", datetime.datetime.now().strftime("%Y%m%d_%H%M%S"))
     os.makedirs(out, exist_ok=True)
     steps = [int(x) for x in a.steps.split(",") if x]

@@ -3,6 +3,16 @@
 
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_vulkan.h>
+#if defined(__APPLE__)
+#include <SDL3/SDL_metal.h>
+namespace platform
+{
+    namespace
+    {
+        SDL_MetalView g_metalView = nullptr; // the Metal renderer's view and layer (metalLayer)
+    }
+}
+#endif
 
 #include "imgui.h"
 #include "imgui_impl_sdl3.h"
@@ -372,8 +382,12 @@ namespace platform
             std::fprintf(stderr, "[platform] no audio: %s\n", SDL_GetError());
 
         // created hidden, placed, then shown: no flash at the default place
-        g_window = SDL_CreateWindow(desc.title, desc.width, desc.height,
-                                    SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIDDEN | (desc.vulkan ? SDL_WINDOW_VULKAN : 0));
+        SDL_WindowFlags flags = SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIDDEN | (desc.vulkan ? SDL_WINDOW_VULKAN : 0);
+#if defined(__APPLE__)
+        // macOS: Metal (metalLayer), and the Retina screen's own pixels (the window's size stays in points)
+        flags |= SDL_WINDOW_METAL | SDL_WINDOW_HIGH_PIXEL_DENSITY;
+#endif
+        g_window = SDL_CreateWindow(desc.title, desc.width, desc.height, flags);
         if (!g_window)
         {
             std::fprintf(stderr, "[platform] SDL_CreateWindow: %s\n", SDL_GetError());
@@ -429,6 +443,11 @@ namespace platform
         if (g_gamepad)
             SDL_CloseGamepad(g_gamepad);
         g_gamepad = nullptr;
+#if defined(__APPLE__)
+        if (g_metalView)
+            SDL_Metal_DestroyView(g_metalView);
+        g_metalView = nullptr;
+#endif
         if (g_window)
             SDL_DestroyWindow(g_window);
         g_window = nullptr;
@@ -449,6 +468,24 @@ namespace platform
     }
 
     bool windowHidden() { return g_hiddenWindow; }
+
+#if defined(__APPLE__)
+    void *metalLayer()
+    {
+        if (!g_window)
+            return nullptr;
+        if (!g_metalView)
+            g_metalView = SDL_Metal_CreateView(g_window);
+        if (!g_metalView)
+        {
+            std::fprintf(stderr, "[platform] SDL_Metal_CreateView: %s\n", SDL_GetError());
+            return nullptr;
+        }
+        return SDL_Metal_GetLayer(g_metalView);
+    }
+#else
+    void *metalLayer() { return nullptr; }
+#endif
 
     const char *const *vulkanInstanceExtensions(uint32_t *count)
     {

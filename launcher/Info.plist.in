@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>en</string>
+	<key>CFBundleDisplayName</key>
+	<string>GTA Vice City Stories</string>
+	<key>CFBundleExecutable</key>
+	<string>VCSLauncher</string>
+	<key>CFBundleIconFile</key>
+	<string>launcher.icns</string>
+	<key>CFBundleIdentifier</key>
+	<string>io.github.gothamor.vcs-launcher</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>VCS Launcher</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>@VCS_VERSION_SHORT@</string>
+	<key>CFBundleVersion</key>
+	<string>@VCS_VERSION_SHORT@</string>
+	<key>LSApplicationCategoryType</key>
+	<string>public.app-category.games</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>13.0</string>
+	<key>NSHighResolutionCapable</key>
+	<true/>
+	<key>NSSupportsAutomaticGraphicsSwitching</key>
+	<true/>
+	<key>NSAppleEventsUsageDescription</key>
+	<string>The launcher opens Terminal to run an install command when you ask it to.</string>
+</dict>
+</plist>

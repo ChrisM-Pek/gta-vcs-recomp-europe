@@ -195,6 +195,9 @@ def build_launcher(env, verbose, staged=False):
         cmd = ["cmake", "-S", os.path.join(tc.ROOT, "launcher"), "-B", build_dir, "-G", "Ninja",
                "-DCMAKE_BUILD_TYPE=Release", "-DVCS_LAUNCHER_OUTPUT_DIR=" + output_dir.replace(os.sep, "/")] + tc.launcher_compiler_defines(env) + tc.deps_defines() + \
               tc.python_defines()
+        if tc.IS_MACOS:  # its Metal shader's compilers (built once from pinned sources)
+            import shader_tools
+            cmd += shader_tools.cmake_defines(env)
         if os.environ.get("VCS_WAYLAND_PROTOCOLS_DIR"):  # a release built on an older distribution (CI)
             cmd.append("-DVCS_WAYLAND_PROTOCOLS_DIR=" + os.environ["VCS_WAYLAND_PROTOCOLS_DIR"])
         log = os.path.join(tc.BUILD, "configure_launcher.log")
@@ -203,8 +206,9 @@ def build_launcher(env, verbose, staged=False):
             tc.fail("CMake configure of the launcher failed (build/configure_launcher.log)", tc.configure_failure(log), log)
     if not tc.cmake_build(env, "VCSLauncher", "build_launcher.log", verbose, build_dir=build_dir):
         return False
-    print("[build] ok: " + tc.exe("VCSLauncher"))
-    tc.event(result="ok", exe=tc.exe("VCSLauncher"))
+    exe = "VCSLauncher.app" if tc.IS_MACOS else tc.exe("VCSLauncher")
+    print("[build] ok: " + exe)
+    tc.event(result="ok", exe=exe)
     return True
 
 
@@ -214,6 +218,8 @@ def install_deps(env):
     no_polkit and the command to run in a terminal; a refused prompt is elevation_denied."""
     if tc.IS_WINDOWS:
         tc.fail("--install-deps is for Linux (Windows: tools/setup_vs.py install)", "unsupported")
+    if tc.IS_MACOS:
+        return install_clt()
     tc.stage("packages", "Installing the packages the build needs")
     missing = tc.linux_missing(env, quiet=True) + tc.linux_missing(env, tc.LAUNCHER_LINUX_DEPS)
     if not missing:
@@ -243,6 +249,25 @@ def install_deps(env):
         tc.fail("still missing after the install: " + ", ".join(label for label, _ in still), "install_failed")
     print("[deps] installed: " + " ".join(packages))
     tc.event(result="ok", installed=packages)
+    return 0
+
+
+def install_clt():
+    """macOS: Apple's Command Line Tools through xcode-select --install - macOS shows its own installer and the call
+    returns at once; the launcher checks again when the player says it has finished (result "started")."""
+    tc.stage("packages", "Installing Apple's Command Line Tools")
+    missing = tc.macos_missing()
+    if not missing:
+        print("[deps] nothing to install: the Command Line Tools are there (%s)" % tc.macos_developer_dir())
+        tc.event(result="ok", installed=[])
+        return 0
+    print("[deps] " + " ".join(tc.CLT_INSTALL))
+    code = subprocess.call(tc.CLT_INSTALL)
+    if code != 0 and tc.macos_missing():
+        tc.fail("xcode-select --install stopped with exit code %d: install the Command Line Tools from "
+                "https://developer.apple.com/download/all/ (or Xcode), then check again" % code, "install_failed")
+    print("[deps] macOS' installer is open: finish it, then check again")
+    tc.event(result="started", installed=["Command Line Tools"])
     return 0
 
 
@@ -361,7 +386,7 @@ def train(env, verbose):
     profiles = glob.glob(os.path.join(raw, "*.profraw"))
     if not profiles:
         tc.fail("training wrote no profiles (build/pgo/raw)")
-    profdata = shutil.which("llvm-profdata", path=env.get("PATH")) or "llvm-profdata"
+    profdata = tc.llvm_profdata(env)
     subprocess.check_call([profdata, "merge", "-o", PROFDATA] + profiles, env=env)
     print("[build] profile: " + tc.show(PROFDATA) + " from %d runs" % len(profiles))
 

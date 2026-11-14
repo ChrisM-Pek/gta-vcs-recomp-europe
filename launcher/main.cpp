@@ -180,9 +180,14 @@ namespace
             // the renderer and the fonts, offscreen (a GPU, or WARP without one)
             std::string renderError;
             const bool rendered = render::rendererInit(nullptr, 64, 64, renderError) && render::fontsInit(renderError);
-            check(rendered, rendered ? "renderer: " + render::rendererStats.api + " (" + render::rendererStats.adapter +
-                                           "), " + render::fontRasterizer()
-                                     : "renderer: " + renderError);
+            // VCS_SELFTEST_NO_GPU=1 (CI on a virtual Mac without a Metal device): a missing renderer is reported, not failed
+            const char *noGpu = std::getenv("VCS_SELFTEST_NO_GPU");
+            if (!rendered && noGpu && *noGpu == '1')
+                std::printf("[skip] renderer: %s (VCS_SELFTEST_NO_GPU)\n", renderError.c_str());
+            else
+                check(rendered, rendered ? "renderer: " + render::rendererStats.api + " (" + render::rendererStats.adapter +
+                                               "), " + render::fontRasterizer()
+                                         : "renderer: " + renderError);
             render::fontsShutdown();
             render::rendererShutdown();
             std::printf("%s\n", failed ? "self-test FAILED" : "self-test ok");

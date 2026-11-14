@@ -61,7 +61,9 @@ namespace launcher
         struct Exit;                // what the waiter thread saw (shared: the game's waiter may outlive us)
         int m_pid = -1;             // also the process group (killOnClose) or session (the game) it leads
         int m_readFd = -1;
-        int m_stopFd = -1;          // an eventfd: tells the reader to stop (a grandchild may hold the pipe open)
+        int m_stopFd = -1;          // an eventfd (macOS: a pipe's write end): tells the reader to stop (a grandchild
+                                    // may hold the pipe open)
+        int m_stopReadFd = -1;      // what the reader polls: the eventfd itself, or the pipe's read end
         bool m_ownGroup = false;    // kill() signals the whole group
         bool m_killOnClose = true;
         std::thread m_waiter;       // blocks in waitpid, wakes the UI at the exit

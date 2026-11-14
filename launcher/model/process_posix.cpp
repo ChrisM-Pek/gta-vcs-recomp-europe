@@ -1,4 +1,4 @@
-// Process on Linux: fork + execvpe. A tool leads a process group of its own, so Cancel (and closing the launcher)
+// Process on Linux and macOS: fork + exec. A tool leads a process group of its own, so Cancel (and closing the launcher)
 // stops the whole tree - build.py -> cmake -> ninja -> clang - as the Job Object does on Windows; the game leads a
 // session of its own and plays on when the launcher closes. A waiter thread blocks in waitpid and a reader thread in
 // poll, and both wake the UI, so nothing polls on a timer.
@@ -11,8 +11,10 @@
 #include <cstring>
 #include <fcntl.h>
 #include <poll.h>
+#if defined(__linux__)
 #include <sys/eventfd.h>
 #include <sys/prctl.h>
+#endif
 #include <sys/wait.h>
 #include <unistd.h>
 
@@ -35,6 +37,20 @@ namespace launcher
             if (fd >= 0)
                 ::close(fd);
             fd = -1;
+        }
+
+        // a pipe whose ends close on exec (macOS has no pipe2: the flags right after, from the UI thread that forks)
+        int cloexecPipe(int fds[2])
+        {
+#if defined(__linux__)
+            return ::pipe2(fds, O_CLOEXEC);
+#else
+            if (::pipe(fds) != 0)
+                return -1;
+            ::fcntl(fds[0], F_SETFD, FD_CLOEXEC);
+            ::fcntl(fds[1], F_SETFD, FD_CLOEXEC);
+            return 0;
+#endif
         }
     }
 
@@ -60,6 +76,9 @@ namespace launcher
                 m_waiter.detach(); // the game plays on; the waiter holds its own reference to what it writes
         }
         closeFd(m_readFd);
+        if (m_stopReadFd != m_stopFd)
+            closeFd(m_stopReadFd);
+        m_stopReadFd = -1;
         closeFd(m_stopFd);
     }
 
@@ -118,7 +137,7 @@ namespace launcher
             else
             {
                 int fds[2];
-                if (::pipe2(fds, O_CLOEXEC) != 0)
+                if (cloexecPipe(fds) != 0)
                 {
                     error = "pipe failed (" + lastErrorText(errno) + ")";
                     closeFd(nul);
@@ -130,7 +149,7 @@ namespace launcher
         }
         // exec's errno comes back through this pipe; it closes on a successful exec
         int status[2];
-        if (::pipe2(status, O_CLOEXEC) != 0)
+        if (cloexecPipe(status) != 0)
         {
             error = "pipe failed (" + lastErrorText(errno) + ")";
             closeFd(nul);
@@ -149,9 +168,11 @@ namespace launcher
             else if (ownGroup)
             {
                 ::setpgid(0, 0);
+#if defined(__linux__)
                 // the launcher dying (a crash, kill) stops the tool too. Tied to the thread that forked: tools are
-                // only started from the UI thread
+                // only started from the UI thread. macOS has no such signal: ~Process stops the group
                 ::prctl(PR_SET_PDEATHSIG, SIGTERM);
+#endif
                 if (::getppid() != parent)
                     _exit(127);
             }
@@ -173,7 +194,12 @@ namespace launcher
                 err = errno;
             else
             {
+#if defined(__linux__)
                 ::execvpe(args[0], args.data(), envp.data());
+#else
+                environ = envp.data(); // the child's own: execvp searches its PATH
+                ::execvp(args[0], args.data());
+#endif
                 err = errno;
             }
             [[maybe_unused]] ssize_t n = ::write(status[1], &err, sizeof(err));
@@ -221,14 +247,23 @@ namespace launcher
         if (readEnd >= 0)
         {
             m_readFd = readEnd;
-            m_stopFd = ::eventfd(0, EFD_CLOEXEC);
+#if defined(__linux__)
+            m_stopFd = m_stopReadFd = ::eventfd(0, EFD_CLOEXEC);
+#else
+            int stop[2];
+            if (cloexecPipe(stop) == 0)
+            {
+                m_stopReadFd = stop[0];
+                m_stopFd = stop[1];
+            }
+#endif
             m_readerDone = false;
             m_reader = std::thread([this] {
                 char buffer[4096];
-                pollfd fds[2] = {{m_readFd, POLLIN, 0}, {m_stopFd, POLLIN, 0}};
+                pollfd fds[2] = {{m_readFd, POLLIN, 0}, {m_stopReadFd, POLLIN, 0}};
                 for (;;)
                 {
-                    if (::poll(fds, m_stopFd >= 0 ? 2 : 1, -1) < 0)
+                    if (::poll(fds, m_stopReadFd >= 0 ? 2 : 1, -1) < 0)
                     {
                         if (errno == EINTR)
                             continue;

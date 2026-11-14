@@ -1480,3 +1480,114 @@ turned stick (the pull-in toward the player), through the game's own switch for 
   install and one to switch it; today only `textures`, and a second kind is a case in those three places. The sheet
   lists whatever the tool reports, so a new kind needs no UI work.
 - What would change it: packs shipped with their authors' permission, or the game offering to install one itself.
+
+## 2026-11-12 - macOS: Apple Silicon, Metal, nothing to install but Apple's tools (the user's decisions; the rest Claude's)
+
+- **The user's three**: Apple Silicon only (Intel Macs are left out: no machine to test them, and their GPUs would be a
+  second set to check); a **self-contained build** - Apple's Command Line Tools are the only prerequisite, everything
+  else is downloaded or built from pinned sources, never Homebrew; the release's launcher **signed ad-hoc** for now
+  (players allow it once in System Settings > Privacy & Security), Developer ID and notarization later.
+- **Metal, not Vulkan through MoltenVK**: the user asked for Metal for both programs. A Metal RHI backend
+  (`src/rhi/metal/rhi_metal.mm`, Objective-C++ with ARC, no metal-cpp) keeps D3D11's behaviour as the Vulkan backend
+  does, with the same tricks: an upload ring for write-discard buffers, passes that start at their first draw and are
+  suspended around copies, a dummy texture for unbound slots.
+- **Shaders: the one HLSL source through glslang and SPIRV-Cross, as MSL text compiled at run time.** The Command Line
+  Tools have no Metal compiler (`xcrun metal` needs Xcode and a separate download); the OS's Metal framework compiles
+  MSL. Fast math off (`MTLMathModeSafe`). glslang and SPIRV-Cross are built from the Vulkan SDK 1.4.350.1 tags, the same
+  pins as the Vulkan headers. Bindings without the Vulkan shifts (Metal has 16 sampler slots and a table per kind).
+- **Apple clang and ld64**, not Homebrew's LLVM: Homebrew's bitcode can't go through Apple's linker for ThinLTO, and
+  lld isn't part of the Command Line Tools. `preserve_none` exists from Apple clang 17 (LLVM 19), checked by CMake.
+- **sse2neon with its precise options** for the generated code's SSE (already wired upstream for ARM): VU0 / HLE verify
+  agree with the Windows reference. FPCR through `ps2x::fpControl` rather than sse2neon's emulated `_mm_getcsr`.
+- **macOS 13 or newer** (Metal 3 on every Apple Silicon Mac).
+- **FFmpeg from source**: only the MPEG-2 decoder, its parser and swscale, static, LGPL - about a minute, no package.
+- **16 MB thread stacks** for the game thread, the render worker and the GS stage (`ps2x::Thread`): macOS gives a
+  `std::thread` 512 KB.
+- **The launcher keeps macOS' window buttons** (traffic lights over the UI's title bar, a full-size content view)
+  instead of drawing Windows' on the right; Command counts as Ctrl for its shortcuts.
+
+## 2026-11-13 - macOS: vertical sync on by default (the user's decision)
+
+- Display > **Vertical sync** defaults to On on macOS only (`kVsyncDefault`, `src/main.cpp`); Windows and Linux keep
+  Off. The Enhanced and Light presets set it to that default too, so choosing one doesn't turn it off on a Mac, and
+  Authentic resets to it. A vcs.ini that names the setting keeps its value. The Metal backend logs the mode it presents
+  with (`[rhi] metal: vertical sync on|off`) at the first frame and at every change.
+
+## 2026-11-13 - Full screen by default (the user's decision)
+
+- Display > Screen > **Window mode** defaults to Full screen (borderless, on the monitor the window was last on) on
+  every platform; it was Windowed. A vcs.ini that names the setting keeps its value, so a player who chose Windowed
+  stays windowed. Shown test runs keep a window (`toolchain.test_window` sets `VCS_FULLSCREEN=0` unless given).
+
+## 2026-11-14 - Effects as on the PS2 at any frame rate; "Reduce Post Processing Effects" turns it back (the user's decisions)
+
+- The light trails (the motion blur read a PS2 frame back), the particles, lightning, clouds, camera shake, explosions
+  and the other effects that counted frames run at the PS2's 30 a second at any frame rate (PROGRESS.md milestone 4):
+  the user found them authentic.
+- Above 30 fps or 1x the motion blur is a quarter weaker (`PS2X_HW_BLUR_STRENGTH`, 0.75): at speed in a car its ghost
+  stood out a little more than on the PS2 (the user's request, "only slightly").
+- Enhancements > Effects > **Reduce Post Processing Effects** (off by default, live; `enhance.reduce_postfx`,
+  `VCS_REDUCE_POSTFX`): one toggle that puts all of it back as the port drew it before - the motion blur from the last
+  frame at the game's strength, particles and the effects once a frame. The environment switches of each part
+  (`PS2X_HW_BLUR_HISTORY`, `VCS_PARTICLE_TIMING`, `VCS_EFFECTS_TIMING`) stay for testing.
+- The settings menu's label column widens per page (45% up to 60%) when a label needs it, so the setting's full name
+  shows; pages whose labels fit keep 45%.
+
+## 2026-11-14 - No Enhanced preset; Widescreen, light becomes Balanced at 2x (the user's decisions)
+
+- Display > Presets loses **Enhanced** (Match window aspect and resolution, HUD at the edges, 4x MSAA, 16x AF, timing
+  at the display's refresh): the user asked for it to be removed entirely. Authentic (PS2) and Widescreen, light stay;
+  every setting Enhanced set is still on its own row. `presets.enhanced` was an action, never written to vcs.ini, so
+  nothing in a player's settings refers to it. `tools/controls_check.py` checks the other preset in its place.
+- "Widescreen, light" is now **Balanced** (`presets.balanced`, was `presets.light`; also an action, never stored) and
+  sets the internal resolution to 2x instead of 1x; the rest as before (Match window, HUD at the edges, no MSAA, 4x AF,
+  independent timing at 60). The user's request.
+
+## 2026-11-14 - macOS releases are a disk image with an Applications link (the user's request; the rest Claude's)
+
+The user asked for an image that lets players move the launcher into Applications. The macOS release is now
+`VCS-Recomp-<v>-macos-arm64.dmg` instead of a zip: a Finder window with the app and a link to /Applications side by
+side. The zip goes - no macOS release had been published, so no installed launcher looks for it (`update.py` still
+takes a zip given by hand). Choices:
+
+- **The layout without dmgbuild**: Finder reads the window (icon view, size, no bars) and the icon positions from the
+  image's `.DS_Store`. The tools are standard library only (AGENTS.md), so `tools/dmg.py` writes that file itself (one
+  B-tree leaf; checked by reading Finder's own files back with the same code), instead of `dmgbuild` / `create-dmg`.
+  AppleScript to Finder (create-dmg's way) was left out: it needs a logged-in Finder, which CI's Macs don't
+  reliably give.
+- **No background picture** (an arrow): Finder finds it through an alias / bookmark to a file in the image, tied to
+  the mounted volume - much more than the layout for little gain; the two icons side by side say it. Possible later.
+- **HFS+, ULMO**: HFS+ as dmgbuild uses; ULMO (LZMA) needs macOS 10.15, the launcher needs 13 anyway.
+- **The volume icon** is set with `SetFile` (the Command Line Tools'); without it the image keeps the plain disk icon
+  and the release goes on.
+- **`python -B` for the bundle's own scripts**: the first start's `update.py install` runs from inside the app and
+  wrote `__pycache__` there, breaking the app's signature (found when the image's check refused the app). The launcher
+  passes `-B` when the script is the release's own copy (macOS bundle or AppImage).
+
+## 2026-11-14 - Upstream 0.3.0 merged into the European fork (the user's request)
+
+- The user asked for the original repository's 0.3.0 release (35 commits after the 0.2.4 line, `upstream/main`) on the
+  European fork. It is a merge, not a set of cherry-picks: the fork's own work (European disc, launcher, HD textures,
+  mods, mission timers) and upstream's (effects and particles at the PS2's 30 a second, the radio, the missions, macOS)
+  both stay, upstream history stays reachable, and the next upstream release merges the same way.
+- The 11 conflicted files keep the fork's side where it is a fork feature and add upstream's: the launcher's
+  `VCS_LAUNCHER_OUTPUT_DIR` also carries upstream's macOS bundle `Info.plist` step; `tools/update.py` keeps the
+  git-based European update and takes upstream's macOS asset suffix for the release-folder path; `gs_hw` keeps both new
+  switches (`gsHwSetBloomEnabled` and `gsHwSetReducedPostFx`); the docs keep both additions. `src/main.cpp` keeps the
+  fork's PAL installation list and gains the three new timing modules.
+- **PAL addresses for what upstream added are derived, not guessed.** `build/analysis/candidates.csv` (the 6,971 unique
+  `--candidates` pairs of `tools/match_versions.py`) gives the function twins; an address inside one keeps its offset.
+  Every hook target is then checked in the PAL executable: the word 8 bytes before a return address must be a `jal`
+  whose target is the PAL twin of the US callee. Game data is the US address + 0x300, the offset `tools/framerate_audit.py`
+  already uses, checked with the ELF where a matched function forms the address with `lui` + `addiu` / `ori` / load. The
+  two functions without a candidate twin (CSpecialFX::Render2DFXs, CParticle::Update) had their inner return addresses
+  placed by the callee's order inside them. A hidden PAL run at 60 fps logged the effects at 29.9 PS2 frames a second
+  and particle sites throttled at their PAL return addresses, so the mapped sites are the ones the game calls.
+- **The European build installs game modules from `main.cpp`, not `applyVcs`**: `PS2_REGISTER_GAME_OVERRIDE` names
+  `SLUS_215.90`, so a SLES_546.22 boot never applies the US override list. Everything the European build needs is
+  called in `main.cpp`'s `VCS_EXPERIMENTAL_PAL` branch - the new `installMusicTimingHooks`, `installParticleTimingHooks`
+  and `installEffectsTimingHooks` included, in that order (the effects' AddParticle hook chains onto the particle one).
+- macOS support from upstream comes along in the source (Metal backend, launcher, docs) but the fork still ships
+  Windows and Linux only; nothing of it builds or runs here without an Apple host.
+- `VERSION` is `0.3.0-europe`, following the fork's tag scheme; the release notes are
+  `docs/releases/v0.3.0-europe.md`. Nothing was pushed: the user wanted to try the build first.

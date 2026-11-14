@@ -1,5 +1,5 @@
-# The launcher (docs/LAUNCHER.md): built and self-tested on every change to it or the tools it runs, on Windows and on
-# Linux (Vulkan through lavapipe, with the validation layer: any message fails the job). On a tag v*, each platform
+# The launcher (docs/LAUNCHER.md): built and self-tested on every change to it or the tools it runs, on Windows, on
+# Linux (Vulkan through lavapipe, with the validation layer: any message fails the job) and on macOS (Apple Silicon). On a tag v*, each platform
 # makes its release file - the Windows zip (tools/release.py: source, launcher, embeddable Python, the libraries) and
 # the Linux AppImage (release.py --platform linux) - no game code, which only ever exists on a player's PC - and
 # `publish` puts both on one GitHub release, so the two always ship together.
@@ -12,7 +12,13 @@ on:
     tags: ["v*"]
   pull_request:
     paths: ["launcher/**", "tools/**", "src/disc/**", "src/util/sha1.h", ".github/workflows/launcher.yml"]
+  # a manual run builds every platform, or the ones named (gh workflow run launcher.yml -f platforms=macos): each
+  # makes its release file as an artifact for testing; only a tag publishes
   workflow_dispatch:
+    inputs:
+      platforms:
+        description: "Platforms to build: all, or any of linux windows macos"
+        default: all
 
 permissions:
   contents: write
@@ -21,6 +27,7 @@ jobs:
   # Ubuntu 22.04 on purpose: the AppImage's launcher needs the glibc of the system it was built on, and 22.04's (2.35)
   # makes it run on Ubuntu 22.04, Debian 12 and everything newer (tools/release.py refuses a newer one)
   linux:
+    if: github.event_name != 'workflow_dispatch' || inputs.platforms == 'all' || contains(inputs.platforms, 'linux')
     runs-on: ubuntu-22.04
     env:
       WAYLAND_PROTOCOLS: "1.45"
@@ -90,6 +97,7 @@ jobs:
             build/dist/*.AppImage.sha256
 
   windows:
+    if: github.event_name != 'workflow_dispatch' || inputs.platforms == 'all' || contains(inputs.platforms, 'windows')
     runs-on: windows-2022
     steps:
       - uses: actions/checkout@v4
@@ -143,12 +151,73 @@ jobs:
             build/dist/*.zip
             build/dist/*.zip.sha256
 
-  # both platforms' files on one release, only when both were made: Windows and Linux ship together
+  # macOS on Apple Silicon (docs/MACOS.md): VCSLauncher.app with Apple's clang, Metal and Core Text; its shader through
+  # glslang + SPIRV-Cross built from pinned sources (tools/shader_tools.py, cached). A virtual Mac may have no Metal
+  # device: the self-test then reports the renderer as skipped (VCS_SELFTEST_NO_GPU) instead of failing.
+  macos:
+    if: github.event_name != 'workflow_dispatch' || inputs.platforms == 'all' || contains(inputs.platforms, 'macos')
+    runs-on: macos-15
+    env:
+      VCS_SELFTEST_NO_GPU: "1"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/cache@v4
+        with:
+          path: build/build-tools
+          key: build-tools-macos-${{ hashFiles('tools/toolchain.py', 'tools/shader_tools/CMakeLists.txt') }}
+
+      - name: Build the launcher
+        run: python3 tools/build.py --launcher
+
+      - name: Self-test
+        run: |
+          ./VCSLauncher.app/Contents/MacOS/VCSLauncher --self-test --out "$RUNNER_TEMP/selftest.txt"; code=$?
+          cat "$RUNNER_TEMP/selftest.txt"
+          exit $code
+
+      - name: Tool checks
+        run: |
+          python3 tools/doctor.py || true
+          python3 tools/deps.py list --platform macos
+          /usr/bin/python3 -I tools/doctor.py --json > /dev/null
+
+      - name: Screenshots
+        continue-on-error: true # no Metal device on some virtual Macs
+        run: |
+          mkdir -p "$RUNNER_TEMP/shots"
+          for screen in home gallery setup:disc setup:tools sheet:settings; do
+            ./VCSLauncher.app/Contents/MacOS/VCSLauncher --screenshot "$RUNNER_TEMP/shots/${screen/:/-}.png" --screen "$screen"
+          done
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: launcher-macos-screenshots
+          path: ${{ runner.temp }}/shots
+          if-no-files-found: ignore
+
+      # the disk image (the app next to an Applications link), self-tested as a player starts it. A manual run makes it
+      # too, as an artifact: only a tag publishes
+      - name: Release app
+        if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+        run: python3 tools/release.py --platform macos --ref ${{ github.ref_name }} --launcher VCSLauncher.app
+
+      - uses: actions/upload-artifact@v4
+        if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+        with:
+          name: release-macos
+          path: |
+            build/dist/*.dmg
+            build/dist/*.dmg.sha256
+
+  # every platform's files on one release, only when all were made: Windows, Linux and macOS ship together
   # The title as every release has it; the notes from docs/releases/<tag>.md when the tag has one (written for players),
   # else GitHub's generated list.
   publish:
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [linux, windows]
+    needs: [linux, windows, macos]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

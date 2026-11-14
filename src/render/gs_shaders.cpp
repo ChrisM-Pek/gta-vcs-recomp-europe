@@ -1,5 +1,5 @@
 // See gs_shaders.h. The headers come from src/render/CMakeLists.txt: DXBC from fxc (shaders/dxbc), SPIR-V from
-// tools/hlsl_spirv.py (shaders/spirv).
+// tools/hlsl_spirv.py (shaders/spirv), MSL text from tools/hlsl_msl.py (shaders/msl).
 #include "render/gs_shaders.h"
 
 #if defined(VCS_HAVE_D3D11)
@@ -85,6 +85,47 @@ using BYTE = unsigned char; // fxc's /Fh headers declare `const BYTE name[]`
 #include "spirv/gs_draw_ps6_noz.h"
 #include "spirv/gs_draw_ps6_dual_noz.h"
 #endif
+#if defined(VCS_HAVE_METAL)
+#include "msl/gs_draw_vs.h"
+#include "msl/gs_world_vs.h"
+#include "msl/gs_lit_vs.h"
+#include "msl/gs_draw_ps0.h"
+#include "msl/gs_draw_ps0_dual.h"
+#include "msl/gs_draw_ps1.h"
+#include "msl/gs_draw_ps1_dual.h"
+#include "msl/gs_draw_ps2.h"
+#include "msl/gs_draw_ps2_dual.h"
+#include "msl/gs_draw_ps3.h"
+#include "msl/gs_draw_ps3_dual.h"
+#include "msl/gs_draw_ps4.h"
+#include "msl/gs_draw_ps4_dual.h"
+#include "msl/gs_draw_ps5.h"
+#include "msl/gs_draw_ps5_dual.h"
+#include "msl/gs_draw_ps6.h"
+#include "msl/gs_draw_ps6_dual.h"
+#include "msl/gs_quad_vs.h"
+#include "msl/gs_blit_ps.h"
+#include "msl/gs_fill_color_ps.h"
+#include "msl/gs_fill_depth_ps.h"
+#include "msl/present_vs.h"
+#include "msl/present_ps.h"
+#include "msl/ui_vs.h"
+#include "msl/ui_ps.h"
+#include "msl/gs_draw_ps0_noz.h"
+#include "msl/gs_draw_ps0_dual_noz.h"
+#include "msl/gs_draw_ps1_noz.h"
+#include "msl/gs_draw_ps1_dual_noz.h"
+#include "msl/gs_draw_ps2_noz.h"
+#include "msl/gs_draw_ps2_dual_noz.h"
+#include "msl/gs_draw_ps3_noz.h"
+#include "msl/gs_draw_ps3_dual_noz.h"
+#include "msl/gs_draw_ps4_noz.h"
+#include "msl/gs_draw_ps4_dual_noz.h"
+#include "msl/gs_draw_ps5_noz.h"
+#include "msl/gs_draw_ps5_dual_noz.h"
+#include "msl/gs_draw_ps6_noz.h"
+#include "msl/gs_draw_ps6_dual_noz.h"
+#endif
 
 namespace render
 {
@@ -159,6 +200,41 @@ namespace render
         };
         if (backend == rhi::Backend::Vulkan)
             return spirv;
+#endif
+#if defined(VCS_HAVE_METAL)
+        static const GsShaders msl{
+            {kGsDrawVS_msl, sizeof(kGsDrawVS_msl)},
+            {kGsWorldVS_msl, sizeof(kGsWorldVS_msl)},
+            {kGsLitVS_msl, sizeof(kGsLitVS_msl)},
+            {
+                {{kGsDrawPS0_msl, sizeof(kGsDrawPS0_msl)}, {kGsDrawPS0Dual_msl, sizeof(kGsDrawPS0Dual_msl)}},
+                {{kGsDrawPS1_msl, sizeof(kGsDrawPS1_msl)}, {kGsDrawPS1Dual_msl, sizeof(kGsDrawPS1Dual_msl)}},
+                {{kGsDrawPS2_msl, sizeof(kGsDrawPS2_msl)}, {kGsDrawPS2Dual_msl, sizeof(kGsDrawPS2Dual_msl)}},
+                {{kGsDrawPS3_msl, sizeof(kGsDrawPS3_msl)}, {kGsDrawPS3Dual_msl, sizeof(kGsDrawPS3Dual_msl)}},
+                {{kGsDrawPS4_msl, sizeof(kGsDrawPS4_msl)}, {kGsDrawPS4Dual_msl, sizeof(kGsDrawPS4Dual_msl)}},
+                {{kGsDrawPS5_msl, sizeof(kGsDrawPS5_msl)}, {kGsDrawPS5Dual_msl, sizeof(kGsDrawPS5Dual_msl)}},
+                {{kGsDrawPS6_msl, sizeof(kGsDrawPS6_msl)}, {kGsDrawPS6Dual_msl, sizeof(kGsDrawPS6Dual_msl)}},
+            },
+            {kGsQuadVS_msl, sizeof(kGsQuadVS_msl)},
+            {kGsBlitPS_msl, sizeof(kGsBlitPS_msl)},
+            {kGsFillColorPS_msl, sizeof(kGsFillColorPS_msl)},
+            {kGsFillDepthPS_msl, sizeof(kGsFillDepthPS_msl)},
+            {kPresentVS_msl, sizeof(kPresentVS_msl)},
+            {kPresentPS_msl, sizeof(kPresentPS_msl)},
+            {kUiVS_msl, sizeof(kUiVS_msl)},
+            {kUiPS_msl, sizeof(kUiPS_msl)},
+            {
+                {{kGsDrawPS0NoZ_msl, sizeof(kGsDrawPS0NoZ_msl)}, {kGsDrawPS0DualNoZ_msl, sizeof(kGsDrawPS0DualNoZ_msl)}},
+                {{kGsDrawPS1NoZ_msl, sizeof(kGsDrawPS1NoZ_msl)}, {kGsDrawPS1DualNoZ_msl, sizeof(kGsDrawPS1DualNoZ_msl)}},
+                {{kGsDrawPS2NoZ_msl, sizeof(kGsDrawPS2NoZ_msl)}, {kGsDrawPS2DualNoZ_msl, sizeof(kGsDrawPS2DualNoZ_msl)}},
+                {{kGsDrawPS3NoZ_msl, sizeof(kGsDrawPS3NoZ_msl)}, {kGsDrawPS3DualNoZ_msl, sizeof(kGsDrawPS3DualNoZ_msl)}},
+                {{kGsDrawPS4NoZ_msl, sizeof(kGsDrawPS4NoZ_msl)}, {kGsDrawPS4DualNoZ_msl, sizeof(kGsDrawPS4DualNoZ_msl)}},
+                {{kGsDrawPS5NoZ_msl, sizeof(kGsDrawPS5NoZ_msl)}, {kGsDrawPS5DualNoZ_msl, sizeof(kGsDrawPS5DualNoZ_msl)}},
+                {{kGsDrawPS6NoZ_msl, sizeof(kGsDrawPS6NoZ_msl)}, {kGsDrawPS6DualNoZ_msl, sizeof(kGsDrawPS6DualNoZ_msl)}},
+            },
+        };
+        if (backend == rhi::Backend::Metal)
+            return msl;
 #endif
         (void)backend;
         static const GsShaders none{};

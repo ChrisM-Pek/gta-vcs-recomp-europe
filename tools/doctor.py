@@ -180,6 +180,14 @@ def check_compiler():
     ok: the build downloads it when it isn't there yet). Linux: build.py --check-deps."""
     if tc.IS_WINDOWS and tc.windows_toolchain() == "mingw":
         return check_llvm_mingw()
+    if tc.IS_MACOS:  # Apple's Command Line Tools: clang, ld64, make, git, python3
+        missing = tc.macos_missing()
+        if not missing:
+            clang = tc.xcrun_find("clang")
+            return {"ok": True, "code": "ok", "toolchain": "apple",
+                    "message": "Apple clang %d (%s)" % (tc.clang_version(clang), tc.macos_developer_dir())}
+        return {"ok": False, "code": "no_clt", "toolchain": "apple", "missing": [label for label, _ in missing],
+                "command": " ".join(tc.CLT_INSTALL), "message": missing[0][0] + " not installed"}
     if not tc.IS_WINDOWS:
         missing = tc.linux_missing(tc.build_env(), quiet=True)
         if not missing:

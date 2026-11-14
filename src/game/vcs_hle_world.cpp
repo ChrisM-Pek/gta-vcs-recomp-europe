@@ -18,7 +18,11 @@
 #include "game/vcs_hle_world.h"
 
 #include <algorithm>
+#if defined(USE_SSE2NEON) // arm64 (macOS): the SSE code through NEON
+#include "sse2neon.h"
+#else
 #include <immintrin.h>
+#endif
 #include <chrono>
 #include <cfenv>
 #include <cmath>
@@ -34,24 +38,10 @@ namespace
 {
     constexpr uint32_t kQwords = 1024u; // VU1 data memory
 
-    // The rounding mode in MXCSR alone (FE_* values): fegetround / fesetround also read and reprogram the x87
-    // unit, unused on x64 - their calls around every native draw were ~3% of the render worker.
-    int sseRounding()
-    {
-        switch ((_mm_getcsr() >> 13) & 3u)
-        {
-        case 0u: return FE_TONEAREST;
-        case 1u: return FE_DOWNWARD;
-        case 2u: return FE_UPWARD;
-        default: return FE_TOWARDZERO;
-        }
-    }
-
-    void setSseRounding(int mode)
-    {
-        const unsigned bits = mode == FE_DOWNWARD ? 1u : mode == FE_UPWARD ? 2u : mode == FE_TOWARDZERO ? 3u : 0u;
-        _mm_setcsr((_mm_getcsr() & ~0x6000u) | (bits << 13));
-    }
+    // The rounding mode in MXCSR / FPCR alone (FE_* values): fegetround / fesetround also read and reprogram the
+    // x87 unit, unused on x64 - their calls around every native draw were ~3% of the render worker.
+    int sseRounding() { return ps2x::fpRounding(); }
+    void setSseRounding(int mode) { ps2x::setFpRounding(mode); }
 
     struct Vec4
     {

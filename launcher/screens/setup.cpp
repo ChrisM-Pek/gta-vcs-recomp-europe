@@ -275,13 +275,14 @@ namespace screens
             {
                 if (needCompiler)
                 {
-                    const char *label = !launcher::os::kWindows ? "Install packages"
+                    const char *label = launcher::os::kMac        ? "Install the Command Line Tools"
+                                        : !launcher::os::kWindows ? "Install packages"
                                         : code == "no_clang"   ? "Add the Clang tools"
                                         : code == "old_clang"  ? "Update Visual Studio"
                                                                : "Install build tools";
                     if (footerButton(footer, label, ButtonStyle::Primary, theme::icon::kDownload, !app.busy()))
                         app.startInstallTools();
-                    if (!launcher::os::kWindows)
+                    if (!launcher::os::kWindows && !launcher::os::kMac)
                     {
                         // the same command in a terminal: where there is no password prompt for pkexec to show
                         if (footerButton(footer, "Install in a terminal", ButtonStyle::Ghost, theme::icon::kCode, !app.busy(), false))
@@ -304,6 +305,9 @@ namespace screens
                        : launcher::os::kWindows
                            ? "The game is compiled on your PC with clang (llvm-mingw), which the first build downloads by "
                              "itself. Nothing of the game is downloaded - only the compiler."
+                       : launcher::os::kMac
+                           ? "The game is compiled on your Mac with Apple's clang, from the free Command Line Tools. Nothing "
+                             "of the game is downloaded - only the open-source libraries it builds with."
                            : "The game is compiled on your PC with clang and your distribution's packages. Nothing of the "
                              "game is downloaded - only the compiler and libraries.");
             if (!app.doctorDone)
@@ -323,6 +327,10 @@ namespace screens
                 callout(body, y, theme::kAmber, launcher::errorHelp(code).title,
                         c["message"].str() + ". The launcher can run Microsoft's installer with the right options ticked; "
                         "Windows asks for permission first, and the installer shows its own progress.");
+            else if (needCompiler && launcher::os::kMac)
+                callout(body, y, theme::kAmber, launcher::errorHelp(code).title,
+                        c["message"].str() + ". macOS opens Apple's installer for them (about 1 GB); when it has "
+                        "finished, choose Check again.");
             else if (needCompiler)
                 callout(body, y, theme::kAmber, launcher::errorHelp(code).title,
                         c["message"].str() + ". The launcher installs them with your distribution's package manager and "
@@ -606,7 +614,7 @@ namespace screens
                 y += row({body.x, y, body.w, 0}, "PC memory", m["message"].str(), m["ok"].boolean() ? theme::kText : theme::kAmber);
             }
             y += px(6);
-            const char *openLabel = launcher::os::kWindows ? "Open in Explorer" : "Open the folder";
+            const char *openLabel = launcher::os::kWindows ? "Open in Explorer" : launcher::os::kMac ? "Show in Finder" : "Open the folder";
             if (ui::button(openLabel, {body.x, y, ui::buttonWidth(openLabel, theme::icon::kOpen), px(38)}, ButtonStyle::Ghost, theme::icon::kOpen))
                 launcher::openFolder(app.root);
             y += px(52);

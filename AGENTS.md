@@ -18,6 +18,7 @@ detailed knowledge lives in `docs/`:
 | [docs/DISC.md](docs/DISC.md), [docs/CONTROLS.md](docs/CONTROLS.md) | Disc layout; keyboard / gamepad mapping |
 | [docs/TRAINER.md](docs/TRAINER.md) | The trainer (F5): what it does, how (the game's script commands), its check |
 | [docs/LINUX.md](docs/LINUX.md) | The Linux build: packages, flags, the Vulkan backend, what differs from Windows, the work list |
+| [docs/MACOS.md](docs/MACOS.md) | The macOS build (Apple Silicon): Apple's tools only, the Metal backend, sse2neon, what differs, the work list |
 | [docs/LAUNCHER.md](docs/LAUNCHER.md) | The launcher and releases: what a release holds, the player's flow, the tools behind each button, the `@vcs` events, what was checked |
 
 **When you learn something about the game, write it into docs/game-internals.md in the same change.**
@@ -30,8 +31,8 @@ choices).
 - GTA: Vice City Stories (PS2, SLUS-21590 USA) statically recompiled to C++ (PS2Recomp, vendored and
   heavily modified in `third_party/PS2Recomp`), turned step by step into a native port: native D3D11
   rendering of the game's models (`src/game/vcs_hle_world.cpp`), SDL3 platform layer, settings menu.
-- Windows and Linux (docs/LINUX.md: clang, Vulkan; a plain host build). macOS later is possible (SDL3 + the RHI); the
-  Steam Deck is postponed.
+- Windows, Linux (docs/LINUX.md: clang, Vulkan; a plain host build) and macOS on Apple Silicon (docs/MACOS.md: Apple
+  clang, Metal). The Steam Deck is postponed.
 - Distribution is source-only, bring your own disc. **Never commit game code or data**: no ISO, no
   ELF, no generated C++ (`generated/`), no disassembly listings, no extracted assets. Analysis dumps go
   to `build/analysis/` (ignored). Function maps (names + addresses) and docs describing behaviour are
@@ -43,15 +44,15 @@ choices).
 | Path | What |
 |---|---|
 | `src/main.cpp` | Launcher: ISO, settings registration, runtime start |
-| `src/game/` | Game-specific code: overrides / hooks (`vcs_overrides.cpp`), native draw HLE (`vcs_hle_world.cpp`), display (`vcs_display.cpp`), the trainer (`vcs_trainer.cpp`), frame timing (`vcs_framerate.cpp`, per-frame mission meters `vcs_script_timing.cpp`), the player's controls (`vcs_input.cpp`; free aim `vcs_aim.cpp`; the pause menu's keys and mouse `vcs_frontend.cpp`), the game's music / effects levels as settings (`vcs_volume.cpp`), button prompts by device (`vcs_prompts.cpp`, its glyphs `vcs_glyph_art.cpp`), traffic / pedestrian density and draw distance (`vcs_world_detail.cpp`), the NPC drive-by's fire rate (`vcs_driveby.cpp`), mission scripts stuck above 30 fps (`vcs_script_fixes.cpp`), HD textures for the HUD, text, radar and menus from PCSX2 texture packs (`vcs_hudtex.cpp`) |
-| `src/render/`, `src/rhi/`, `src/platform/` | Presenter + shaders (HLSL; DXBC by fxc, SPIR-V by `tools/hlsl_spirv.py`), the RHI (backends `d3d11/`, `vulkan/`, `null/`; only they see a graphics API), SDL3 platform layer |
+| `src/game/` | Game-specific code: overrides / hooks (`vcs_overrides.cpp`), native draw HLE (`vcs_hle_world.cpp`), display (`vcs_display.cpp`), the trainer (`vcs_trainer.cpp`), frame timing (`vcs_framerate.cpp`, per-frame mission meters `vcs_script_timing.cpp`, particles `vcs_particle_timing.cpp`, lightning / clouds / shake / other effects `vcs_effects_timing.cpp`), the player's controls (`vcs_input.cpp`; free aim `vcs_aim.cpp`; the pause menu's keys and mouse `vcs_frontend.cpp`), the game's music / effects levels as settings (`vcs_volume.cpp`), button prompts by device (`vcs_prompts.cpp`, its glyphs `vcs_glyph_art.cpp`), traffic / pedestrian density and draw distance (`vcs_world_detail.cpp`), the NPC drive-by's fire rate (`vcs_driveby.cpp`), mission scripts stuck above 30 fps (`vcs_script_fixes.cpp`), HD textures for the HUD, text, radar and menus from PCSX2 texture packs (`vcs_hudtex.cpp`) |
+| `src/render/`, `src/rhi/`, `src/platform/` | Presenter + shaders (HLSL; DXBC by fxc, SPIR-V by `tools/hlsl_spirv.py`, MSL by `tools/hlsl_msl.py`), the RHI (backends `d3d11/`, `vulkan/`, `metal/`, `null/`; only they see a graphics API), SDL3 platform layer |
 | `src/sound/` | Sony's libsd on the host (the native sound driver in `src/game/vcs_sound.cpp` drives the SPU2 through it) |
 | `src/settings/`, `src/ui/` | Settings registry + vcs.ini, the in-game settings menu (F2), the trainer menu (F5) |
 | `src/debug/` | Crash handler, watchdog, sampling profiler, self-test, memory watch, the F3 game-state panel (`game_info.cpp`, also `gamectl.py gameinfo`) |
 | `third_party/PS2Recomp/ps2xRuntime` | The runtime (EE, VIF, VU1, GS HW backend, IOP host, stubs); our changes marked `[gta-recomp]` |
 | `game/vcs/` | Recompiler config, function map, VU1 upload list |
 | `tools/` | Python 3 tools (standard library only) - see below |
-| `launcher/` | `VCSLauncher.exe` / Linux `VCSLauncher` (a CMake project of its own, no third-party code: its own window - Win32, or X11 / Wayland -, renderer - D3D11 or Vulkan, one `ui.hlsl` -, DirectWrite / FreeType text, its own icons, animated UI, after uppies): disc, build tools, build, play - a front end over `tools/` (docs/LAUNCHER.md) |
+| `launcher/` | `VCSLauncher.exe` / Linux `VCSLauncher` / macOS `VCSLauncher.app` (a CMake project of its own, no third-party code: its own window - Win32, X11 / Wayland or Cocoa -, renderer - D3D11, Vulkan or Metal, one `ui.hlsl` -, DirectWrite / FreeType / Core Text text, its own icons, animated UI, after uppies): disc, build tools, build, play - a front end over `tools/` (docs/LAUNCHER.md) |
 
 ## Build and run
 
@@ -60,7 +61,9 @@ python tools/build.py                       # rebuild after code changes (--reco
 python tools/build.py --recompile [ISO]     # disc -> generated C++ -> build (slow)
 python tools/build.py --iop-tests           # SPU2 unit tests (reverb, interpolation, noise, PMON)
 python tools/build.py --quick               # no LTO (= --opt none): fast relinks; kept until --opt lto
-python tools/build.py --check-deps          # Linux: missing packages and the command that installs them
+python tools/build.py --check-deps          # Linux: missing packages and the command that installs them; macOS: the
+                                            # Command Line Tools (docs/MACOS.md)
+python3 tools/shader_tools.py               # macOS: glslang + SPIRV-Cross for the Metal shaders (the build runs it)
 python tools/build.py --opt none|lto|pgo    # game optimisation, kept until changed (lto: the default; pgo: ThinLTO + profile, trains if needed)
 python tools/bench.py [OUT]                  # game-thread benchmark: fixed city spots + an AI drive (game / worker ms)
 python tools/cruise.py run [OUT] [ENV=VAL]   # stutter rig: the car along a fixed route at 144 km/h, every frame timed;
@@ -73,10 +76,12 @@ python tools/doctor.py [--json]              # folder, compiler, disc, build sta
 python tools/build_dir.py [check|set P|reset] # the build folder elsewhere (.vcs-build-dir, VCS_BUILD_DIR): tc.BUILD follows;
                                              # the test tools keep writing to build\ in the source folder
 python tools/release.py [--ref vX | --worktree]   # the Windows release zip (build/dist); refuses game files. The number is
-                                             # VERSION (root; 0.2.3): bump it before tagging - the tag must match;
+                                             # VERSION (root; 0.3.0): bump it before tagging - the tag must match;
                                              # the notes: docs/releases/<tag>.md (else GitHub generates them)
 python3 tools/release.py --platform linux [--worktree --allow-new-glibc]   # the Linux AppImage (CI builds it on
                                              # Ubuntu 22.04 for glibc 2.35; a v* tag publishes zip + AppImage together)
+python3 tools/release.py --platform macos [--worktree]   # the macOS .dmg: the app next to an Applications link
+                                             # (tools/dmg.py writes the Finder layout; `dmg.py show X.dmg` prints it)
 python tools/deps.py list|fetch|check        # the libraries CMake downloads; deps/ makes the build offline
 python tools/backup.py create|list|restore   # memory card backups (VCS_DATA_DIR honoured: test on copies)
 python tools/setup_vs.py status|install [--dry-run]   # Visual Studio Build Tools (+ clang) from Microsoft, elevated
@@ -104,6 +109,8 @@ python tools/shakedown.py [OUT]                               # mission 50: cuts
 python tools/haze_check.py [OUT] [--timing 1 --fps 144]       # mission 94 at 60 fps: the cutscene that stuck on "Loading...",
                                                               # the haze across a 16:9 picture
 python tools/soundcheck.py all OUT [--mission N]             # native sound vs the emulated IOP: record, replay, compare
+python tools/hose_check.py [OUT] [--step 144]                 # Hose the Hoes at a simulated frame rate: the girls' bar,
+                                                              # the parked cars' fuses (the hose: framerate_audit --only hose)
 python tools/trainer_check.py [OUT] [--vehicles all]          # every trainer feature, checked in the game's memory
 python tools/finale_check.py [OUT] [--story] [--full]         # Last Stand's end from the trainer: final cutscene, credits
 python tools/controls_check.py [OUT]                          # bindings, presets, reset, vibration, volume levels; menu screenshots
@@ -226,6 +233,9 @@ itself ("GTA Vice City Stories Launcher vX"), so the file has no heading. Follow
   a truck that only keeps rolling at shorter frames - game-internals.md 11h, `src/game/vcs_script_fixes.cpp`). The
   wait ends by itself now (`[script-fix] mission audio slot ... was freed` in the log): look for what killed the speaker.
 - Something wrong only above 100 fps: a `ms_fTimeStep < 0.5` branch the PS2 never takes (game-internals.md 4).
+- An effect faster, shorter or busier at high frame rates (smoke, sprays, flashes, flicker, trails): it counts frames,
+  not time - game-internals.md 4 "Effects that run per frame" lists the known ones; `VCS_PARTICLE_LOG=1` shows which
+  particle call sites run per frame (their calls per second grow with the frame rate).
 - A mission bar / meter / timer faster at high frame rates: the mission script adds a fixed amount every frame; add
   the instruction to `src/game/vcs_script_timing.cpp` (game-internals.md 11f has the survey and how to read a mission).
 - Load Game stuck on "Loading..." then a return to text (`0x4548435F`) from the script VM: host code took a game

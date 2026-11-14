@@ -1,6 +1,6 @@
 // The title bar the launcher draws itself (the window has no Windows frame): the name, the sheets (Saves, Settings,
 // Help) and the window's buttons. It tells the platform where the caption is, so dragging, double-click, snapping
-// and the system menu stay Windows' own.
+// and the system menu stay Windows' own. macOS: its own traffic lights stay (top left), so none are drawn here.
 #include "shell.h"
 
 #include "platform/platform.h"
@@ -83,7 +83,13 @@ namespace screens
 
         const bool focused = platform::window.focused;
         Rect left = bar;
+#if defined(__APPLE__)
+        // macOS keeps its own window buttons (the traffic lights, top left over our title bar, centred on it by
+        // platform_macos.mm's placeWindowButtons: 15 pt in, the last one ending at 69 pt): room for them
+        core::cutLeft(left, px(86));
+#else
         core::cutLeft(left, px(16));
+#endif
         logo(left.x + px(9), bar.cy(), px(8));
         core::cutLeft(left, px(28));
         const float nameW = measure(kFontSemibold, px(12.5f), "Vice City Stories");
@@ -93,6 +99,10 @@ namespace screens
 
         std::vector<Rect> hits;
         Rect right = bar;
+#if defined(__APPLE__)
+        const Rect maxR{};
+        core::cutRight(right, px(10));
+#else
         const float bw = px(46);
         const Rect closeR = core::cutRight(right, bw), maxR = core::cutRight(right, bw), minR = core::cutRight(right, bw);
         hits.push_back(closeR);
@@ -106,6 +116,7 @@ namespace screens
         core::cutRight(right, px(10));
         rect({right.right(), bar.y + px(14), 1, h - px(28)}, theme::ink(0.08f));
         core::cutRight(right, px(10));
+#endif
 
         struct Nav
         {

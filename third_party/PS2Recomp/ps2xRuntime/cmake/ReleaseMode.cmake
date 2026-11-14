@@ -19,8 +19,13 @@ elseif(PS2X_CPU STREQUAL "AVX")
 elseif(PS2X_CPU STREQUAL "SSE4")
     set(_ps2x_arch_msvc "/clang:-march=x86-64-v2")  # SSE4.2, SSSE3, POPCNT (clang-cl's /arch has no SSE4 level)
     set(_ps2x_arch_clang "-march=x86-64-v2")
+elseif(PS2X_CPU STREQUAL "ARM64")
+    # [gta-recomp] macOS on Apple Silicon (docs/MACOS.md): the M1 is the baseline of every M-series chip. The SSE code
+    # runs through sse2neon (../CMakeLists.txt, USE_SSE2NEON).
+    set(_ps2x_arch_msvc "")
+    set(_ps2x_arch_clang "-mcpu=apple-m1")
 else()
-    message(FATAL_ERROR "PS2X_CPU=${PS2X_CPU}: AVX2, AVX or SSE4")
+    message(FATAL_ERROR "PS2X_CPU=${PS2X_CPU}: AVX2, AVX, SSE4 or ARM64")
 endif()
 
 function(EnableFastReleaseMode TargetName)
@@ -66,13 +71,30 @@ function(EnableFastReleaseMode TargetName)
     # x86-64-v3 is /arch:AVX2 (AVX2, FMA, BMI); -ffp-contract=off for the same reason. clang-cl defaults to
     # -fno-strict-aliasing (MSVC compatibility) and the runtime and generated code read guest memory through casts, so
     # say it here. No stack protector / CET (Ubuntu turns them on; clang-cl gets /GS-, no CET).
-    if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang" AND NOT MSVC)
-        target_compile_options(${TargetName} PRIVATE
-            $<$<CONFIG:Release>:-O2 -DNDEBUG ${_ps2x_arch_clang} -ffp-contract=off -fno-math-errno -fno-strict-aliasing
-                                -fno-stack-protector -fcf-protection=none>
-        )
+    # [gta-recomp] macOS: Apple's clang takes the same flags (it fell into the generic branch below before and lost
+    # -ffp-contract=off). arm64 always has FMA, so FP contraction is off in every configuration there, not only Release.
+    if((CMAKE_CXX_COMPILER_ID STREQUAL "Clang" OR CMAKE_CXX_COMPILER_ID STREQUAL "AppleClang") AND NOT MSVC)
+        if(APPLE)
+            target_compile_options(${TargetName} PRIVATE -ffp-contract=off -fno-strict-aliasing
+                $<$<CONFIG:Release>:-O2 -DNDEBUG ${_ps2x_arch_clang} -fno-math-errno -fno-stack-protector>)
+        else()
+            target_compile_options(${TargetName} PRIVATE
+                $<$<CONFIG:Release>:-O2 -DNDEBUG ${_ps2x_arch_clang} -ffp-contract=off -fno-math-errno -fno-strict-aliasing
+                                    -fno-stack-protector -fcf-protection=none>
+            )
+        endif()
         get_target_property(_type ${TargetName} TYPE)
-        if(PS2X_LTO STREQUAL "THIN")
+        if(PS2X_LTO STREQUAL "THIN" AND APPLE)
+            # [gta-recomp] Apple's linker (ld64) runs ThinLTO through libLTO: its cache and job flags differ from lld's
+            target_compile_options(${TargetName} PRIVATE $<$<CONFIG:Release>:-flto=thin>)
+            if(_type STREQUAL "EXECUTABLE")
+                target_link_options(${TargetName} PRIVATE $<$<CONFIG:Release>:-flto=thin
+                                    -Wl,-cache_path_lto,${CMAKE_BINARY_DIR}/lto-cache
+                                    -Wl,-prune_after_lto,259200 -Wl,-max_relative_cache_size_lto,10
+                                    -Wl,-object_path_lto,${CMAKE_BINARY_DIR}/lto-objects>)
+                # (ld64 has no ThinLTO job count: libLTO takes one backend per core)
+            endif()
+        elseif(PS2X_LTO STREQUAL "THIN")
             target_compile_options(${TargetName} PRIVATE $<$<CONFIG:Release>:-flto=thin>)
             if(_type STREQUAL "EXECUTABLE")
                 target_link_options(${TargetName} PRIVATE $<$<CONFIG:Release>:-flto=thin

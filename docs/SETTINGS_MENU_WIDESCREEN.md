@@ -241,6 +241,9 @@ switch pages.
 
 Display > Screen > **Window mode**: Windowed / Full screen (`display.window=0|1`, `VCS_FULLSCREEN=0|1` for one run),
 and **Alt+Enter** switches at any time, also with a menu open; the choice is saved like any setting.
+- The default is Full screen since 2026-11-13 (the user's choice; it was Windowed). A vcs.ini that already says
+  `display.window=0` stays windowed. Shown test runs (`VCS_TEST_VISIBLE=1`) get `VCS_FULLSCREEN=0` from
+  `toolchain.test_window`, so they stay a window; hidden runs never go full screen anyway.
 - Full screen is borderless at the desktop's resolution on the monitor the window is on (SDL3's fullscreen with no
   display mode, `platform::setFullscreen`). No mode change: switching and Alt+Tab are instant, other monitors stay as
   they are, and the D3D11 flip-model swapchain just resizes. The Internal resolution / Match window aspect follow the
@@ -262,9 +265,10 @@ and **Alt+Enter** switches at any time, also with a menu open; the choice is sav
 
 Asked for by the user ("substantially flexible settings that players can change"). Pages now: Display, Graphics,
 Audio, Game, Keyboard, Gamepad, Advanced.
-- **Display**: *Presets* first - Authentic (PS2) (the Display / Graphics defaults, but original timing at 30 fps: the default frame rate is 60 with frame-rate independent timing since 2026-10-30), Enhanced (Match window aspect,
-  HUD at the screen edges, Match window resolution, 4x MSAA, 16x AF, independent timing at the display's refresh) and
-  Widescreen, light (Match window, 1x, no MSAA, 4x AF, independent at 60). A preset sets only those keys; window
+- **Display**: *Presets* first - Authentic (PS2) (the Display / Graphics defaults, but original timing at 30 fps: the default frame rate is 60 with frame-rate independent timing since 2026-10-30) and
+  Balanced (Match window aspect, HUD at the screen edges, 2x, no MSAA, 4x AF, independent at 60; "Widescreen, light"
+  at 1x until 2026-11-14, renamed and raised to 2x at the user's request). An Enhanced preset - Match window, 4x MSAA,
+  16x AF, the display's refresh - was removed on 2026-11-14, the user's choice. A preset sets only those keys; window
   mode, controls and sound stay. *Frame rate*: **Vertical sync** (`display.vsync`: Off = the flip model's present
   at once, never torn, as before; On = sync interval 1; Off, allow tearing = `DXGI_PRESENT_ALLOW_TEARING` for VRR and
   the lowest delay, Off where the system can't; `VCS_VSYNC`), **Show frame rate** (game frames per second over half a

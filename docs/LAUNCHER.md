@@ -320,6 +320,48 @@ repository root, ~1 MB stripped, 27 s from scratch on the dev laptop.
   package step adds apt.llvm.org first (`tools/linux_packages.py`, the only thing that runs as root). Copying a DVD is
   hidden (`rip_disc.py` is Windows only); update checks show in an AppImage, not in a clone.
 
+### macOS (2026-11-12)
+
+`VCSLauncher.app` (`python3 tools/build.py --launcher`; docs/MACOS.md). The same layers with macOS' pieces:
+
+- **Window** (`platform/platform_macos.mm`): one `NSWindow` with a full-size content view and a transparent title bar.
+  The UI draws its own title bar as everywhere, but macOS' traffic lights stay (top left: `screens/titlebar.cpp` leaves
+  room for them and draws no window buttons), as do resizing, tiling and full screen. AppKit centres them on a 28 pt
+  title bar; `placeWindowButtons` moves them onto the centre line of ours (44 pt, 15 pt in from the left and top) after
+  every resize and on leaving full screen, where AppKit lays them out again. A press on the caption the UI
+  reports drags the window (`performWindowDragWithEvent`); a double click does what System Settings > Desktop & Dock
+  says. Keys become Windows virtual keys; Command counts as Ctrl (Cmd+L and the rest). Typed text through
+  `interpretKeyEvents` (dead keys). Waiting is NSApp's event queue: `wake()` posts an application-defined event from any
+  thread. A live resize draws from `setFrameSize`; open / save panels run with a timer in their run-loop modes. File
+  drops from Finder. Cmd+Q and the window's close button set `quitRequested` (the UI decides).
+- **Rendering** (`render/metal/renderer_metal.mm`): the one instanced draw, from the same `ui.hlsl` as MSL
+  (`tools/hlsl_msl.py`; the constants at buffer 0 as D3D11's, no flip), compiled by the OS at start. BGRA8 UNORM in
+  sRGB, a latency of one frame (the previous frame's command buffer waited for before input is read), instances in a
+  shared buffer per frame, the atlas by its dirty rect. Offscreen RGBA8 for `--screenshot` / `--self-test`.
+- **Text** (`render/font_coretext.mm`): Core Text, grayscale without font smoothing, quarter-pixel positions; the UI in
+  San Francisco (`system-ui`), SF Mono / Menlo, Apple Symbols; kerning from the `kern` table as FreeType reads it.
+- **OS** (`model/system_macos.mm`): Finder through NSWorkspace, `~/Library/Application Support`, an IOKit assertion
+  against idle sleep while building, Terminal through AppleScript; `process_posix.cpp` without Linux's eventfd / pipe2 /
+  execvpe / prctl.
+- **Build tools step**: Apple's Command Line Tools - "Install the Command Line Tools" runs `build.py --install-deps`
+  (`xcode-select --install`: macOS' own installer), then Check again. They are checked before `python3` is probed:
+  without them `/usr/bin/python3` is a stub that opens that installer.
+- **A release** (`python3 tools/release.py --platform macos`): `VCS-Recomp-<v>-macos-arm64.dmg`, a disk image that
+  opens as one Finder window - `VCSLauncher.app` on the left, a link to Applications on the right, large icons, no
+  toolbar - to drag the one onto the other (DECISIONS.md 2026-11-14). `tools/dmg.py` makes it: the layout is the
+  image's `.DS_Store`, written by its own standard-library writer (no `dmgbuild`); the volume carries the launcher's
+  icon (`.VolumeIcon.icns`, the custom-icon flag set with `SetFile` on the mounted read-write image); then `hdiutil
+  convert` to ULMO (LZMA: 45 MB where the zip was 66). The release then mounts it and checks the app's signature in
+  it, the link and the layout (`python3 tools/dmg.py show X.dmg` prints the layout). The app is signed ad-hoc
+  (DECISIONS.md 2026-11-12), the release's files in `Contents/Resources/release` (the source, `deps/` for macOS,
+  licences; no Python: the Command Line Tools' is used). At first start the launcher copies them into
+  `~/Library/Application Support/VCSRecomp/install` and builds the game there, as from an AppImage; it runs that copy's
+  scripts with `python -B`, since a `__pycache__` written inside the bundle breaks its signature (it did, before
+  2026-11-14). Update (`update.py apply`) downloads the new image, mounts it out of Finder's sight, copies the app out
+  with `ditto` and puts it where the old one is (`VCS_APP_BUNDLE`, which the launcher passes to its tools); an app
+  macOS runs from a quarantined download in place (App Translocation) is refused with "move it to Applications". The first start of an unsigned download needs
+  System Settings > Privacy & Security > Open Anyway. CI: the `macos` job (macos-15), which `publish` waits for.
+
 ## How it fits together
 
 ```

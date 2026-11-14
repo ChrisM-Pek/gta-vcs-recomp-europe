@@ -480,6 +480,25 @@ then makes it hold at higher resolutions:
   texture copy, a blended one (motion blur, colour 127/128 at FIX 16) one full-screen quad with the draw's own state.
   Same picture as the strips (static regions within run-to-run noise). The self-copy over the sky stays a GS draw
   (depth-tested; 1:1, so read at full resolution).
+- **Motion blur by time, not by frame** (2026-11-13; `blurHistoryKeep` / `blurHistoryPick`, `PS2X_HW_BLUR_HISTORY=0` =
+  before). The motion blur is VCS's light trails at night (game-internals.md 6g): each frame blends the last shown
+  picture in at FIX 16, so on the PS2 the ghost is one frame, 33 ms, behind. Done once a frame at 144 fps it was 7 ms
+  behind and the trails vanished. Now each finished picture is copied, at the game's copy into the shown buffer, into
+  a small history with the time its frame was built (`Frame::builtNs`, on the game thread before any queue wait), and
+  the blend reads the one nearest to a PS2 frame before its own frame (`LayerTarget::rtTexture`: read in place of the
+  render target, same scale, so the 1:1 full-resolution read is unchanged). Each kept picture holds its own blend, so
+  the trail is the PS2's at any frame rate: 12.5% at 33 ms, 1.6% at 66 ms, with the motion as smooth as the frame
+  rate. Pictures more than 1.25 PS2 frames older than the newest are reused: 4 kept at 60 fps, 7 at 144 (each the
+  size of the frame: ~100 MB at 1440p 144 fps); at 30 fps (the shown picture 3/4 of a PS2 frame old or more) the shown
+  buffer is read as before. Resolution plays no part: the ghost is a sharp 1:1 copy at any size, as on the GS. The
+  game's flag that gates the blend (`0x48653C`, presumably the Display page's Trails) is untouched. `[gs-hw] motion blur` every 10 s:
+  blends, how many read the history, the ghost's mean age.
+  **Its strength above 30 fps or 1x** (2026-11-14, the user's request: at speed in a car the ghost stood out a little
+  more than on the PS2, where the 640x448 picture and the 30 fps judder softened it): when the history is read (above
+  ~40 fps) or the frame target is above 1x, the blend's FIX 16 (12.5%) is scaled by `PS2X_HW_BLUR_STRENGTH` (default
+  0.75: FIX 12, ~9.4%; 1 = the game's everywhere). At 30 fps and 1x it is the game's own. Checked in the draw log
+  (`native frame blend 0 -> 140 fix N`): 16 at 30 fps 1x, 12 at 144 fps 1x and at 30 fps above 1x, 16 with the
+  switch at 1.
 
 ### Native frame (milestone 3 step 4, started 2026-10-23)
 
@@ -755,3 +774,25 @@ Checks still to do: picture against D3D11 on the same PC (scenes), validation cl
 4. paraLLEl-GS kept as readback-only (its Vulkan window present is dropped).
 5. HLE hooks at the VIF1 packet level with a mesh cache, not in recompiled game code.
 6. The emulated GS path stays as fallback and reference indefinitely.
+
+### Metal backend (macOS, 2026-11-12)
+
+`src/rhi/metal/rhi_metal.mm` (docs/MACOS.md; the plan in DECISIONS.md 2026-11-12). The Vulkan backend's behaviour,
+which is D3D11's, on Metal:
+
+- Shaders: the one HLSL source as MSL text (`tools/hlsl_msl.py`), compiled with `newLibraryWithSource` (fast math off),
+  one library per shader, entry `vcs_main`. cbuffer bN -> buffer N in both stages, tN / sN -> texture / sampler N,
+  vertex buffers at buffer 30. `gs_draw.hlsl` writes the point size from the vertex stage only (`VCS_POINT_SIZE`):
+  Metal refuses a pixel input the vertex stage doesn't write, and a line pipeline whose vertex shader writes one with
+  its input class set - so only points set `inputPrimitiveTopology`.
+- Pipelines are made at the first draw per (colour format, depth format, samples), as Vulkan's variants; depth states
+  are cached objects; `depthClip = false` is the encoder's clamp mode; the RHI's write mask is reversed (Metal's red is
+  bit 3).
+- A pass's render encoder starts at its first draw; a copy, upload or readback inside it ends it, and the next draw
+  starts one that loads (suspends, in `PS2X_RHI_STATS`). Dynamic buffers take a slice of the frame's shared upload
+  ring per update; `updateTexture` goes through the ring and a blit, in command order. New render targets are cleared
+  to zero; textures with data are written in place (`replaceRegion`), from helper threads too (early textures on).
+- Unbound or self-target slots read a 1x1 black texture; MSAA is clamped to what the GPU supports; resolves are a
+  render pass with a resolve store.
+- First numbers (M1, intro cutscene, 60 fps cap): ~1,500 draws and 28 passes a frame, 1 suspend, 60 fps held.
+

@@ -1,4 +1,4 @@
-// Crash reporting: uncaught C++ exceptions, abort() and SEH exceptions (Windows) / fatal signals (Linux) print the
+// Crash reporting: uncaught C++ exceptions, abort() and SEH exceptions (Windows) / fatal signals (Linux, macOS) print the
 // reason and the host stack to stderr before the process dies. Windows symbolizes with dbghelp; Linux prints each
 // frame as module + offset (and the symbol dladdr knows: the exe is linked -rdynamic) and an llvm-symbolizer command
 // for file and line (docs/LINUX.md).
@@ -17,12 +17,18 @@
 #include <windows.h>
 #include <dbghelp.h>
 #include "win_symbols.h"
-#elif defined(__linux__)
+#elif defined(__linux__) || defined(__APPLE__)
 #include <dlfcn.h>
 #include <execinfo.h>
-#include <ucontext.h>
 #include <unistd.h>
+#if defined(__APPLE__)
+#include <pthread.h>
+#include <sys/ucontext.h> // <ucontext.h> wants _XOPEN_SOURCE on macOS
+#else
+#include <ucontext.h>
 #include <sys/syscall.h>
+#endif
+#define VCS_CRASH_POSIX 1
 #endif
 
 namespace vcs
@@ -106,8 +112,8 @@ namespace vcs
             printStack(info->ContextRecord);
             return EXCEPTION_CONTINUE_SEARCH;
         }
-#elif defined(__linux__)
-        // Frames as "module+0xoffset (symbol+0xoffset)", then one llvm-symbolizer line per module seen. Called from
+#elif VCS_CRASH_POSIX
+        // Frames as "module+0xoffset (symbol+0xoffset)", then one llvm-symbolizer (macOS: atos) line per module seen. Called from
         // signal handlers: no allocation; dladdr is not async-signal-safe in theory, but the process is ending anyway.
         void printStack(void *faultPc)
         {
@@ -144,15 +150,31 @@ namespace vcs
             {
                 if (!m)
                     break;
+#if defined(__APPLE__)
+                // atos takes the run's load address and the addresses as they were (macOS loads at a random slide)
+                Dl_info base{};
+                for (int i = first; i < n; ++i)
+                    if (dladdr(frames[i], &base) && base.dli_fname == m)
+                        break;
+                std::fprintf(stderr, "[crash] file and line: atos -o %s -l 0x%llx", m,
+                             static_cast<unsigned long long>(reinterpret_cast<uintptr_t>(base.dli_fbase)));
+#else
                 std::fprintf(stderr, "[crash] file and line: llvm-symbolizer -e %s", m);
+#endif
                 for (int i = first; i < n; ++i)
                 {
                     Dl_info info{};
                     if (dladdr(frames[i], &info) && info.dli_fname == m)
+                    {
                         // the return address minus one: the call, not the instruction after it (not for the fault)
+                        const uintptr_t back = i == first && faultPc ? 0 : 1;
+#if defined(__APPLE__)
+                        std::fprintf(stderr, " 0x%llx", static_cast<unsigned long long>(reinterpret_cast<uintptr_t>(frames[i]) - back));
+#else
                         std::fprintf(stderr, " 0x%llx",
-                                     static_cast<unsigned long long>(reinterpret_cast<uintptr_t>(frames[i]) - reinterpret_cast<uintptr_t>(info.dli_fbase) -
-                                                                     (i == first && faultPc ? 0 : 1)));
+                                     static_cast<unsigned long long>(reinterpret_cast<uintptr_t>(frames[i]) - reinterpret_cast<uintptr_t>(info.dli_fbase) - back));
+#endif
+                    }
                 }
                 std::fprintf(stderr, "\n");
             }
@@ -166,12 +188,24 @@ namespace vcs
                 _exit(128 + sig);
             inside = 1;
             const ucontext_t *uc = static_cast<const ucontext_t *>(context);
+#if defined(__APPLE__) && defined(__aarch64__)
+            void *pc = uc && uc->uc_mcontext ? reinterpret_cast<void *>(uc->uc_mcontext->__ss.__pc) : nullptr;
+#elif defined(__APPLE__)
+            void *pc = uc && uc->uc_mcontext ? reinterpret_cast<void *>(uc->uc_mcontext->__ss.__rip) : nullptr;
+#else
             void *pc = uc ? reinterpret_cast<void *>(uc->uc_mcontext.gregs[REG_RIP]) : nullptr;
+#endif
             const char *name = sig == SIGSEGV ? "SIGSEGV" : sig == SIGBUS ? "SIGBUS" : sig == SIGILL ? "SIGILL" : sig == SIGFPE ? "SIGFPE" : "signal";
             std::fprintf(stderr, "[crash] %s at %p", name, pc);
             if ((sig == SIGSEGV || sig == SIGBUS) && info)
                 std::fprintf(stderr, " %s address %p", info->si_code == SEGV_ACCERR ? "no access to" : "bad", info->si_addr);
+#if defined(__APPLE__)
+            uint64_t tid = 0;
+            pthread_threadid_np(nullptr, &tid);
+            std::fprintf(stderr, " (thread %llu)\n", static_cast<unsigned long long>(tid));
+#else
             std::fprintf(stderr, " (thread %ld)\n", static_cast<long>(syscall(SYS_gettid)));
+#endif
             printStack(pc);
             // the default action: the exit status (and a core dump where enabled) say what happened
             signal(sig, SIG_DFL);
@@ -199,7 +233,7 @@ namespace vcs
                 }
             }
             std::fprintf(stderr, "\n");
-#if defined(_WIN32) || defined(__linux__)
+#if defined(_WIN32) || VCS_CRASH_POSIX
             printStack(nullptr);
 #endif
             std::_Exit(3);
@@ -208,7 +242,7 @@ namespace vcs
         void onAbort(int)
         {
             std::fprintf(stderr, "[crash] abort()\n");
-#if defined(_WIN32) || defined(__linux__)
+#if defined(_WIN32) || VCS_CRASH_POSIX
             printStack(nullptr);
 #endif
             std::_Exit(3);
@@ -225,7 +259,7 @@ namespace vcs
         _set_invalid_parameter_handler(&onInvalidParameter);
         if (std::getenv("VCS_CRASH_FIRST_CHANCE"))
             AddVectoredExceptionHandler(1, &onFirstChance);
-#elif defined(__linux__)
+#elif VCS_CRASH_POSIX
         // the handler runs on its own stack, so a stack overflow is reported too (the main thread's; other threads
         // report on their own stack)
         static char altStack[64 * 1024];

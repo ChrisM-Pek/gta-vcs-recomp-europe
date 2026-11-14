@@ -26,6 +26,9 @@
 #include "game/vcs_driveby.h"
 #include "game/vcs_carcam.h"
 #include "game/vcs_aim.h"
+#include "game/vcs_effects_timing.h"
+#include "game/vcs_music_timing.h"
+#include "game/vcs_particle_timing.h"
 #include "game/vcs_framerate.h"
 #include "game/vcs_physics_timing.h"
 #include "game/vcs_script_fixes.h"
@@ -50,6 +53,10 @@
 #include "util/sha1.h"
 
 #include "imgui.h"
+
+#if defined(__APPLE__)
+#include <mach-o/dyld.h> // _NSGetExecutablePath
+#endif
 
 #include <algorithm>
 #include <cfloat>
@@ -137,6 +144,17 @@ namespace
         const fs::path self = fs::read_symlink("/proc/self/exe", ec);
         if (!ec && !self.empty())
             return self.parent_path();
+#elif defined(__APPLE__)
+        uint32_t size = 0;
+        _NSGetExecutablePath(nullptr, &size);
+        std::string buffer(size, '\0');
+        if (_NSGetExecutablePath(buffer.data(), &size) == 0)
+        {
+            std::error_code ec;
+            const fs::path self = fs::canonical(fs::path(buffer.c_str()), ec);
+            if (!ec && !self.empty())
+                return self.parent_path();
+        }
 #endif
         return fs::current_path();
     }
@@ -149,6 +167,9 @@ namespace
 #if defined(_WIN32)
         if (const char *local = std::getenv("LOCALAPPDATA"))
             return fs::path(local) / "VCSRecomp";
+#elif defined(__APPLE__)
+        if (const char *home = std::getenv("HOME"); home && *home == '/')
+            return fs::path(home) / "Library/Application Support/VCSRecomp";
 #endif
         if (const char *xdg = std::getenv("XDG_DATA_HOME"); xdg && *xdg == '/') // absolute only (the XDG spec)
             return fs::path(xdg) / "VCSRecomp";
@@ -320,11 +341,16 @@ namespace
         const char *key;
         int value;
     };
-    const Preset kEnhanced[] = {{"display.aspect", 0},   {"display.hud", 2},    {"display.scale", 0},
-                                {"display.msaa", 4},     {"display.aniso", 16}, {"display.timing", 1},
-                                {"display.fps", vcs::kCapRefresh}, {"display.vsync", 0}};
-    const Preset kLight[] = {{"display.aspect", 0}, {"display.hud", 2},    {"display.scale", 1},  {"display.msaa", 1},
-                             {"display.aniso", 4},  {"display.timing", 1}, {"display.fps", 60}, {"display.vsync", 0}};
+    // Vertical sync's default: On on macOS (the user's choice, 2026-11-13; DECISIONS.md), Off elsewhere. The presets
+    // that set it keep to it. (An Enhanced preset was removed on 2026-11-14, the user's choice; DECISIONS.md.)
+#if defined(__APPLE__)
+    constexpr int kVsyncDefault = 1;
+#else
+    constexpr int kVsyncDefault = 0;
+#endif
+    // Balanced (until 2026-11-14 "Widescreen, light" at 1x; the user asked for the name and 2x).
+    const Preset kBalanced[] = {{"display.aspect", 0}, {"display.hud", 2},    {"display.scale", 2},  {"display.msaa", 1},
+                                {"display.aniso", 4},  {"display.timing", 1}, {"display.fps", 60}, {"display.vsync", kVsyncDefault}};
     const char *const kPresetKeys[] = {"display.aspect", "display.hud", "display.cutscene_bars", "display.scale", "display.msaa",
                                        "display.aniso",  "display.timing", "display.fps", "display.vsync"};
 
@@ -403,28 +429,16 @@ namespace
         settings::add(s);
 
         s = {};
-        s.key = "presets.enhanced";
+        s.key = "presets.balanced";
         s.page = "Display";
         s.section = "Presets";
-        s.label = "Enhanced";
-        s.help = "Widescreen in the window's shape with the HUD at the screen edges, rendered at the window's resolution, "
-                 "4x anti-aliasing, 16x texture filtering and frame-rate independent timing at the display's refresh rate. "
-                 "Needs a reasonably modern graphics card; resolution, anti-aliasing and timing apply after a restart.";
+        s.label = "Balanced";
+        s.help = "Widescreen in the window's shape with the HUD at the screen edges, 60 fps with frame-rate independent "
+                 "timing, twice the original resolution, no anti-aliasing, 4x texture filtering. Resolution and timing "
+                 "apply after a restart.";
         s.type = Type::Action;
         s.button = "Apply";
-        s.onChange = [](int) { applyPreset("Enhanced", kEnhanced); };
-        settings::add(s);
-
-        s = {};
-        s.key = "presets.light";
-        s.page = "Display";
-        s.section = "Presets";
-        s.label = "Widescreen, light";
-        s.help = "Widescreen and 60 fps for older PCs and integrated graphics: the original resolution, no anti-aliasing, "
-                 "4x texture filtering. Resolution and timing apply after a restart.";
-        s.type = Type::Action;
-        s.button = "Apply";
-        s.onChange = [](int) { applyPreset("Widescreen, light", kLight); };
+        s.onChange = [](int) { applyPreset("Balanced", kBalanced); };
         settings::add(s);
 
         s = {};
@@ -436,7 +450,7 @@ namespace
                  "and Alt+Tab are instant). Alt+Enter switches too.";
         s.type = Type::Choice;
         s.choices = {{"Windowed", 0}, {"Full screen", 1}};
-        s.defaultValue = 0;
+        s.defaultValue = 1; // full screen since 2026-11-13 (the user's choice); test runs pin VCS_FULLSCREEN=0
         s.env = "VCS_FULLSCREEN";
         s.onChange = [](int v) { platform::setFullscreen(v != 0); };
         s.read = [] { return platform::fullscreen() ? 1 : 0; };
@@ -603,7 +617,7 @@ namespace
                  "delay, and for G-Sync / FreeSync monitors (with a cap a few fps below the refresh rate).";
         s.type = Type::Choice;
         s.choices = {{"Off", 0}, {"On", 1}, {"Off, allow tearing (VRR)", 2}};
-        s.defaultValue = 0;
+        s.defaultValue = kVsyncDefault;
         s.env = "VCS_VSYNC";
         s.onChange = [](int v) { present::setPresentMode(v); };
         settings::add(s);
@@ -706,7 +720,7 @@ namespace
         s.label = "Graphics API";
         s.help = "The graphics API the game draws with. D3D11 is the reference on Windows; Vulkan is the one on Linux.";
         s.type = Type::Choice;
-        for (rhi::Backend b : {rhi::Backend::D3D11, rhi::Backend::Vulkan})
+        for (rhi::Backend b : {rhi::Backend::D3D11, rhi::Backend::Vulkan, rhi::Backend::Metal})
             if (rhi::backendBuilt(b))
                 s.choices.push_back({rhi::backendName(b), static_cast<int>(b)});
         s.defaultValue = static_cast<int>(rhi::defaultBackend());
@@ -742,6 +756,7 @@ namespace
         vcs::prompts::registerSettings(); // the Enhancements page: button prompts by device (game/vcs_prompts.h)
         vcs::world::registerSettings();   // Enhancements > World: density, draw distance (game/vcs_world_detail.h)
         vcs::driveby::registerSettings(); // Enhancements > Combat: drive-by fire rate (game/vcs_driveby.h)
+        vcs::registerEffectsSettings();   // Enhancements > Effects: Reduce Post Processing Effects (game/vcs_effects_timing.h)
 
         s = {};
         s.key = "graphics.perf_overlay";
@@ -873,8 +888,10 @@ int main(int argc, char *argv[])
             setEnv("PS2X_GS", "hw");
         registerSettings();
         settings::load(exeDirectory() / "vcs.ini");
-        if (ps2control::hiddenMode())
-            settings::keepFile(); // a test run never changes the player's settings
+        // a test run never changes the player's settings: hidden, or shown (VCS_KEEP_SETTINGS=1 from
+        // toolchain.test_window when VCS_TEST_VISIBLE=1)
+        if (const char *keep = std::getenv("VCS_KEEP_SETTINGS"); ps2control::hiddenMode() || (keep && keep[0] == '1'))
+            settings::keepFile();
         settings::applyAll();
         restoreWindowPlacement();
         const fs::path isoPath = locateIso(argc, argv);
@@ -970,6 +987,9 @@ int main(int argc, char *argv[])
         vcs::installDisplayHooks(runtime);
         vcs::installHudHooks(runtime);
         vcs::installMovieHooks(runtime);
+        vcs::installMusicTimingHooks(runtime);   // the radio off the air on the time step (game/vcs_music_timing.h)
+        vcs::installParticleTimingHooks(runtime); // particle fades and emitters on the time step (game/vcs_particle_timing.h)
+        vcs::installEffectsTimingHooks(runtime);  // lightning, clouds, shake ... at 30 a second (game/vcs_effects_timing.h)
         vcs::world::install(runtime);
         vcs::driveby::install(runtime);
         vcs::prompts::install(runtime);

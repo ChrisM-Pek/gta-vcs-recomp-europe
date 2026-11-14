@@ -216,6 +216,15 @@ namespace render
         const int display = raster::loadFace({R{"Bahnschrift", 600}, R{"Segoe UI Variable Display", 600}, R{"Segoe UI", 600}});
         const int mono = raster::loadFace({R{"Cascadia Mono", 400}, R{"Consolas", 400}, R{"Courier New", 400}});
         const int symbols = raster::loadFace({R{"Segoe UI Symbol", 400}});
+#elif defined(__APPLE__)
+        // the Mac's own: San Francisco ("system-ui": font_coretext.mm asks for the system font), its condensed
+        // display cousins for the headlines, SF Mono / Menlo
+        const int ui = raster::loadFace({R{"system-ui", 400}, R{"Helvetica Neue", 400}, R{"Helvetica", 400}});
+        const int uiSemi = raster::loadFace({R{"system-ui", 600}, R{"Helvetica Neue", 600}, R{"Helvetica", 700}});
+        const int display = raster::loadFace({R{"Bahnschrift", 600}, R{"DIN Condensed", 700}, R{"Avenir Next Condensed", 600},
+                                              R{"system-ui", 600}});
+        const int mono = raster::loadFace({R{"SF Mono", 400}, R{"Menlo", 400}, R{"Monaco", 400}});
+        const int symbols = raster::loadFace({R{"Apple Symbols", 400}, R{"system-ui", 400}});
 #else
         // what Linux desktops have: the first one installed (fontconfig falls back to the generic family last)
         const int ui = raster::loadFace({R{"Inter", 400}, R{"Cantarell", 400}, R{"Noto Sans", 400}, R{"Ubuntu", 400},

@@ -67,6 +67,20 @@ too. Updates replace the AppImage itself (*Settings > Check now*); the next star
 what changed is rebuilt. Without FUSE (some containers and minimal systems), start it with
 `--appimage-extract-and-run`.
 
+## Install on macOS: the launcher (easiest)
+
+1. Download the newest `VCS-Recomp-<version>-macos-arm64.dmg` from the [Releases](../../releases) page. It needs a Mac
+   with Apple Silicon (M1 or later) and macOS 13 or newer.
+2. Open it and drag **VCSLauncher** onto the **Applications** folder next to it, then eject the disk image.
+3. Start it from Applications. The launcher isn't signed by an Apple developer yet, so the first time macOS refuses
+   it: open *System Settings > Privacy & Security* and choose *Open Anyway* (once). The first start puts the game's
+   files in `~/Library/Application Support/VCSRecomp/install`, where the game is built, then walks you through the
+   same steps as on Windows; the build tools are Apple's free Command Line Tools (*Install the Command Line Tools*
+   runs macOS' own installer).
+
+Updates (*Settings > Check now*) replace the app in Applications; that is also why it has to be there, not started
+from the disk image or Downloads.
+
 ## Install by hand (Windows and Linux)
 
 The release zip contains the full source: the steps below work in it too, and in a git clone.
@@ -140,7 +154,7 @@ where your disc is.
 
 - **F2** opens the settings: presets, resolution, widescreen, frame rate, vsync, sound, and every key, mouse and
   gamepad binding. The defaults match the PS2 except the frame rate (60 fps, frame-rate independent); every other
-  improvement is an option you turn on (Display > Presets > Enhanced turns on the usual ones at once). Settings are
+  improvement is an option you turn on (Display > Presets has quick starting points). Settings are
   saved in `vcs.ini` next to the game.
 - **Alt+Enter** switches between full screen and the window.
 - **F5** opens the trainer ([docs/TRAINER.md](docs/TRAINER.md)).
@@ -152,8 +166,8 @@ where your disc is.
 
 The defaults are the PS2 game as it was, except the frame rate: 60 fps with frame-rate independent timing. Every
 other improvement below is an option in the settings menu (F2), and *Authentic (PS2)* goes back to the PS2's 30 fps.
-*Display > Presets* turns on the usual ones at once: **Enhanced** for a modern graphics card, **Widescreen, light**
-for older PCs and integrated graphics, **Authentic (PS2)** to go back.
+*Display > Presets* has **Balanced** (widescreen, 60 fps, twice the original resolution) and **Authentic (PS2)** to
+go back.
 
 **Runs natively, on Windows and Linux.** The game's own code, recompiled to C++ and running on the PC, not in an
 emulator. The 3D world, characters, vehicles, HUD and menus are drawn by a native renderer - Direct3D 11 on Windows,

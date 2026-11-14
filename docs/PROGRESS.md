@@ -490,9 +490,52 @@ dropped on uploads (lazy render-target patching).
       on at 30 fps against 19.3 / 24.2 at 60. The count function (FUN_0018B668) now adds the frame's step / (50/30)
       (`src/game/vcs_music_timing.cpp`, `VCS_MUSIC_TIMESTEP=0` off): 30.0 counts a second at 30 (original timing, the
       game's path), 60 and 120 fps; resumed 12.9 / 18.0 s on at 60 and 13.2 / 17.9 at 120.
+- [x] **Particles on the time step** (2026-11-14, from the effects survey; game-internals.md 4 "Effects that run per
+      frame"): CParticle::Update faded, grew, turned and animated each particle once a frame, and the continuous emitters
+      spawned once a frame, so at 144 fps smoke and spray lived 1/4.8 as long (with 4.8x as many made) and fires, which
+      spawn on a timer, showed 1/4.8 as many flames. `src/game/vcs_particle_timing.cpp` (`VCS_PARTICLE_TIMING=0` off):
+      the per-particle rates are set to step / (50/30) of the game's before each Update (integers dithered per particle),
+      the type's animation period stretched, and 185 emitter call sites (by return address, only those that ignore the
+      result) pass at the PS2's rate per (site, entity, call of the frame). `tools/framerate_audit.py --only particles`
+      (an idling car in the rain): exhaust 267 / 272 / 271 ms at 1/30 / 60 / 144 (56 ms at 1/144 before), made 36 / 36 /
+      35 a second (174 before); rain on the body 1080 a second at all three (5180 before), on the screen 180 (865).
+      Fires (explosions at night, `VCS_PARTICLE_LOG=1`): flames 1.77 / 1.80 s at 30 / 144 (0.68 before), their smoke
+      2.02 / 2.01 s (0.46). Left: an explosion's opening burst counts frames (CExplosion::Update's step byte, `0x51E544`
+      in each 0x50-byte record from `0x51E510`), so the fireball forms in 70 ms instead of 0.33 s - the same particles,
+      lasting as long; it also drives coronas, lights and damage, so it needs its own fix.
+- [x] **Effects at the PS2's 30 a second** (2026-11-14, the rest of the effects survey; game-internals.md 4):
+      lightning, sun glare, clouds, camera shake, the video-cam overlay, the photo flash, the HUD bar flash's count, peds
+      fading in / out, melee swing streaks, rubbish and steam after rain stepped or re-rolled once a frame.
+      `src/game/vcs_effects_timing.cpp` (`VCS_EFFECTS_TIMING=0` off): a PS2 frame tick on the real-time clock gates what
+      is stepped or re-rolled; the game's rand is replaced by the same generator, which holds or vetoes values for those
+      callers. Measured with `VCS_EFFECTS_LOG=1` (30 / 144 fps / 144 before): PS2 frames counted 28-30 / 29-30 / -;
+      lightning in a 2-minute storm 4-8 / 4-10 / 12-26 bursts a minute, 166-772 / 150-273 / 32-59 ms each; cloud spin
+      908-1285 / 900-1349 / 2703-3601 a second, turn the same at 30 and 144 (-0.022 / s in the storm, -0.088..-0.100
+      before); camera shake rolls 28-30 / 29-30 / 130-155 a second (explosions 25 m away); the video overlay's flips
+      and noise, ped fade steps, rubbish picks and steam steps the same at 30 and 144, 4-5x before. Not seen in a run:
+      the photo flash, the HUD bar flash (no trigger at hand) and melee streaks - the same mechanism, read in the code.
+      `tools/framerate_audit.py --only effects`.
+- [x] **Explosions and the banknote spray at the PS2's 30 a second** (2026-11-14, phase 3 of the effects survey;
+      game-internals.md 4): CExplosion::Update's step byte (+1 a frame) drives a molotov's flame bursts, its second fire
+      at step 7 and the big explosions' bursts, and wrapped past 255 - the explosion's end - so at 144 fps explosions
+      lasted 1.1 s instead of 1.55 (157 steps against 46); its coronas and light alternate on `frame & 1` (72 Hz
+      instead of 15). `vcs_effects_timing.cpp` 11: each explosion's step advances at 30 a second from its start, its
+      bursts pass on fresh steps only (matched by position), and the parity is the PS2 frames'. Measured
+      (`VCS_EFFECTS_LOG=1`, molotov / grenade / large in turn, 30 / 144 / 144 before): 1546 / 1508-1531 / 1112-1148 ms,
+      46 / 45.6 / 157 steps, 217 burst calls each at all three; car-splash and flame-smoke particles 633 / 625 / 132 ms
+      and 2030 / 2007 / 450 ms. The banknote spray (FUN_0032FD78, a script command's flying notes) runs on PS2 frames
+      only with their steps summed - not triggered in a run. Checked harmless: FUN_002ED8E8 (the player's nearby
+      lists), the hit-scan shot's `frame & 3`; no light counts frames (only the explosion's).
+- [x] **Reduce Post Processing Effects** (2026-11-14, the user's request; DECISIONS.md): one toggle in Enhancements >
+      Effects (off by default, applied at once) that puts the motion blur, particles and effects back as before these
+      fixes. Checked at 144 fps in a rainy drive, switched off / on / off through the rig: exhaust 274 / 69-75 / 271-274
+      ms, rain on cars 1069-1076 / 3810-4190 / 1069-1087 a second, the blur FIX 12 from the history / 16 from the last
+      frame; the particles' own rates are put back when it is switched on. The menu's label column widens per page for
+      the name.
 - [ ] Fixes for what changes at the shorter step (physics, animations, script waits, particles, camera), each behind
       the switch; frame pacing. Left from the script survey (game-internals.md 11f): per-frame object / camera /
-      text animations in missions (looks only).
+      text animations in missions (looks only). Effects survey (2026-11-14, game-internals.md 4 "Effects that run per
+      frame"): all found fixed (above). Open: the rocket trail (AddParticlesAlongLine, one a frame at least).
 ## Milestone 5 - movies (2026-10-24) - done
 - [x] STINGS.PSS (the Rockstar logos) and INTRO.PSS play natively at boot (`src/game/vcs_movie.cpp`): own PSS
       demuxer, MPEG-2 video through FFmpeg, shown by the presenter at 4:3 (pillarboxed in widescreen), 48 kHz PCM
@@ -738,6 +781,15 @@ dropped on uploads (lazy render-target patching).
   circle hit and one beside him not, the script's end ends it. (Starting the range from the trainer's mission list
   drops Vic through the floor: the range is an interior the door's script loads - the game's, with or without free
   aim.)
+- **The right button held while running** (2026-11-14, the user's report: the camera turned "incredibly choppy"): with
+  free aim on and a gun in hand, sprinting (Shift) the game never enters free aim, and vcs_aim.cpp had taken the mouse
+  from the follow camera at the first R1 + L3: the camera stood still while it tried (20 frames), turned in the 8
+  between tries, and so on (a per-frame log at 144 fps with a steady synthetic mouse: 21 frames still, 8 turning, over
+  and over). Now the mouse turns the follow camera until the game's free aim is there, and the aim starts where it then
+  looks (game-internals.md 12c). Measured the same way after: every frame turns, 1:1 with the mouse; aiming once the
+  sprint ends still works. controls_check "sprinting, right button held: the mouse turns the camera" (-0.61 rad for
+  300 counts; -0.19 with the old code); 78 checks, 0 failed (one earlier run failed two drive-by checks with the car's
+  camera in mode 32 before any input - not seen again).
 - **Aiming in Farewell To Arms** (2026-11-03, a player's report and the user's: the aim snapped to the left now and then;
   0.0.2, before free aim, was fine): the mission attaches Vic to its helicopter's door (ATTACH_CHAR_TO_CAR, 70 deg
   either side), whose camera (mode 45) keeps its heading signed, relative to the door; the scopes' mouse wrapped it into
@@ -1064,6 +1116,11 @@ Python scripts still usable on their own. docs/LAUNCHER.md has the whole of it; 
 | `VCS_SCRIPT_FIXES=0` | the mission script fixes off: the wait for an audio line never ends when its slot is freed, Purple Haze's truck is not parked early (game-internals.md 11h; the reference: sticks on "Loading..." at 60 fps) |
 | `VCS_PHYSICS_TIMESTEP=0` | the push of a body under a wheel, the rolling resistance and a bike's brake wobble stay per frame (game-internals.md 4; the reference) |
 | `VCS_MUSIC_TIMESTEP=0` | radio stations off the air advance a frame's worth per frame, as on the PS2 (game-internals.md 9; the reference) |
+| `VCS_PARTICLE_TIMING=0` | particles fade, grow and spawn once a frame (before 2026-11-14: smoke 1/4.8 as long at 144 fps, fires thin) |
+| `VCS_REDUCE_POSTFX=1` | Enhancements > Effects > Reduce Post Processing Effects for one run: the motion blur, particles and effects once a frame as before 2026-11-13 / 14 (live in the menu) |
+| `VCS_EFFECTS_TIMING=0` | lightning, sun glare, clouds, camera shake, the video overlay, the photo flash, the HUD bar flash, peds fading, streaks, rubbish, steam after rain, explosions (bursts, length, flicker) and the banknote spray step once a frame (before 2026-11-14) |
+| `VCS_EFFECTS_LOG=1` | every 30 s of real time: frames and PS2 frames a second, lightning bursts (count, length), cloud turn / spin a second, and each effect's steps / rolls that took effect a second (with `VCS_EFFECTS_TIMING=0`: the per-frame counts) |
+| `VCS_PARTICLE_LOG=1` | every 10 s of game clock: AddParticle calls / passed per second by return address (`*` = throttled), and particles died per second and their mean lifetime by type |
 | `VCS_TURN_LOG=<model>` | every ApplyTurnForce on vehicles of that model (212 = PCJ-600): caller, its change to the yaw / pitch rate (sum by caller to find a per-frame push) |
 | `VCS_WHEEL_LOG=1` | each bike wheel's ProcessWheel inputs per frame: brake, grip, the contact's forward / sideways speed, wheel state |
 | `VCS_COLL_LOG=1` | each ApplyCollisionAlt (FUN_0034D670) of the player's vehicle: the other entity, contact point, normal, speeds |
@@ -1124,6 +1181,7 @@ Python scripts still usable on their own. docs/LAUNCHER.md has the whole of it; 
 | `PS2X_HW_PIXEL_CENTRE=0` | draws without the GS pixel-centre offset (softer copies, as before 2026-10-23) |
 | `PS2X_HW_RT_FULL=0` | render targets read once per PS2 texel everywhere (higher internal resolutions lost in the copies) |
 | `PS2X_HW_POSTFX=0` or letters `btc` | effects drawn as recorded / only these native: b bloom, t trails, c frame copy + motion blur |
+| `PS2X_HW_BLUR_STRENGTH=<k>` | the motion blur's strength above 30 fps or 1x, times the game's (default 0.75; 1 = the PS2's everywhere) |
 | `PS2X_HW_BLUR_HISTORY=0` | the motion blur reads the last picture at any frame rate (before 2026-11-13: no light trails above 30 fps), not the one a PS2 frame (33 ms) back |
 | `PS2X_HW_SCALE=0` | native frame: the picture's targets at the window's size (menu: Internal resolution > Match window) |
 | `python tools/rig.py burst DIR N` | the next N presented frames as DIR/burst_NNNN.png + DIR/burst.txt (shape, the renderer's batch) |

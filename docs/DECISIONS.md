@@ -1462,3 +1462,17 @@ turned stick (the pull-in toward the player), through the game's own switch for 
 - Display > Screen > **Window mode** defaults to Full screen (borderless, on the monitor the window was last on) on
   every platform; it was Windowed. A vcs.ini that names the setting keeps its value, so a player who chose Windowed
   stays windowed. Shown test runs keep a window (`toolchain.test_window` sets `VCS_FULLSCREEN=0` unless given).
+
+## 2026-11-14 - Effects as on the PS2 at any frame rate; "Reduce Post Processing Effects" turns it back (the user's decisions)
+
+- The light trails (the motion blur read a PS2 frame back), the particles, lightning, clouds, camera shake, explosions
+  and the other effects that counted frames run at the PS2's 30 a second at any frame rate (PROGRESS.md milestone 4):
+  the user found them authentic.
+- Above 30 fps or 1x the motion blur is a quarter weaker (`PS2X_HW_BLUR_STRENGTH`, 0.75): at speed in a car its ghost
+  stood out a little more than on the PS2 (the user's request, "only slightly").
+- Enhancements > Effects > **Reduce Post Processing Effects** (off by default, live; `enhance.reduce_postfx`,
+  `VCS_REDUCE_POSTFX`): one toggle that puts all of it back as the port drew it before - the motion blur from the last
+  frame at the game's strength, particles and the effects once a frame. The environment switches of each part
+  (`PS2X_HW_BLUR_HISTORY`, `VCS_PARTICLE_TIMING`, `VCS_EFFECTS_TIMING`) stay for testing.
+- The settings menu's label column widens per page (45% up to 60%) when a label needs it, so the setting's full name
+  shows; pages whose labels fit keep 45%.

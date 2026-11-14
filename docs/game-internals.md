@@ -361,6 +361,113 @@ disassembly with names from `game/vcs/functions.csv`), `tools/vudis.py` (VU micr
     twoDPass / timerUpdate) - the value stays within 63 of the real counter for anything else reading it then.
     The four outside the 2D pass are not covered yet;
   - timestamps (stored, compared with frame - 1: "seen last frame"): FUN_00383028 .. 003868c0, 003ac9c8 - harmless.
+  - The four outside the 2D pass (identified 2026-11-14, below): FUN_001419d0 / 0033dca0 gate wheel spray / sand
+    particles, 003f29d8 a hull splash, 002af6e0 the HUD bar flash's countdown.
+- **Effects that run per frame** (survey 2026-11-14, after the motion blur's trails were found to be per frame (6g);
+  `tools/eedecomp.py` of the readers of the frame counter, the step and the particle entry, decompiles in
+  `build/analysis/decomp/particle_*.c` / `fx_*.c`; static unless said. x4.8 = 144 fps against the PS2's 30):
+  - **Particles.** `FUN_001E9078` = CParticle::AddParticle (type a0, pos a1, dir a2, entity a3, size f12, colour t0,
+    rot speed t1, rot t2, frame t3, lifespan on the stack; `FUN_001E9040` the overload without a colour; matches reVC
+    line for line). Systems: pointer at `0x70F318`, 0x84 bytes each, 90 types in GAME.DAT's default order (SPARK 0 ...
+    EXHAUST_FUMES 65, RUBBER_SMOKE 66 ... FLOOR_HIT 89). Pool: 750 x 0x50 at `0x4EFC30`, free list head `0x4CD318`,
+    linked through **+0x48** (checked in the running game); a full pool makes AddParticle return 0. **CParticle::Update
+    `FUN_001E9C90`** moves, drags and times them by the step / ms clock, but changes per frame: size += expansion (+0x30,
+    0x1EA590), fade to black (+0x2C, 0x1EAC1C), **alpha -= fade (+0x2D, freed at 0: 0x1EAC64; read in the
+    decompile)**, the animation frame counter (+0x3C) and rotation (+0x40 += +0x3E). So every type whose alpha runs out
+    before its ms lifetime lives 1/4.8 as long (exhaust ~8 frames, rubber smoke 12, engine smoke ~18, car splash 20,
+    flames 25-40). Most continuous emitters also spawn once a frame without the step: exhaust and tyre smoke / rim
+    sparks / rain on the body (CAutomobile::PreRender `FUN_00141FE8`, bikes `FUN_0033F010` / `0033DCA0` / `0033D5A0`),
+    wheel dirt and spray (`FUN_001419D0`, `frame & 1` / `& 2` gates), engine smoke (`FUN_00140B28`, health +0x27C <
+    650), car fire (`FUN_0013A0A0`, < 250), rotor dust (`FUN_003EF3B8`), bow splashes (`FUN_003F29D8`), propeller
+    (`FUN_0019FDA0`), screen rain (CWeather::AddRain `FUN_003E47B8`), insects (`FUN_003E5B20`, `frame % 10`), blood
+    from a severed limb and rain on peds (CPed::PreRender `FUN_00200660`), swimming wake (`FUN_001F3390`), particle
+    objects - fountains, hydrants, steam (`FUN_002294A8`, a skip counter in frames), explosions (CExplosion::Update
+    `FUN_002E23A0`: bursts by a per-frame iteration counter, jets on a per-frame chance). Per-frame spawn with per-frame
+    fade gives the same number on screen (measured: ~68 live at 30 and 144 fps next to a parked car) but trails and
+    plumes 1/4.8 as long; **CFire::ProcessFire `FUN_002BDDC8` spawns on ms timers** (80 / 200 / 400 ms), so with the
+    per-frame fade fires show ~1/4.8 as many flames. Shots, hits and crashes spawn per event: unchanged. Steam after
+    rain counts 800 frames (`0x48A120`): 26.7 s becomes 5.6 s. **Fixed 2026-11-14** (`src/game/vcs_particle_timing.cpp`;
+    PROGRESS.md has the numbers): before each Update the per-particle rates are scaled by step / (50/30), and the
+    continuous emitters' calls pass at the PS2's rate. Measured with `VCS_PARTICLE_LOG=1` (calls per second by return
+    address at 30 / 144 fps, then lifetimes by type), which also sorted the call sites: those that scaled with the frame
+    rate are per frame; e.g. the rain-on-the-body site 0x143D94 (1070 / 4270 a second), CFire's 0x2BE65C / 0x2BE728 not
+    (24 / 25-30: ms timers), CPed's splash-up 0x1FA5B8 not. AddParticle's callers that read the particle back (and so
+    must not get 0 from a skipped call): 0x229BBC (CParticleObject stores it) and 0x33D9B8; the rest overwrite $v0 or
+    call on before reading it (checked in the listing after each jal, build/analysis/particle_sites_v0.txt).
+    **CExplosion::Update** (`FUN_002E23A0`; records of 0x50 bytes from `0x51E510`, the byte at +0x34 (`0x51E544`) both
+    "active" and a step count, +1 a frame): a car explosion (type 1) bursts `(int)(steps x 0.55) x 30` flames a frame
+    for steps 1-9, then 4 CARFLAME_SMOKE a frame (0x2E2EC8, throttled); burning cars (3-5) jet (AddJetExplosion
+    `FUN_001EBD28`, 1 in 16 a frame, 0x2E2734, throttled) and smoke on odd steps (0x2E25FC / 0x2E268C, throttled).
+    The burst by steps is left: the step count also gates coronas, lights and damage calls in the same function.
+  - **Weather and sky** (CWeather::Update `FUN_003E3720`): a lightning burst starts on `(u16)rand() < 200` and ends on
+    `(u8)rand() < 0x20`, both per frame (the flash toggle itself is on a 50 ms timer; `0x4CD2E0`, FUN_001A6310 lights the
+    scene with it): bursts 4.8x as often and 1/4.8 as long. Sun glare `0x4CD434 *= 1 - (rand & 31) * 0.007` per frame.
+    CClouds::Update `FUN_0018CD88`: the cloud rotation `0x4CD2B0` gets a per-frame wind term and `0x4CD2B4` a constant 18
+    a frame besides its step term - clouds spin ~4.8x as fast. CRubbish::Update `FUN_0036AFD0` spawns newspapers on
+    `frame & mask` (mask by wind): up to 4.8x as many.
+  - **Camera shake** (CCamera::Process `FUN_00378DD8`, 0x37ACC0..0x37AD50): strength decays on the ms clock, but a new
+    random offset every frame - the same amplitude, 4.8x the frequency (a buzz).
+  - **2D / special FX** (CSpecialFX::Render2DFXs `FUN_001676C8`, in the 2D pass): the photo snapshot's counter
+    `0x481CF4` +1 a frame (white fade frames 1-9, time scale `0x4CD168` held at 0 until frame 21: 69 ms / 0.15 s
+    instead of 333 ms / 0.7 s); the video-cam overlay (`0x481CD4`) toggles its scanline offset `0x481D64` and re-rolls
+    200 noise dashes every frame. The HUD bars' flash (`FUN_002AF6E0` state 4, set with count 40 by FUN_0031F3F0 for
+    items 10 / 11) counts down on frames with `(frame & 8) == 0`: the 2D pass's 30 Hz counter keeps the blink's phase,
+    not the countdown (~1 blink instead of 5 over 2.7 s).
+  - **Peds fading out** (bFadeOut, 0x1F4CFC): alpha -= 8 a frame (0x1F4D10): 0.22 s instead of 1.07. **Melee swing
+    streaks** (CMotionBlurStreaks::Update `FUN_00169F88`, from CSpecialFX::AddWeaponStreak `FUN_00166CE0`): a 4-slot
+    position history shifted every frame - 1/4.8 as long.
+  - **Fixed 2026-11-14** (weather, sky, shake, 2D FX, HUD bar, ped fade, streaks, rubbish, steam:
+    `src/game/vcs_effects_timing.cpp`, PROGRESS.md has the numbers). A "PS2 frame tick" on the real-time clock
+    **`0x488280`** (CTimer's unscaled ms, also running in slow motion and while the photo stops time - as the PS2's frames
+    did) decides when what is stepped or re-rolled per frame takes effect; smooth motion is scaled by the frame's share.
+    Found on the way:
+    - **rand = `FUN_00408058`**: Park-Miller (seed `0x48A5B8` x 16807 mod 2^31 - 1, Schrage's method: q 127773, r 2836),
+      a leaf; replaced by the same computation, which holds or vetoes values for chosen return addresses: lightning end
+      0x3E3924 (`(u8) < 0x20`), start 0x3E39DC (`(u16) < 200`), sun glare 0x3E3F40, camera shake 0x37ACC8, the video
+      overlay's dashes 0x167970 / 0x16798C, the rubbish pick 0x36B54C. (The lightning flash's toggle 0x3E39BC is on a
+      50 ms timer.)
+    - **Lightning state**: `0x4CD638` a burst is on, `0x4CD63C` the frame counter at its start, `0x4CD644` the last
+      toggle (ms), `0x4CD640` the burst's length in frames (min 20), `0x4CD634` when the thunder plays (end + (20 - n) x
+      150 ms; then FUN_002FA458 and the pad's rumble FUN_00283908 scale with n), `0x4CD2E0` the flash.
+    - **CPed alpha**: FUN_0036ED68 = `lw $v0, 0x14($a0)` (the clump's alpha); CPed::ProcessControl reads it at 0x1F4CF4
+      for the fade (+0x1C8's sign: out, -8 a frame, removed below 0 through vtable +0x54; else in, +16 to 255).
+    - **Rubbish**: 32 sheets at `0x746D00`, 0x48 bytes each, +0x1C the state (1 lying ready, 2 blowing); visibility
+      `0x4CD5B4` (0..255), `0x4CD5B0` set = fading out. **Video cam**: flag `0x481CD4` (u32), scanline phase `0x481D64`
+      (byte; flipped once a frame in all: once, then 112 times in the loop). **Photo**: flag `0x481CF8`, counter
+      `0x481CF4` (u32 each). **Steam after rain**: CWeather::AddRain counts `0x48A120` down from 800 after each
+      FUN_003E4270 call while `0x48A0F0` is set.
+  - **Phase 3, fixed 2026-11-14** (`vcs_effects_timing.cpp` 11-12):
+    - **CExplosion::Update** (`FUN_002E23A0`, from FUN_002C0D88 = CExplosion::Update then CProjectileInfo::Update
+      `FUN_00181208` then FUN_003C1348; 48 records of 0x50 from `0x51E510`: +0x00 type, +0x10 position, +0x20 radius
+      (+= step x +0x24), +0x28 creator, +0x2C the vehicle (burning cars), +0x30 end (ms), +0x34 a byte that is both
+      "active" and the step count (+1 a frame, 0 at the end), +0x3C a start delay (ms; TriggerExplosion `FUN_00192760`
+      at 0x2E249C when it passes), +0x40 power, +0x44 the ground z). The molotov (type 1) calls FUN_00196B38 /
+      00196EC8 / 00197068 every frame (reVC's SetPedsOnFire / SetCarsOnFire / SetWorldOnFire: idempotent), bursts FLAME
+      `(int)(step x 0.55) x 30` a frame for steps 1-9 (0x2E2D98), 9 more and a second TriggerExplosion at step 7
+      (0x2E2FEC, 0x2E3018); types 10 / 11 burst EXPLOSION_LARGE for steps 1-4 (0x2E332C); coronas (FUN_0027DD80) and a
+      point light (FUN_0040E1D0) alternate on `frame & 1`. **The step byte wrapped**: at 144 fps a 1.5 s explosion
+      counted 157 steps on average and the ones past 255 ended there - measured 1.1 s against 1.55 s at 30 fps.
+    - **The banknote spray**: `FUN_0032FD78` animates up to 50 notes (0x90 bytes each; their age counts the step, but
+      speed x 0.714, -0.03 z, position and spin a frame, a 1-in-60 flutter rolled a frame) of the "dollar" effect at
+      `0x488784` (created by FUN_0032F528, freed by FUN_0032F568), thrown by the script command handler `FUN_0011D488`;
+      run from CSpecialFX::Update `FUN_00167610` (then FUN_00169CC0, 00168F70, 00169140). Not triggered in a run.
+    - **Harmless**: `FUN_002ED8E8` (from CPlayerPed::ProcessControl) rebuilds the player's lists of nearby peds /
+      vehicles / objects (radii 40 / 80 / 20 m, `FUN_002EC8F8`) one a frame on `frame % 6 == 0` - fresher lists above
+      30 fps. `FUN_002CB7C0` is the hit-scan shot (light, bullet trace, then FUN_002CFEA8 on `frame & 3 == 0`): per
+      shot. CAutomobile::PreRender's `frame & 1` reads alternate exhaust puffs between the pipes (spawns throttled).
+      The functions that read the frame counter and register coronas or lights are only these three and the explosion:
+      no neon / traffic light counts frames (both are on the ms clock), and no separate explosion screen flash was found
+      - the flash is the explosion's coronas and light.
+  - **Fine** (time-based): the Purple Haze drift (`0x481CE0` / `E4` are sin / cos of the ms clock, FUN_001676C8),
+    coronas (CCoronas::Update `FUN_0027C308`, CRegisteredCorona::Update `FUN_0027BFF8`: step-scaled; only a 3-frame
+    snap after the look direction changes), the sun and moon, camera and music fades (`FUN_0037B620` / `0037B778`), bullet
+    traces, wind gusts, the rainbow, the time-cycle recompute every 16 frames. **Unused in VCS**: CMBlur's screen FX
+    (OverlayRenderFx `FUN_001AC1F8`: its list is filled only by `FUN_001AD2F8`, which nothing calls - no heat haze or
+    screen drops) and the drunk blur (+0x10 has no writer found). The renderer's own effects (bloom, the 512-wide smear -
+    its warp is the same every frame, checked in the vertex log -, the reflection map) carry nothing from frame to frame.
+  - **Open**: the rocket trail (AddParticlesAlongLine: spacing or one a frame), which vehicles `FUN_003621F8` /
+    `00399FA0` are, the exhaust threshold `0x481A44`. (Lights, explosion flashes, `FUN_002ED8E8` and `FUN_0032FD78`:
+    phase 3, above.)
 - **Mission scripts that count per frame**: a meter changed by a fixed amount each `WAIT 0` pass (PHI_A2's heat bar,
   eleven more missions) moved with the frame rate - section 11f.
 - **Emulated time and the VBlank chain** (found when independent timing first ran at 5 fps): VBlank events are chained
@@ -2567,6 +2674,12 @@ hidden run (rig `peek` / `poke`, snapshots diffed).
   does locked on with that weapon (a pistol strafes: 3.3 m in a second with D), facing it, and moving the object moves
   the aim (the camera follows). **The lock drops when the dummy is over ~30 m from Vic** (25 m held, 40 m dropped:
   the weapons' lock-on range); behind a wall or behind Vic it holds.
+- **Sprinting (Cross held) the game never enters free aim**: R1 + L3 leave +0x820 at 0 and the follow camera (mode 4)
+  stays, for as long as he sprints; walking or running without Cross it locks the frame after. Found 2026-11-14 at
+  144 fps from a per-frame log of the pad read (camera mode, beta, the aim's state) with a steady mouse: vcs_aim.cpp
+  had taken the camera from the first R1, so the mouse turned nothing while it tried (20 frames) and the camera only
+  turned in the 8 frames between tries - the user's "incredibly choppy" turn with the right button held while running.
+  The mouse now turns the follow camera until the lock is there, and the aim starts where that camera looks.
 - Lock-on camera (FUN_0029c280, modes 11 and 28): with a target it turns alpha (+0x78) / beta (+0x7C) toward the
   target's direction from Vic at most `0.1 x time step` a frame (1000 on its first frame, CCam +0xAC set); with no
   target (+0x820 = 0) the right stick turns it like the follow camera. Alpha (pitch) follows the target's elevation

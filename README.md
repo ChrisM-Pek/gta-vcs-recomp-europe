@@ -141,8 +141,8 @@ where your disc is.
 
 The defaults are the PS2 game as it was, except the frame rate: 60 fps with frame-rate independent timing. Every
 other improvement below is an option in the settings menu (F2), and *Authentic (PS2)* goes back to the PS2's 30 fps.
-*Display > Presets* has **Widescreen, light** (widescreen and 60 fps for older PCs and integrated graphics) and
-**Authentic (PS2)** to go back.
+*Display > Presets* has **Balanced** (widescreen, 60 fps, twice the original resolution) and **Authentic (PS2)** to
+go back.
 
 **Runs natively, on Windows and Linux.** The game's own code, recompiled to C++ and running on the PC, not in an
 emulator. The 3D world, characters, vehicles, HUD and menus are drawn by a native renderer - Direct3D 11 on Windows,

@@ -715,7 +715,7 @@ dropped on uploads (lazy render-target patching).
   deadzones, camera speed, trigger point, swapped sticks, inverted camera, a mouse camera (mouse speed as the right
   stick) with sensitivity / invert; the game's own vibration on the gamepad (it was dropped by the pad stub; 0-200%);
   master / movie volume and mono / swapped output; vertical sync (off / on / tearing for VRR); a frame-rate counter;
-  mute or pause in the background; presets (Authentic, Widescreen light; Enhanced removed 2026-11-14) and Reset all settings
+  mute or pause in the background; presets (Authentic, Balanced; Enhanced removed and Widescreen light renamed Balanced at 2x, 2026-11-14) and Reset all settings
   (docs/CONTROLS.md, SETTINGS_MENU_WIDESCREEN.md "Player settings"). `tools/controls_check.py`: 21 checks, 0 failed;
   regress step "controls". Defaults unchanged (the old fixed mapping, mouse camera off, vibration as on the PS2).
 - **Mouse look and driving keys** (2026-10-29, asked for by the user): on foot the mouse turns the follow camera itself

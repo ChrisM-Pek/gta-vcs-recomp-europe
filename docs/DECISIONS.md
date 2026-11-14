@@ -1477,9 +1477,12 @@ turned stick (the pull-in toward the player), through the game's own switch for 
 - The settings menu's label column widens per page (45% up to 60%) when a label needs it, so the setting's full name
   shows; pages whose labels fit keep 45%.
 
-## 2026-11-14 - No Enhanced preset (the user's decision)
+## 2026-11-14 - No Enhanced preset; Widescreen, light becomes Balanced at 2x (the user's decisions)
 
 - Display > Presets loses **Enhanced** (Match window aspect and resolution, HUD at the edges, 4x MSAA, 16x AF, timing
   at the display's refresh): the user asked for it to be removed entirely. Authentic (PS2) and Widescreen, light stay;
   every setting Enhanced set is still on its own row. `presets.enhanced` was an action, never written to vcs.ini, so
-  nothing in a player's settings refers to it. `tools/controls_check.py` checks the Light preset in its place.
+  nothing in a player's settings refers to it. `tools/controls_check.py` checks the other preset in its place.
+- "Widescreen, light" is now **Balanced** (`presets.balanced`, was `presets.light`; also an action, never stored) and
+  sets the internal resolution to 2x instead of 1x; the rest as before (Match window, HUD at the edges, no MSAA, 4x AF,
+  independent timing at 60). The user's request.

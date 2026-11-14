@@ -337,8 +337,9 @@ namespace
 #else
     constexpr int kVsyncDefault = 0;
 #endif
-    const Preset kLight[] = {{"display.aspect", 0}, {"display.hud", 2},    {"display.scale", 1},  {"display.msaa", 1},
-                             {"display.aniso", 4},  {"display.timing", 1}, {"display.fps", 60}, {"display.vsync", kVsyncDefault}};
+    // Balanced (until 2026-11-14 "Widescreen, light" at 1x; the user asked for the name and 2x).
+    const Preset kBalanced[] = {{"display.aspect", 0}, {"display.hud", 2},    {"display.scale", 2},  {"display.msaa", 1},
+                                {"display.aniso", 4},  {"display.timing", 1}, {"display.fps", 60}, {"display.vsync", kVsyncDefault}};
     const char *const kPresetKeys[] = {"display.aspect", "display.hud", "display.cutscene_bars", "display.scale", "display.msaa",
                                        "display.aniso",  "display.timing", "display.fps", "display.vsync"};
 
@@ -417,15 +418,16 @@ namespace
         settings::add(s);
 
         s = {};
-        s.key = "presets.light";
+        s.key = "presets.balanced";
         s.page = "Display";
         s.section = "Presets";
-        s.label = "Widescreen, light";
-        s.help = "Widescreen and 60 fps for older PCs and integrated graphics: the original resolution, no anti-aliasing, "
-                 "4x texture filtering. Resolution and timing apply after a restart.";
+        s.label = "Balanced";
+        s.help = "Widescreen in the window's shape with the HUD at the screen edges, 60 fps with frame-rate independent "
+                 "timing, twice the original resolution, no anti-aliasing, 4x texture filtering. Resolution and timing "
+                 "apply after a restart.";
         s.type = Type::Action;
         s.button = "Apply";
-        s.onChange = [](int) { applyPreset("Widescreen, light", kLight); };
+        s.onChange = [](int) { applyPreset("Balanced", kBalanced); };
         settings::add(s);
 
         s = {};

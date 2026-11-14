@@ -152,10 +152,37 @@ namespace platform
             window.needsRedraw = true;
         }
 
+        // The traffic lights, centred on the UI's title bar row (theme::kTitleBar, 44 pt) instead of AppKit's standard
+        // 28 pt title bar, with the same margin on the left as above them. Their container is made as tall as our
+        // bar; AppKit lays them out again after a resize or full screen, so this runs each time (updateSize). Full
+        // screen keeps AppKit's own layout (its title bar slides in over the top).
+        void placeWindowButtons()
+        {
+            constexpr CGFloat kBarHeight = 44; // theme::kTitleBar
+            if (!g_window || ([g_window styleMask] & NSWindowStyleMaskFullScreen))
+                return;
+            NSButton *close = [g_window standardWindowButton:NSWindowCloseButton];
+            NSButton *mini = [g_window standardWindowButton:NSWindowMiniaturizeButton];
+            NSButton *zoom = [g_window standardWindowButton:NSWindowZoomButton];
+            NSView *container = close.superview.superview; // NSTitlebarContainerView
+            if (!close || !mini || !zoom || !container)
+                return;
+            NSRect bar = container.frame;
+            bar.size.height = kBarHeight;
+            bar.origin.y = NSHeight(g_window.frame) - kBarHeight;
+            [container setFrame:bar];
+            const CGFloat spacing = NSMinX(mini.frame) - NSMinX(close.frame); // AppKit's own (20 pt)
+            const CGFloat margin = std::round((kBarHeight - NSHeight(close.frame)) / 2);
+            NSButton *buttons[] = {close, mini, zoom};
+            for (int i = 0; i < 3; ++i)
+                [buttons[i] setFrameOrigin:NSMakePoint(margin + spacing * i, margin)];
+        }
+
         void updateSize()
         {
             if (!g_view)
                 return;
+            placeWindowButtons();
             const CGFloat scale = [g_window backingScaleFactor];
             const NSSize size = [g_view bounds].size;
             window.dpiScale = float(scale);
@@ -506,6 +533,10 @@ using namespace platform;
 - (void)windowDidChangeBackingProperties:(NSNotification *)n
 {
     updateSize();
+}
+- (void)windowDidExitFullScreen:(NSNotification *)n
+{
+    updateSize(); // AppKit put the traffic lights back where it wants them
 }
 - (void)windowDidChangeScreen:(NSNotification *)n
 {

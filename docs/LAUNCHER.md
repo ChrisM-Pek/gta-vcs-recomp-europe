@@ -302,7 +302,9 @@ repository root, ~1 MB stripped, 27 s from scratch on the dev laptop.
 
 - **Window** (`platform/platform_macos.mm`): one `NSWindow` with a full-size content view and a transparent title bar.
   The UI draws its own title bar as everywhere, but macOS' traffic lights stay (top left: `screens/titlebar.cpp` leaves
-  room for them and draws no window buttons), as do resizing, tiling and full screen. A press on the caption the UI
+  room for them and draws no window buttons), as do resizing, tiling and full screen. AppKit centres them on a 28 pt
+  title bar; `placeWindowButtons` moves them onto the centre line of ours (44 pt, 15 pt in from the left and top) after
+  every resize and on leaving full screen, where AppKit lays them out again. A press on the caption the UI
   reports drags the window (`performWindowDragWithEvent`); a double click does what System Settings > Desktop & Dock
   says. Keys become Windows virtual keys; Command counts as Ctrl (Cmd+L and the rest). Typed text through
   `interpretKeyEvents` (dead keys). Waiting is NSApp's event queue: `wake()` posts an application-defined event from any

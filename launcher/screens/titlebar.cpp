@@ -84,8 +84,9 @@ namespace screens
         const bool focused = platform::window.focused;
         Rect left = bar;
 #if defined(__APPLE__)
-        // macOS keeps its own window buttons (the traffic lights, top left over our title bar): room for them
-        core::cutLeft(left, px(78));
+        // macOS keeps its own window buttons (the traffic lights, top left over our title bar, centred on it by
+        // platform_macos.mm's placeWindowButtons: 15 pt in, the last one ending at 69 pt): room for them
+        core::cutLeft(left, px(86));
 #else
         core::cutLeft(left, px(16));
 #endif

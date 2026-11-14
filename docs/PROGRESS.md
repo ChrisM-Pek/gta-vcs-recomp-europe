@@ -526,6 +526,12 @@ dropped on uploads (lazy render-target patching).
       and 2030 / 2007 / 450 ms. The banknote spray (FUN_0032FD78, a script command's flying notes) runs on PS2 frames
       only with their steps summed - not triggered in a run. Checked harmless: FUN_002ED8E8 (the player's nearby
       lists), the hit-scan shot's `frame & 3`; no light counts frames (only the explosion's).
+- [x] **Reduce Post Processing Effects** (2026-11-14, the user's request; DECISIONS.md): one toggle in Enhancements >
+      Effects (off by default, applied at once) that puts the motion blur, particles and effects back as before these
+      fixes. Checked at 144 fps in a rainy drive, switched off / on / off through the rig: exhaust 274 / 69-75 / 271-274
+      ms, rain on cars 1069-1076 / 3810-4190 / 1069-1087 a second, the blur FIX 12 from the history / 16 from the last
+      frame; the particles' own rates are put back when it is switched on. The menu's label column widens per page for
+      the name.
 - [ ] Fixes for what changes at the shorter step (physics, animations, script waits, particles, camera), each behind
       the switch; frame pacing. Left from the script survey (game-internals.md 11f): per-frame object / camera /
       text animations in missions (looks only). Effects survey (2026-11-14, game-internals.md 4 "Effects that run per
@@ -1111,6 +1117,7 @@ Python scripts still usable on their own. docs/LAUNCHER.md has the whole of it; 
 | `VCS_PHYSICS_TIMESTEP=0` | the push of a body under a wheel, the rolling resistance and a bike's brake wobble stay per frame (game-internals.md 4; the reference) |
 | `VCS_MUSIC_TIMESTEP=0` | radio stations off the air advance a frame's worth per frame, as on the PS2 (game-internals.md 9; the reference) |
 | `VCS_PARTICLE_TIMING=0` | particles fade, grow and spawn once a frame (before 2026-11-14: smoke 1/4.8 as long at 144 fps, fires thin) |
+| `VCS_REDUCE_POSTFX=1` | Enhancements > Effects > Reduce Post Processing Effects for one run: the motion blur, particles and effects once a frame as before 2026-11-13 / 14 (live in the menu) |
 | `VCS_EFFECTS_TIMING=0` | lightning, sun glare, clouds, camera shake, the video overlay, the photo flash, the HUD bar flash, peds fading, streaks, rubbish, steam after rain, explosions (bursts, length, flicker) and the banknote spray step once a frame (before 2026-11-14) |
 | `VCS_EFFECTS_LOG=1` | every 30 s of real time: frames and PS2 frames a second, lightning bursts (count, length), cloud turn / spin a second, and each effect's steps / rolls that took effect a second (with `VCS_EFFECTS_TIMING=0`: the per-frame counts) |
 | `VCS_PARTICLE_LOG=1` | every 10 s of game clock: AddParticle calls / passed per second by return address (`*` = throttled), and particles died per second and their mean lifetime by type |

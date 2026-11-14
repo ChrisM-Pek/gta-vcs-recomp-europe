@@ -40,10 +40,14 @@
 #include "game/vcs_effects_timing.h"
 
 #include "game/vcs_framerate.h"
+#include "game/vcs_particle_timing.h"
 #include "ps2_runtime.h"
+#include "runtime/gs/gs_hw.h"
+#include "settings/settings.h"
 #include "ps2_runtime_macros.h"
 
 #include <algorithm>
+#include <atomic>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -74,7 +78,9 @@ namespace vcs
                                        g_origHudFade = nullptr, g_origStreak = nullptr, g_origRubbish = nullptr,
                                        g_origSteam = nullptr;
 
-        bool enabled()
+        std::atomic<bool> g_reduced{false}; // "Reduce Post Processing Effects"
+
+        bool envEnabled()
         {
             static const bool on = [] {
                 const char *v = std::getenv("VCS_EFFECTS_TIMING");
@@ -82,6 +88,7 @@ namespace vcs
             }();
             return on;
         }
+        bool enabled() { return envEnabled() && !g_reduced.load(std::memory_order_relaxed); }
         bool logOn()
         {
             static const bool on = std::getenv("VCS_EFFECTS_LOG") != nullptr;
@@ -657,7 +664,7 @@ namespace vcs
             {kMoneySpray, &g_origMoney, &moneySpray},
             {kMoneySprayNext, &g_origMoneyNext, &moneySprayNext},
         };
-        if (!enabled())
+        if (!envEnabled()) // the setting is applied live: with it on the hooks are in and pass everything as before
         {
             std::fprintf(stderr, "[effects-timing] off (VCS_EFFECTS_TIMING=0): lightning, clouds, shake ... once a frame\n");
             if (!logOn()) // with VCS_EFFECTS_LOG the hooks go in anyway, every frame a tick: the per-frame counts (before)
@@ -674,5 +681,27 @@ namespace vcs
             *h.original = original;
             runtime.replaceFunction(h.address, h.replacement);
         }
+    }
+
+    void registerEffectsSettings()
+    {
+        settings::Spec s;
+        s.key = "enhance.reduce_postfx";
+        s.page = "Enhancements";
+        s.section = "Effects";
+        s.label = "Reduce Post Processing Effects";
+        s.help = "On: the light trails, smoke, sprays, fire, lightning, clouds, camera shake and explosions as the port drew "
+                 "them before - lighter and shorter above 30 fps, as each runs once a frame. Off: as on the PS2 at any "
+                 "frame rate.";
+        s.type = settings::Type::Toggle;
+        s.defaultValue = 0;
+        s.env = "VCS_REDUCE_POSTFX";
+        s.onChange = [](int v) {
+            const bool on = v != 0;
+            g_reduced.store(on, std::memory_order_relaxed);
+            setParticleTimingReduced(on);
+            gsHwSetReducedPostFx(on);
+        };
+        settings::add(s);
     }
 }

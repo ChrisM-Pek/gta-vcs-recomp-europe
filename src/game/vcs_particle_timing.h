@@ -11,4 +11,7 @@ namespace vcs
     // address). At 30 fps and in original timing at 30 nothing changes. VCS_PARTICLE_TIMING=0 off; VCS_PARTICLE_LOG=1
     // prints the AddParticle calls per second by return address.
     void installParticleTimingHooks(PS2Runtime &runtime);
+    // "Reduce Post Processing Effects" (vcs_effects_timing.h): on, particles fade and spawn once a frame as before
+    // 2026-11-14 (the game's own rates are put back at once). Any thread.
+    void setParticleTimingReduced(bool on);
 }

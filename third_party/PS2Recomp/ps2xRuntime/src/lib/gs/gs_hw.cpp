@@ -51,6 +51,7 @@ namespace
     constexpr uint64_t kGlyphAtlasKey = 0xF1F1F1F100000000ull; // its texture key: no GS texture key has these high bits
     std::atomic<uint32_t> g_outputW{0}, g_outputH{0};   // [gta-recomp] gsHwSetOutputSize
     std::atomic<float> g_aspectWidening{1.0f};          // [gta-recomp] gsHwSetAspectWidening
+    std::atomic<bool> g_reducedPostFx{false};           // [gta-recomp] gsHwSetReducedPostFx
     std::atomic<uint32_t> g_frameW{0}, g_frameH{0};     // [gta-recomp] gsHwSetFrameSize
     struct TargetRole                                   // [gta-recomp] gsHwSetTargetRole
     {
@@ -155,6 +156,7 @@ void gsHwSetFrameSize(uint32_t width, uint32_t height)
 }
 
 void gsHwSetAspectWidening(float widening) { g_aspectWidening.store(widening, std::memory_order_relaxed); }
+void gsHwSetReducedPostFx(bool on) { g_reducedPostFx.store(on, std::memory_order_relaxed); }
 
 // [gta-recomp] gsHwShownInputNs (gs_hw.h)
 static int64_t steadyNs()
@@ -2020,7 +2022,7 @@ namespace
                 const char *e = std::getenv("PS2X_HW_BLUR_HISTORY");
                 return !(e && e[0] == '0');
             }();
-            return on;
+            return on && !g_reducedPostFx.load(std::memory_order_relaxed); // gsHwSetReducedPostFx: as before
         }
         static constexpr int64_t kPs2FrameNs = 33366667; // NTSC: two fields of 59.94 Hz
         // the motion blur's strength above 30 fps or 1x, over the game's (nativeFrameCopy)
@@ -2200,7 +2202,7 @@ namespace
                 // 30 fps judder softened it. There its strength (FIX 16, 12.5%) is scaled by PS2X_HW_BLUR_STRENGTH
                 // (default 0.75: FIX 12, ~9.4%; 1 = the PS2's everywhere). At 30 fps and 1x it is the game's own.
                 const Scale &sc = src->second.scale;
-                if (s.bc == 2u && (t.rtTexture || sc.x > 1.01f || sc.y > 1.01f))
+                if (s.bc == 2u && (t.rtTexture || sc.x > 1.01f || sc.y > 1.01f) && !g_reducedPostFx.load(std::memory_order_relaxed))
                     bs.fix = static_cast<decltype(bs.fix)>(std::lround(static_cast<float>(s.fix) * blurStrength()));
             }
             draw(bs, 0u, 6u, nullptr, &t);

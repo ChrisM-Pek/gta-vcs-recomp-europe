@@ -11,4 +11,8 @@ namespace vcs
     // PS2's. Replaces the game's rand (FUN_00408058) with the same generator. Nothing changes at 30 fps.
     // VCS_EFFECTS_TIMING=0 off; VCS_EFFECTS_LOG=1 logs.
     void installEffectsTimingHooks(PS2Runtime &runtime);
+    // Enhancements > Effects: "Reduce Post Processing Effects" (enhance.reduce_postfx, VCS_REDUCE_POSTFX; off by
+    // default, live): on, the motion blur, the particles and the effects above run once a frame as before 2026-11-13 / 14
+    // (gsHwSetReducedPostFx, setParticleTimingReduced, and these hooks pass everything).
+    void registerEffectsSettings();
 }

@@ -26,6 +26,7 @@
 #include "ps2_runtime_macros.h"
 
 #include <algorithm>
+#include <atomic>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -272,13 +273,15 @@ namespace vcs
 
         PS2Runtime::RecompiledFunction g_origAdd = nullptr, g_origAdd2 = nullptr, g_origUpdate = nullptr, g_origJet = nullptr;
 
+        std::atomic<bool> g_reduced{false}; // "Reduce Post Processing Effects" (setParticleTimingReduced)
+
         bool enabled()
         {
             static const bool on = [] {
                 const char *v = std::getenv("VCS_PARTICLE_TIMING");
                 return !(v && v[0] == '0');
             }();
-            return on;
+            return on && !g_reduced.load(std::memory_order_relaxed);
         }
         bool active() { return enabled() && (timing() == Timing::Independent || frameCap() != 30); }
 
@@ -491,12 +494,18 @@ namespace vcs
         void scaleParticles(uint8_t *rdram)
         {
             static const bool log = std::getenv("VCS_PARTICLE_LOG") != nullptr;
-            const bool write = enabled() && active();
+            static bool wasWriting = false;
+            bool write = enabled() && active();
+            // switched off (the setting, or 30 fps): one more walk at scale 1 puts the game's own rates and animation
+            // periods back in the particles and types that still have scaled ones
+            const bool restore = !write && wasWriting;
+            wasWriting = write;
+            write = write || restore;
             if ((!write && !log) || rd<uint8_t>(rdram, kUserPause) || rd<uint8_t>(rdram, kCodePause))
                 return;
             ++g_walk;
             const uint32_t nowMs = rd<uint32_t>(rdram, 0x004CD104u);
-            const float scale = write ? frameScale(rdram) : 1.0f, step = rd<float>(rdram, kTimeStep);
+            const float scale = write && !restore ? frameScale(rdram) : 1.0f, step = rd<float>(rdram, kTimeStep);
             const uint32_t systems = rd<uint32_t>(rdram, kSystems);
             if (!systems)
                 return;
@@ -572,6 +581,8 @@ namespace vcs
             g_origUpdate(rdram, ctx, runtime);
         }
     }
+
+    void setParticleTimingReduced(bool on) { g_reduced.store(on, std::memory_order_relaxed); }
 
     void installParticleTimingHooks(PS2Runtime &runtime)
     {

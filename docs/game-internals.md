@@ -3125,6 +3125,11 @@ the constants those patches read. A hidden test with its own card and 1x renderi
 165 game / host fps at the 165 cap, 60 at the 60 cap, then 164 / 166 after switching back to 165.
 At the user's 6x resolution and 8x MSAA the same test measured roughly 47 game fps.
 
+At a 25 FPS cap, the PAL frame limiter at 0x317C30 sleeps before returning to the display flip
+(call at 0x317C4C, target 0x3708A8, return 0x317C54). `PS2X_WAIT_LOG=5` caught a second wait there
+when the scheduler rebased its VBlank deadlines after the planned sleep. Allowing the sleep in the
+VBlank lateness check preserves the original chain (PERFORMANCE.md 33).
+
 PAL mission script timing (2026-11-13): the US per-frame mission meter fix (section 11f) now runs
 on the European build too. The report was the one the US fix addressed - a mission with a timer /
 meter fills or empties faster at 60 fps or more - and the PAL build had none of it installed

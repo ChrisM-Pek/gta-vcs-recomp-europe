@@ -428,8 +428,9 @@ void EeScheduler::accountCycles(uint32_t cycles) noexcept
     }
 }
 
-void EeScheduler::syncToRealTime(uint64_t maxCycles) noexcept
+void EeScheduler::syncToRealTime(uint64_t maxCycles, std::chrono::nanoseconds pacingWait) noexcept
 {
+    m_vblankPacingWait = pacingWait;
     if (m_lastVBlankHost == std::chrono::steady_clock::time_point{})
         return;
     const auto since = ps2x::hostNow() - m_lastVBlankHost;
@@ -1916,7 +1917,11 @@ void EeScheduler::processDueDeadlines()
                 // (loading, a heavy scene) the old chained deadline let VBlanks race at ~80/s to catch up.
                 auto nextHostDeadline = scheduled.hostDeadline + kVBlankPeriod;
                 const auto hostNow = ps2x::hostNow();
-                if (nextHostDeadline + kVBlankPeriod < hostNow)
+                // [gta-recomp] The frame limiter can intentionally sleep through two VBlanks at 25 fps.
+                // Preserve the chain for that planned wait; only the first pending VBlank needs the allowance.
+                const auto allowance = m_vblankPacingWait;
+                m_vblankPacingWait = {};
+                if (nextHostDeadline + kVBlankPeriod + allowance < hostNow)
                     nextHostDeadline = hostNow;
                 scheduleEvent(scheduled.deadlineCycle + kVBlankPeriodCycles,
                               nextHostDeadline,

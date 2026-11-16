@@ -259,6 +259,7 @@ namespace vcs
             // game with it (GitHub issue 64: 60 fps after every start until the cap was changed)
             if (static_cast<int64_t>(fps * 1000.0) != g_appliedFpsMilli.load(std::memory_order_relaxed))
                 applyPresentRate();
+            g_lastSleepNs = 0;
             if (ps2WaitHostTick())
                 deadline = 0;
             else if (fps > 0.0 && !forcedStepFps())
@@ -287,7 +288,7 @@ namespace vcs
             }();
             scheduler.setGuestChargeShift(chargeShift);
             const uint64_t now = hostNs();
-            scheduler.syncToRealTime(static_cast<uint64_t>(200e6 * kEeCyclesPerNs)); // a longer hitch is forgiven
+            scheduler.syncToRealTime(static_cast<uint64_t>(200e6 * kEeCyclesPerNs), std::chrono::nanoseconds(g_lastSleepNs));
             { // VCS_TIMING_LOG=1: frames, sleep, emulated-clock top-up, every 2 s
                 static const bool log = std::getenv("VCS_TIMING_LOG") != nullptr;
                 static uint64_t logStart = 0, frames = 0, toppedCycles = 0;

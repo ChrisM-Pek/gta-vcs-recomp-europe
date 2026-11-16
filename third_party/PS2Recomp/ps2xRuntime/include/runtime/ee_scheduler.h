@@ -290,7 +290,7 @@ public:
     // cycle + the host time since it), at most maxCycles; for a game that paces itself on the host clock (VCS
     // independent timing), whose idle time would otherwise not advance emulated time. Never moves the clock past
     // the chain: an EE ahead of it is held at every due VBlank until that VBlank's real-time moment.
-    void syncToRealTime(uint64_t maxCycles) noexcept;
+    void syncToRealTime(uint64_t maxCycles, std::chrono::nanoseconds pacingWait) noexcept;
     [[nodiscard]] bool isExecutingGuest() const noexcept;
 
     // Kernel object API. All calls except postEvent/requestStop execute on the
@@ -439,6 +439,7 @@ private:
     uint32_t m_pendingEeTimerInterrupts = 0;
     uint64_t m_lastVBlankCycle = 0; // [gta-recomp] the last VBlank start on the chain (syncToRealTime)
     std::chrono::steady_clock::time_point m_lastVBlankHost{};
+    std::chrono::nanoseconds m_vblankPacingWait{}; // [gta-recomp] planned sleep accounted for at the next VBlank
     // [gta-recomp] EE cycle clock and time slice end, shared with the inline fast paths (runtime/ee_fast_clock.h)
     EeFastClock m_clock{0u, kDefaultTimeSliceCycles, 0u, &m_checkpointPending, &m_nextDeadlineCycle};
     std::thread::id m_executorThread{};

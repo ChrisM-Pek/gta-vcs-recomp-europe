@@ -949,6 +949,18 @@ Retina window. `tools/bench.py` from a new game (this Mac has no Fort Baxter car
   the frame.
 - Not measured yet: `cruise.py` (needs a card), uncapped frame rates, a quick (no LTO) build.
 
+### 33. Regular frame times at 25 FPS (2026-11-16)
+
+The grey part of the F3 graph is EE waiting time. At 25 FPS, 40 ms per frame including the limiter is expected, but a
+hidden PAL run averaged 25 FPS by alternating around 22, 40 and 58 ms. `PS2X_WAIT_LOG=5` showed an extra wait during the
+display flip (PC 0x3708A8, return 0x317C54). The limiter's planned sleep was long enough to make the scheduler treat
+the next VBlank as a stall and reset its deadline. The scheduler now allows the planned sleep for the first pending
+VBlank and still rebases on larger unplanned delays.
+
+Same save, hidden, idle in game, last 400 frames from `PS2X_PERF_LOG`: p95 **58.7 → 40.2 ms**, longest
+**59.2 → 40.8 ms**, frames above 50 ms **133 → 0**. Average stayed 25.0 FPS; scheduled VBlanks returned from 50 to
+about 60/s. `tools/driver_aim_check.py` checks both the frame rate and the p95 interval.
+
 ## Next
 
 - **The heavy views (~120 fps)**: the game thread's chain submission there (1.4-1.6 ms: the VIF1 chain copy, the walker

@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """Check driver mouse controls and the 25 fps cap in a hidden game with a copied save."""
 import math
-import time
 from pathlib import Path
 
 import rig
 from framerate_audit import BIKE, REGION, RUNWAY_SPOT
+from perf_report import load, pct, summary_line
 
 
 def check(g):
@@ -93,15 +93,6 @@ def check(g):
 
     print(f"Driver aim: {smg} SMG shots, {pistol} pistol shots; wheel works without tuning radio")
 
-    assert g.cmd("setting display.fps 25") == "25"
-    g.wait_frames(25)
-    frames = int(g.cmd("frames"))
-    start = time.perf_counter()
-    g.wait_frames(100)
-    fps = (int(g.cmd("frames")) - frames) / (time.perf_counter() - start)
-    assert 24 <= fps <= 26, fps
-    print(f"25 FPS cap: measured {fps:.2f} FPS")
-
     z = g.player()[1][2]
     g.scm(s.op(0x0216, s.PLAYER, s.f(x), s.f(y), s.f(z)))  # WARP_CHAR_FROM_CAR_TO_COORD
     g.wait_frames(25)
@@ -118,11 +109,21 @@ def check(g):
     assert weapon()[0] != before and weapon()[0] in (19, 25)
     print("Weapon wheel: passed on a motorcycle")
 
+    assert g.cmd("setting display.fps 25") == "25"
+    g.wait_frames(150)
+
 
 if __name__ == "__main__":
+    perf = Path(rig.ROOT, "build", "run", "driver_aim_check.csv")
     game = rig.Game.start(save=rig.default_save(), name="driver_aim_check", seconds=180, port=47693,
-                          env={"VCS_FPS": "", "VCS_TIMING": "1"})
+                          env={"VCS_FPS": "", "VCS_TIMING": "1", "PS2X_PERF_LOG": str(perf)})
     try:
         check(game)
     finally:
         game.quit()
+    # The last 100 frames exclude any settling after changing the cap. Average FPS alone hid the 22/40/58 ms cadence.
+    rows = load(perf, None, None)[-100:]
+    _, fps, _, ms = summary_line(rows)
+    p95 = pct(ms, 0.95)
+    assert len(rows) == 100 and 24 <= fps <= 26 and p95 < 46, (len(rows), fps, p95)
+    print(f"25 FPS cap: measured {fps:.2f} FPS, p95 {p95:.1f} ms")

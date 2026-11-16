@@ -52,6 +52,9 @@ namespace vcs::aim
         constexpr uint32_t kGameProcess = 0x003BABD8u, kCameraProcess = 0x00378FB8u;
         constexpr uint32_t kShotLine = 0x002D0A48u, kMovesAiming = 0x001F1680u;
         constexpr uint32_t kMovesAimingCamReturn = 0x00375D24u, kShotLineReturn = 0x002C497Cu;
+        constexpr uint32_t kDriverFire = 0x002CEDB8u, kDriverShotReturn = 0x002CCA28u;
+        constexpr uint32_t kGetWeaponInfo = 0x00407428u, kDriverInfoReturn = 0x002CEE68u;
+        constexpr uint32_t kSelectWeapon = 0x00200150u;
 #else
         constexpr uint32_t kGameProcess = 0x003BA8D8u;   // CGame::Process: scripts, the world (peds move, guns fire)
         constexpr uint32_t kCameraProcess = 0x00378DD8u; // CCamera::Process: after the world, before the HUD
@@ -59,10 +62,17 @@ namespace vcs::aim
         constexpr uint32_t kMovesAiming = 0x001F1698u;   // the ped's weapon lets him move while aiming (info byte 0 bit 7)
         constexpr uint32_t kMovesAimingCamReturn = 0x00375B44u; // its call in CCamera::CamControl (FUN_00372450)
         constexpr uint32_t kShotLineReturn = 0x002C47A4u; // its call in FireInstantHit (0x2c3e48) for a locked-on shooter
+        constexpr uint32_t kDriverFire = 0x002CEBE0u, kDriverShotReturn = 0x002CC850u;
+        constexpr uint32_t kGetWeaponInfo = 0x00407120u, kDriverInfoReturn = 0x002CEC90u;
+        constexpr uint32_t kSelectWeapon = 0x00200168u;
 #endif
+        constexpr uint32_t kDriverReturn = 0x0013AE34u;
+        constexpr uint32_t kRestoreWindows = 0x001000BCu; // unregistered padding between the first two ELF functions
+        constexpr uint32_t kWindowFlags = 0x88u;
         // Guest memory for the shot's start point: the EE kernel's area below the game (0x00000-0x7FFFF), unused by the
         // recompiled runtime and the game (all zero in play, 2026-10-31).
         constexpr uint32_t kScratch = 0x00060000u;
+        constexpr uint32_t kDriverInfoScratch = kScratch + 0x10;
 
         constexpr float kDummyDistance = 12.0f; // metres from Vic: the lock drops past ~30 (the weapons' lock-on range)
         constexpr float kPivotHeight = 0.6f;    // the dummy turns about Vic's shoulders
@@ -80,6 +90,11 @@ namespace vcs::aim
 
         PS2Runtime::RecompiledFunction g_origGame = nullptr, g_origCamera = nullptr, g_origShotLine = nullptr,
                                        g_origMovesAiming = nullptr;
+        PS2Runtime::RecompiledFunction g_origDriverFire = nullptr, g_origWeaponInfo = nullptr;
+        uint32_t g_windowFlags = 0, g_windowBefore[2] = {};
+        uint32_t g_driver = 0; // the vehicle as of the latest pad sample (game thread)
+        int g_driverWheel = 0;
+        std::atomic<bool> g_driverReticle{false};
         uint8_t *g_rdram = nullptr;
 
         enum class State
@@ -141,6 +156,25 @@ namespace vcs::aim
         // Not 30..32 (the snipers and the rocket launcher aim through their scopes), 38 / 39 (camera, binoculars),
         // melee (1..11) or thrown (12..17).
         bool isGun(uint32_t type) { return (type >= 19 && type <= 29) || (type >= 33 && type <= 35); }
+
+        // The game's side-window animation suits pistols and SMGs.
+        bool isDriverGun(uint32_t type) { return (type >= 19 && type <= 20) || (type >= 24 && type <= 27); }
+        uint32_t slotType(uint32_t ped, int slot) { return rd32(ped + kPedWeapons + slot * 0x1Cu); }
+        int weaponSlot(uint32_t ped) { return static_cast<int8_t>(g_rdram[(ped + kPedSlot) & kRamMask]); }
+        bool driverGun(uint32_t ped)
+        {
+            const int slot = weaponSlot(ped);
+            return slot >= 0 && slot < 10 && isDriverGun(slotType(ped, slot));
+        }
+
+        uint32_t driverCar(uint32_t ped)
+        {
+            if (!ped || rd32(ped + kPedState) != 0x37)
+                return 0;
+            const uint32_t car = rd32(ped + kPedVehicle);
+            return car && rd32(car + 0x384) == ped && rd32(car + 0x354) == 0 &&
+                   (rd32(car + 0x54) >> 16) != 194 ? car : 0; // the fire truck has its own gun
+        }
 
         bool onFoot(uint32_t ped) { return ped && !rd32(ped + kPedVehicle) && rd32(ped + kPedState) != 0x37; }
 
@@ -270,6 +304,78 @@ namespace vcs::aim
             g_origMovesAiming(rdram, ctx, runtime);
         }
 
+        bool lookingLeft(uint32_t cam)
+        {
+            const uint32_t front = cam + 0x10;
+            return rdf(front) * rdf(g_driver) + rdf(front + 4) * rdf(g_driver + 4) +
+                   rdf(front + 8) * rdf(g_driver + 8) < 0.0f;
+        }
+
+        PS2_GUEST_CC void restoreWindows(uint8_t *, R5900Context *ctx, PS2Runtime *)
+        {
+            wr32(g_windowFlags, g_windowBefore[0]);
+            wr32(g_windowFlags + 4, g_windowBefore[1]);
+            SET_GPR_U32(ctx, 31, kDriverReturn);
+            ctx->pc = kDriverReturn;
+        }
+
+        PS2_GUEST_CC void driverFire(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
+        {
+            const uint32_t car = GPR_U32(ctx, 4);
+            if (g_driver && car == g_driver && GPR_U32(ctx, 31) == kDriverReturn)
+            {
+                const uint32_t ped = rd32(kPlayerPed);
+                if (g_driverWheel && driverCar(ped) == car)
+                {
+                    const int step = g_driverWheel > 0 ? 1 : -1;
+                    g_driverWheel -= step;
+                    const int current = std::clamp(weaponSlot(ped), 0, 9);
+                    for (int i = 1; i < 10; ++i)
+                    {
+                        const int slot = (current + step * i + 10) % 10;
+                        if (!isDriverGun(slotType(ped, slot)) || !rd32(ped + kPedWeapons + slot * 0x1Cu + 0xC))
+                            continue;
+                        // Its caller ignores the fire routine's return value; switch weapons on this frame instead.
+                        SET_GPR_U32(ctx, 4, ped);
+                        SET_GPR_U32(ctx, 5, slot);
+                        ctx->pc = kSelectWeapon;
+                        return;
+                    }
+                }
+                if (driverGun(ped))
+                {
+                    // The chase camera's window flags choose the lean-out animation. Restore them at the guest return,
+                    // even if the driver routine yields before it finishes.
+                    const uint32_t cam = activeCam();
+                    const bool left = lookingLeft(cam);
+                    g_windowFlags = cam + kWindowFlags;
+                    g_windowBefore[0] = rd32(g_windowFlags);
+                    g_windowBefore[1] = rd32(g_windowFlags + 4);
+                    wr32(g_windowFlags, left);
+                    wr32(g_windowFlags + 4, !left);
+                    SET_GPR_U32(ctx, 31, kRestoreWindows);
+                }
+            }
+            g_origDriverFire(rdram, ctx, runtime);
+        }
+
+        PS2_GUEST_CC void driverWeaponInfo(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
+        {
+            const uint32_t type = GPR_U32(ctx, 4);
+            if (g_driver && GPR_U32(ctx, 31) == kDriverInfoReturn && GPR_U32(ctx, 19) == g_driver &&
+                type >= 19 && type <= 20)
+            {
+                // The driver checks for weapon slot 5 here. Give this check a copy so all other users see the pistol's slot.
+                const uint32_t table = rd32(rd32(kWeaponInfo) + 4);
+                std::memcpy(rdram + kDriverInfoScratch, rdram + ((table + type * 0x70u) & kRamMask), 0x70);
+                wr32(kDriverInfoScratch + 0x68, 5);
+                SET_GPR_U32(ctx, 2, kDriverInfoScratch);
+                ctx->pc = kDriverInfoReturn;
+                return;
+            }
+            g_origWeaponInfo(rdram, ctx, runtime);
+        }
+
         // The weapons' line test (from a0 to a1; t1 the shooter). For the player's free-aim shot (FireInstantHit's call
         // for a locked-on shooter) the line is the camera's through the circle: from the point on it level with the gun
         // to as far as the gun reaches. The gun's own start (a0) is left for the tracer and the impact's effects; the
@@ -277,18 +383,32 @@ namespace vcs::aim
         PS2_GUEST_CC void shotLine(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
         {
             const uint32_t ped = rd32(kPlayerPed);
-            if ((g_state == State::Active || g_state == State::Script) && GPR_U32(ctx, 31) == kShotLineReturn && ped &&
-                GPR_U32(ctx, 9) == ped && rd32(ped + kPedTarget) == g_dummy)
+            const uint32_t fromCall = GPR_U32(ctx, 31);
+            const bool driver = g_driver && fromCall == kDriverShotReturn && GPR_U32(ctx, 18) == g_driver;
+            const bool atDummy = (g_state == State::Active || g_state == State::Script) && fromCall == kShotLineReturn &&
+                                 ped && rd32(ped + kPedTarget) == g_dummy;
+            if ((driver || atDummy) && ped && GPR_U32(ctx, 9) == ped)
             {
                 const uint32_t from = GPR_U32(ctx, 4), to = GPR_U32(ctx, 5), cam = activeCam();
                 const float src[3] = {rdf(cam + kCamSource), rdf(cam + kCamSource + 4), rdf(cam + kCamSource + 8)};
                 const float gun[3] = {rdf(from), rdf(from + 4), rdf(from + 8)};
                 const float end[3] = {rdf(to), rdf(to + 4), rdf(to + 8)};
-                float dir[3] = {rdf(g_dummy + kPedPos) - src[0], rdf(g_dummy + kPedPos + 4) - src[1],
-                                rdf(g_dummy + kPedPos + 8) - src[2]};
+                float dir[3];
+                if (driver)
+                {
+                    // The vertical half-extent is the PS2's horizontal tan(FOV/2) divided by 4:3, even in Hor+.
+                    const float fov = std::clamp(rdf(cam + 0x134), 1.0f, 130.0f);
+                    const float up = (1.0f - 2.0f * kDriverReticleY) * 0.75f * std::tan(fov * 0.008726646f);
+                    for (int i = 0; i < 3; ++i)
+                        dir[i] = rdf(cam + 0x10 + i * 4) + up * rdf(cam + 0x60 + i * 4);
+                }
+                else
+                    for (int i = 0; i < 3; ++i)
+                        dir[i] = rdf(g_dummy + kPedPos + i * 4) - src[i];
                 const float len = std::sqrt(dir[0] * dir[0] + dir[1] * dir[1] + dir[2] * dir[2]);
-                const float range = std::sqrt((end[0] - gun[0]) * (end[0] - gun[0]) + (end[1] - gun[1]) * (end[1] - gun[1]) +
-                                              (end[2] - gun[2]) * (end[2] - gun[2]));
+                const float range = driver ? weaponRange(ped) :
+                    std::sqrt((end[0] - gun[0]) * (end[0] - gun[0]) + (end[1] - gun[1]) * (end[1] - gun[1]) +
+                              (end[2] - gun[2]) * (end[2] - gun[2]));
                 if (len > 0.01f && range > 0.01f)
                 {
                     for (float &d : dir)
@@ -326,10 +446,21 @@ namespace vcs::aim
         runtime.replaceFunction(kCameraProcess, &cameraProcess);
         runtime.replaceFunction(kShotLine, &shotLine);
         runtime.replaceFunction(kMovesAiming, &movesAiming);
-        // aimstate -> ok active=<0|1> shots=<shots down the camera ray so far> (tools/controls_check.py)
+        g_origDriverFire = runtime.lookupFunction(kDriverFire);
+        g_origWeaponInfo = runtime.lookupFunction(kGetWeaponInfo);
+        if (g_origDriverFire && g_origWeaponInfo && runtime.hasFunction(kSelectWeapon) && runtime.hasFunction(kDriverReturn) &&
+            !runtime.hasFunction(kRestoreWindows) && runtime.registerFunction(kRestoreWindows, &restoreWindows))
+        {
+            runtime.replaceFunction(kDriverFire, &driverFire);
+            runtime.replaceFunction(kGetWeaponInfo, &driverWeaponInfo);
+        }
+        else
+            g_origDriverFire = nullptr;
+        // aimstate -> ok active=<0|1> driver=<0|1> shots=<shots down the camera ray so far>
         ps2control::addCommand("aimstate", [](const std::string &, ps2control::Reply reply) {
             char text[96];
-            std::snprintf(text, sizeof(text), "ok active=%d shots=%u", g_active.load() ? 1 : 0, g_shots.load());
+            std::snprintf(text, sizeof(text), "ok active=%d driver=%d shots=%u", g_active.load() ? 1 : 0,
+                          driverReticle() ? 1 : 0, g_shots.load());
             reply(text);
         });
     }
@@ -344,6 +475,8 @@ namespace vcs::aim
     }
 
     bool aiming() { return g_active.load(std::memory_order_relaxed); }
+    bool driverReticle() { return g_driverReticle.load(std::memory_order_relaxed); }
+    void driverWheel(int step) { g_driverWheel = std::clamp(g_driverWheel + step, -3, 3); }
 
     // The follow camera's first update after free aim starts it afresh behind Vic (a heading of its own, whatever the
     // aim's), and the view showed that for a frame (the user's report: a one-frame snap to another angle). Here, after
@@ -452,6 +585,19 @@ namespace vcs::aim
     {
         Output out;
         const uint32_t ped = g_rdram && g_origGame ? rd32(kPlayerPed) : 0;
+        const uint32_t car = g_origDriverFire && in.driverWant ? driverCar(ped) : 0;
+        const uint32_t camMode = car ? rd32(activeCam()) & 0xFFFFu : 0;
+        const uint32_t driver = camMode == 18 && rd32(activeCam() + 0x74) == 3 && rd32(kTheCamera + 0x7E0) == 0 ? car : 0;
+        if (driver != g_driver)
+            g_driverWheel = 0;
+        g_driver = driver;
+        g_driverReticle.store(driver && driverGun(ped), std::memory_order_relaxed);
+        if (driver)
+        {
+            stop("driving");
+            out.driver = true;
+            return out;
+        }
         if (g_handBack > 0)
             --g_handBack; // the camera hasn't come back to the follow camera in time: leave it
         if (in.on && scriptFreeAim(ped))

@@ -1,5 +1,14 @@
 # Progress
 
+## Driver's free aim (2026-11-16)
+
+- **Keyboard > Free aim** now works from the driver's seat of a car: right click to aim, left click to fire, wheel to
+  switch between pistols and SMGs while aiming. The normal car controls stay available; outside aim the wheel tunes the
+  radio. See game-internals.md 12c for the driver fire path and the PAL addresses.
+- Quick PAL build and hidden `python tools/driver_aim_check.py` passed: 16 SMG and 7 pistol shots with matching ammo use,
+  both wheel directions, steering and acceleration during aim, and the original handbrake binding with Free aim off.
+  The US addresses were checked against the generated code; no US game run.
+
 ## 0.3.0-europe (2026-11-14)
 
 - Merged upstream 0.3.0 (`upstream/main`, 35 commits after the 0.2.4 line) into `main`; `VERSION` is

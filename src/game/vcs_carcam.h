@@ -19,7 +19,7 @@ namespace vcs::carcam
 
     // Game thread, at the pad read: the mouse's turn since the last one, radians (left +, up +). The camera's next
     // update applies it.
-    void mouse(float turn, float tilt);
+    void mouse(float turn, float tilt, bool aiming = false);
 
     // Game thread, at the pad read: the right stick turns the camera (the gamepad or the camera keys). The camera's
     // next update leaves it to the game at once - held or on its way back, the stick would barely move it - and takes

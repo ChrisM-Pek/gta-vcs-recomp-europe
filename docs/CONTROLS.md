@@ -35,7 +35,7 @@ foot they keep their bindings above (W walks, Space jumps):
 | Lean forward / nose down (bikes, aircraft) | Keypad 8 | Left stick up |
 | Lean back / nose up | Keypad 5 | Left stick down |
 
-Steering stays on A / D (the left stick); Shift still accelerates and E / the right mouse button is still R1. The
+Steering stays on A / D (the left stick); Shift still accelerates and E / the right mouse button is still R1 with Free aim off. The
 game's own PS2 controls apply on top. Start or Cross (Escape / Shift) skips the intro movie; the Rockstar logos before
 it can't be skipped, as on the PS2 (Game > Skip intro movies skips both).
 
@@ -67,6 +67,10 @@ game-internals.md 12c):
   R1 as on the PS2. There is no aim assist on the gamepad.
 - It is the game's own free aim (R1 then L3 on the PS2: the left stick moves an aiming point while Vic stands still),
   driven so that Vic can move and the mouse aims; `VCS_FREEAIM=0` leaves it out entirely.
+- **Driving a car**: turn on **Keyboard > Free aim** (F2). Hold the **right mouse button** (or E) and move the mouse to
+  aim, then use the **left mouse button** to fire. The **wheel** cycles through pistols and SMGs with ammo while you aim;
+  release the right button to use the wheel for the radio again. W / A / S / D still drive, and Space is still the
+  handbrake. This uses the normal chase camera and doesn't change mission passenger or mounted guns.
 - **Shooting from a car** (Jive Drive: Vic in the passenger seat while Lance drives - the game's own free aim, which the
   mission starts itself): with free aim on for either device, the mouse and the right stick turn the circle instead of
   the left stick (the game's help text still says the left stick), no button to hold; the left button fires through
@@ -87,7 +91,8 @@ with Mouse camera on (zoomed in it turns slower). **Mouse wheel** (Keyboard page
 next weapon and up the previous one (R2 / L2, one per notch); in the sniper scope, the camera and binoculars it zooms;
 while driving down is the next radio station and up the one before (the game's own L1 steps forwards only: a step back
 is the station written two back and L1 - game-internals.md 12a; nothing happens while the radio plays an announcement,
-as with L1). It does nothing of this while a control is bound to the wheel or while aiming.
+as with L1). A control bound to the wheel takes priority. While aiming, the wheel only changes weapons from the
+driver's seat with Keyboard > Free aim on.
 
 ## Keyboard page
 

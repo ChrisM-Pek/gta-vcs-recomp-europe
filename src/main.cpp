@@ -955,6 +955,18 @@ int main(int argc, char *argv[])
                                         vcs::input::onHostFrame(ui::settingsMenuOpen() || ui::trainerMenuBlocksInput());
                                         vcs::volume::onHostFrame();
                                         vcs::prompts::onHostFrame();
+                                        if (vcs::aim::driverReticle() && !ps2control::gameInputBlocked() &&
+                                            !vcs::trainer::toggle(vcs::trainer::HideHud))
+                                        {
+                                            const ImGuiViewport *vp = ImGui::GetMainViewport();
+                                            const float height = std::min(vp->Size.y, vp->Size.x / present::displayAspect(true));
+                                            const ImVec2 center(vp->Pos.x + vp->Size.x * 0.5f,
+                                                                vp->Pos.y + vp->Size.y * 0.5f + height * (vcs::aim::kDriverReticleY - 0.5f));
+                                            const float radius = std::max(4.0f, height / 150.0f);
+                                            ImDrawList *draw = ImGui::GetForegroundDrawList();
+                                            draw->AddCircle(center, radius, IM_COL32(0, 0, 0, 180), 0, 3.0f);
+                                            draw->AddCircle(center, radius, IM_COL32_WHITE, 0, 1.3f);
+                                        }
                                         drawFrameRateCounter();
                                     },
                                     nullptr, nullptr);

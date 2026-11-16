@@ -74,6 +74,7 @@ namespace vcs::carcam
         uint32_t g_vehicle = 0, g_frame = 0;
         float g_idle = 0.0f, g_returning = 0.0f; // seconds of game time without the mouse, on the way back
         float g_pitch = 0.0f;                    // the pitch before the mouse moved it, to go back to
+        bool g_aiming = false;
         float g_lastPos[3] = {};
         bool g_pullOff = false;
         float g_pullCaps[kClasses] = {};
@@ -201,9 +202,10 @@ namespace vcs::carcam
         void prepare(uint32_t cam)
         {
             const bool stick = g_stick;
+            const bool aiming = g_aiming;
             const float turn = stick ? 0.0f : g_turn, tilt = stick ? 0.0f : g_tilt;
             g_turn = g_tilt = 0.0f;
-            g_stick = false;
+            g_stick = g_aiming = false;
             const uint32_t mode = rd32(cam) & 0xFFFFu;
             const uint32_t vehicle = rd32(cam + kCamTargetEntity);
             const bool usable = cam == kCams + g_rdram[kActiveCam] * kCamSize && (mode == 18 || mode == 22) && vehicle &&
@@ -235,7 +237,7 @@ namespace vcs::carcam
             const float p[3] = {rdf(cam + kCamTarget) + moved[0], rdf(cam + kCamTarget + 4) + moved[1],
                                 rdf(cam + kCamTarget + 8) + moved[2]};
 
-            if (turn != 0.0f || tilt != 0.0f)
+            if (turn != 0.0f || tilt != 0.0f || aiming)
             {
                 if (g_state != State::Hold)
                     g_pitch = pitchOf(cam + kCamPoints[0], p);
@@ -319,10 +321,11 @@ namespace vcs::carcam
 
     bool turns(uint32_t mode) { return g_installed.load(std::memory_order_relaxed) && (mode == 18 || mode == 22); }
 
-    void mouse(float turn, float tilt)
+    void mouse(float turn, float tilt, bool aiming)
     {
         g_turn += turn;
         g_tilt += tilt;
+        g_aiming = aiming;
     }
 
     void stickMoved() { g_stick = true; }

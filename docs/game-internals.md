@@ -2865,6 +2865,21 @@ hidden run (rig `peek` / `poke`, snapshots diffed).
   is on (either device): the dummy written at the pad read at the gun's range along the mouse / right stick's aim
   (kept in the game's height limits), the lock-on camera turned by the same amount, the left stick centred; the game's
   update then adds the car's movement and the line test, as for its own stick.
+- **Free aim from the driver's seat** (2026-11-16, `vcs_aim.cpp`). The normal car controller calls
+  **FUN_002CEBE0** (PAL 0x2CEDB8) from 0x13AE2C with the car in a0; car +0x384 is the driver, +0x354 == 0 a car.
+  Reading the generated code and probing a parked car showed why pressing Circle alone did nothing: with the chase
+  camera (mode 18, TheCamera +0x7E0 == 0) the routine reads active CCam +0x88 / +0x8C for the window to use. The
+  host supplies those flags from the camera's direction just for the routine, then restores them with a guest
+  continuation (the unused 0x1000BC, returning to 0x13AE34). The driver's ped state remains 0x37 so the original
+  lean-out animation can complete on the ground. There is no dummy object or change to steering.
+  - Native fire: FUN_002CEBE0 → FireFromCar (0x2C1BB0) → FUN_002CB7C0. The latter's line test at 0x2CC848
+    returns to **0x2CC850** (PAL 0x2CCA28, verified by counted shots and ammo use). The host redirects this car and
+    player's line along the screen reticle, which sits above the car and uses the camera's vertical field of view.
+    Fire still runs the original animation, effects, rate and ammo logic.
+  - The driver's weapon gate reads weapon info +0x68 and wants slot 5 (SMGs); for pistols the hook returns a copy
+    of the info with slot 5 only at 0x2CEC90 (PAL 0x2CEE68). The rest of the game sees the real slot. The wheel calls
+    the game's slot selector (0x200168, PAL 0x200150; traced from SET_CURRENT_CHAR_WEAPON) with the next loaded
+    pistol or SMG. It runs in place of the drive-by routine for that frame; its caller doesn't use a return value.
 - **The forced free aim on foot: Phil's shooting range** (2026-11-01; mission 13 `SRANGE`). **04D6
   SET_PLAYER_FORCE_FREE_AIMING** (handler FUN_002D5C20: the script handler table at 0x4BEAF0 is per opcode, 8 bytes
   each, the function at +4) sets **bit 53 of the ped's flags at +0xCC8** (word +0xCCC, mask 0x200000) and, unless he

@@ -30,6 +30,7 @@ namespace vcs::aim
     {
         bool want = false;        // the target button is held (or hip fire) and free aim is on for that device
         bool on = false;          // free aim is on for either device (the game's own free aim a script starts is taken over)
+        bool driverWant = false;  // keyboard target button while driving
         float turn = 0, tilt = 0; // radians this frame: left +, up + (the mouse)
         float turnRate = 0, tiltRate = 0; // -1..1: left +, up + (the right stick)
     };
@@ -38,6 +39,7 @@ namespace vcs::aim
     {
         bool own = false;    // free aim has the target button: R1 is `r1` and L3 `l3`, not the bindings'
         bool camera = false; // and the camera: the right stick centred, the mouse camera left alone
+        bool driver = false; // aim with the follow-car camera and keep the driving controls
         bool leftStick = false; // and the left stick: centred (in a script's free aim it moves the game's dummy)
         bool padR1Fires = false; // the gamepad's R1 fires (Circle) - in a script's free aim, where the right stick aims
                                  // and Circle is out of the thumb's reach
@@ -49,6 +51,9 @@ namespace vcs::aim
     bool gunInHand();
     // Free aim is on (the game's free-aim lock is held, or a script's free aim is ours), as of the last pad read.
     bool aiming();
+    constexpr float kDriverReticleY = 0.37f; // fraction of the game's picture height, above the car
+    bool driverReticle(); // host UI thread
+    void driverWheel(int step); // game thread: queue a weapon change while aiming
 
     // Game thread, right after the CCam `cam`'s update (CCam::Process) and before the frame's camera is built from it
     // (game/vcs_freecam.cpp's hook on FUN_002A2ED0 calls it while the free camera is off): the follow camera, back after

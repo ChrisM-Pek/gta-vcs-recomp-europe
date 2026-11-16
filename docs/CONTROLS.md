@@ -68,8 +68,8 @@ game-internals.md 12c):
 - It is the game's own free aim (R1 then L3 on the PS2: the left stick moves an aiming point while Vic stands still),
   driven so that Vic can move and the mouse aims; `VCS_FREEAIM=0` leaves it out entirely.
 - **Driving a car**: turn on **Keyboard > Free aim** (F2). Hold the **right mouse button** (or E) and move the mouse to
-  aim, then use the **left mouse button** to fire. The **wheel** cycles through pistols and SMGs with ammo while you aim;
-  release the right button to use the wheel for the radio again. W / A / S / D still drive, and Space is still the
+  aim, then use the **left mouse button** to fire. The **wheel** cycles through pistols and SMGs with ammo whenever you
+  drive, even with Free aim off. W / A / S / D still drive, and Space is still the
   handbrake. This uses the normal chase camera and doesn't change mission passenger or mounted guns.
 - **Shooting from a car** (Jive Drive: Vic in the passenger seat while Lance drives - the game's own free aim, which the
   mission starts itself): with free aim on for either device, the mouse and the right stick turn the circle instead of
@@ -89,10 +89,8 @@ game-internals.md 12c):
 **In the scopes** (sniper rifles, rocket launcher, M16 view, camera, binoculars) the mouse turns the view itself, 1:1,
 with Mouse camera on (zoomed in it turns slower). **Mouse wheel** (Keyboard page, on by default): on foot down is the
 next weapon and up the previous one (R2 / L2, one per notch); in the sniper scope, the camera and binoculars it zooms;
-while driving down is the next radio station and up the one before (the game's own L1 steps forwards only: a step back
-is the station written two back and L1 - game-internals.md 12a; nothing happens while the radio plays an announcement,
-as with L1). A control bound to the wheel takes priority. While aiming, the wheel only changes weapons from the
-driver's seat with Keyboard > Free aim on.
+while driving it cycles loaded pistols and SMGs (down: next, up: previous). Use **Q** (L1) to change the radio station.
+A control bound to the wheel takes priority. On foot, the wheel does not change weapons while aiming.
 
 ## Keyboard page
 

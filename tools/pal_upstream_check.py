@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Check the PAL trainer and radio wheel in a hidden game with an isolated card."""
+"""Check the PAL trainer and radio button in a hidden game with an isolated card."""
 
 import time
 
@@ -35,16 +35,12 @@ try:
     station = lambda: game.peek(car + 0x2ba, 1)[0]
     before = station()
     for attempt in range(30):
-        game.cmd('press wheeldown 100')
+        game.cmd('press q 100')  # L1: the game's radio button
         time.sleep(2)
         if station() != before:
             break
     assert station() == (before + 1) % 10, (before, station())
-    print('radio down:', before, '->', station(), flush=True)
-    game.cmd('press wheelup 100')
-    time.sleep(2)
-    assert station() == before, (before, station())
-    print('radio up:', station(), flush=True)
+    print('radio L1:', before, '->', station(), flush=True)
     print('frames:', game.cmd('frames'), flush=True)
 finally:
     try:

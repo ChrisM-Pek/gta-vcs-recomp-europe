@@ -139,6 +139,8 @@ namespace vcs
         // lowered (then unlimited is unlimited)
         double effectiveFps()
         {
+            if (!independent())
+                return frameRate60() ? 60.0 : 30.0;
             const int cap = g_cap.load(std::memory_order_relaxed);
             double fps = cap == kCapRefresh ? platform::displayRefreshHz() : cap == kCapUnlimited ? 0.0 : cap;
             const double limit = minStep() < kDefaultMinStep ? 0.0 : kMaxFps;
@@ -178,7 +180,7 @@ namespace vcs
         PS2_GUEST_CC void countVBlank(uint8_t *rdram, R5900Context *ctx, PS2Runtime *)
         {
             const uint32_t at = GPR_U32(ctx, 4) + 4u;
-            const bool sixty = !independent() && g_cap.load(std::memory_order_relaxed) != 30;
+            const bool sixty = !independent() && frameRate60();
             write32(rdram, at, read32(rdram, at) + (sixty ? 2u : 1u));
             ctx->pc = GPR_U32(ctx, 31);
         }
@@ -408,7 +410,11 @@ namespace vcs
     int frameCap() { return g_cap.load(std::memory_order_relaxed); }
 
     void setFrameRate60(bool on) { setFrameCap(on ? 60 : 30); }
-    bool frameRate60() { return frameCap() != 30; }
+    bool frameRate60()
+    {
+        const int cap = frameCap();
+        return cap != 25 && cap != 30;
+    }
 
     void installFrameRateHooks(PS2Runtime &runtime)
     {

@@ -588,12 +588,13 @@ namespace
         s.page = "Display";
         s.section = "Frame rate";
         s.label = "Frame rate cap";
-        s.help = "60 is the default, 30 the original. With original timing anything above 30 runs at 60 (the VBlank "
+        s.help = "60 is the default, 30 the original. With original timing, 25 and 30 run at 30; anything above 30 runs at 60 (the VBlank "
                  "allows no more); "
                  "with frame-rate independent timing the game runs up to the cap - at most 240 (above that the game's "
                  "shortest time step makes it run slightly fast).";
         s.type = Type::Choice;
-        s.choices = {{"30 (original)", 30},
+        s.choices = {{"25", 25},
+                     {"30 (original)", 30},
                      {"60", 60},
                      {"100", 100},
                      {"120", 120},

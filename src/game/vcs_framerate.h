@@ -18,7 +18,7 @@ namespace vcs
     void setTiming(Timing timing);
     Timing timing();
 
-    // Frames per second: 30, 60 ... 240 (the most, vcs_framerate.cpp kMaxFps); kCapRefresh = the monitor's refresh rate; kCapUnlimited = no limit
+    // Frames per second: 25, 30, 60 ... 240 (the most, vcs_framerate.cpp kMaxFps); kCapRefresh = the monitor's refresh rate; kCapUnlimited = no limit
     // (independent timing). Any thread, takes effect at the next frame.
     constexpr int kCapRefresh = -1;
     constexpr int kCapUnlimited = 0;

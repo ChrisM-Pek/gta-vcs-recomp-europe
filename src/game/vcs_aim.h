@@ -53,7 +53,7 @@ namespace vcs::aim
     bool aiming();
     constexpr float kDriverReticleY = 0.37f; // fraction of the game's picture height, above the car
     bool driverReticle(); // host UI thread
-    void driverWheel(int step); // game thread: queue a weapon change while aiming
+    void driverWheel(int step); // game thread: queue one weapon change while driving (-1 or +1)
 
     // Game thread, right after the CCam `cam`'s update (CCam::Process) and before the frame's camera is built from it
     // (game/vcs_freecam.cpp's hook on FUN_002A2ED0 calls it while the free camera is off): the follow camera, back after

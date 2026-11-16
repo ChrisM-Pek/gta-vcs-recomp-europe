@@ -1,15 +1,17 @@
 #!/usr/bin/env python3
-"""Check mouse free aim in the driver's seat, in a hidden game with a copied save."""
+"""Check driver mouse controls and the 25 fps cap in a hidden game with a copied save."""
 import math
+import time
 from pathlib import Path
 
 import rig
-from framerate_audit import REGION, RUNWAY_SPOT
+from framerate_audit import BIKE, REGION, RUNWAY_SPOT
 
 
 def check(g):
     g.wait_ingame()
     g.cmd("setting advanced.reset_all")
+    g.cmd("setting display.fps 30")
     g.prime()
     x, y, heading = RUNWAY_SPOT
     g.teleport(x, y, -100.0, heading)
@@ -76,16 +78,50 @@ def check(g):
     g.cmd("key mouseright up")
     g.wait_frames(10)
     assert aim()["driver"] == 0
+    station = g.peek(car + 0x2BA, 1)
+    g.cmd("press wheeldown 100")
+    g.wait_frames(40)
+    assert weapon()[0] == 19 and g.peek(car + 0x2BA, 1) == station
     g.cmd("setting mouse.free_aim 0")
+    g.cmd("press wheelup 100")
+    g.wait_frames(40)
+    assert weapon()[0] == 25 and g.peek(car + 0x2BA, 1) == station
     g.cmd("key mouseright down")
     g.wait_frames(5)
     assert aim()["driver"] == 0 and g.cmd("padstate").startswith("buttons=0800 ")
-    print(f"Driver aim: {smg} SMG shots, {pistol} pistol shots; mouse, wheel, steering and opt-out passed")
+    g.cmd("key mouseright up")
+
+    print(f"Driver aim: {smg} SMG shots, {pistol} pistol shots; wheel works without tuning radio")
+
+    assert g.cmd("setting display.fps 25") == "25"
+    g.wait_frames(25)
+    frames = int(g.cmd("frames"))
+    start = time.perf_counter()
+    g.wait_frames(100)
+    fps = (int(g.cmd("frames")) - frames) / (time.perf_counter() - start)
+    assert 24 <= fps <= 26, fps
+    print(f"25 FPS cap: measured {fps:.2f} FPS")
+
+    z = g.player()[1][2]
+    g.scm(s.op(0x0216, s.PLAYER, s.f(x), s.f(y), s.f(z)))  # WARP_CHAR_FROM_CAR_TO_COORD
+    g.wait_frames(25)
+    z = g.player()[1][2] + 0.5
+    g.scm(s.op(s.REQUEST_MODEL, s.i(BIKE)) + s.op(s.LOAD_ALL_MODELS_NOW) +
+          s.op(s.CREATE_CAR, s.i(BIKE), s.f(x + 4), s.f(y), s.f(z), s.LOCAL0) +
+          s.op(s.WARP_CHAR_INTO_CAR, s.PLAYER, s.LOCAL0))
+    g.wait_frames(35)
+    bike = g.u32(ped + 0x480)
+    assert bike and bike != car and g.u32(bike + 0x384) == ped, (hex(bike), hex(car), g.u32(ped + 0x8C4))
+    before = weapon()[0]
+    g.cmd("press wheeldown 100")
+    g.wait_frames(15)
+    assert weapon()[0] != before and weapon()[0] in (19, 25)
+    print("Weapon wheel: passed on a motorcycle")
 
 
 if __name__ == "__main__":
     game = rig.Game.start(save=rig.default_save(), name="driver_aim_check", seconds=180, port=47693,
-                          env={"VCS_FPS": "30"})
+                          env={"VCS_FPS": "", "VCS_TIMING": "1"})
     try:
         check(game)
     finally:

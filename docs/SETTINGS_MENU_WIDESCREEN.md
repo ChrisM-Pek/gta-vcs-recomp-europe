@@ -269,7 +269,8 @@ Audio, Game, Keyboard, Gamepad, Advanced.
   Balanced (Match window aspect, HUD at the screen edges, 2x, no MSAA, 4x AF, independent at 60; "Widescreen, light"
   at 1x until 2026-11-14, renamed and raised to 2x at the user's request). An Enhanced preset - Match window, 4x MSAA,
   16x AF, the display's refresh - was removed on 2026-11-14, the user's choice. A preset sets only those keys; window
-  mode, controls and sound stay. *Frame rate*: **Vertical sync** (`display.vsync`: Off = the flip model's present
+  mode, controls and sound stay. *Frame rate*: **Frame rate cap** includes 25 FPS with frame-rate independent timing
+  (Original timing uses its 30 FPS cadence for that choice). **Vertical sync** (`display.vsync`: Off = the flip model's present
   at once, never torn, as before; On = sync interval 1; Off, allow tearing = `DXGI_PRESENT_ALLOW_TEARING` for VRR and
   the lowest delay, Off where the system can't; `VCS_VSYNC`), **Show frame rate** (game frames per second over half a
   second, in a chosen corner).

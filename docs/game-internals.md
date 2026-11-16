@@ -2579,9 +2579,8 @@ timing at 60 fps; independent timing at 60 / 144 fps got through, by luck (below
   nothing that is heard (8 kept playing with 7 written) until the next retune, which starts from the written value:
   7 -> 5 written, then L1, gave 6. While stream 0x21 plays (an announcement about 15 s after getting into a car in the
   test save, 20 - 25 s long) L1 is ignored and the presses are dropped; afterwards the vehicle's station resumes.
-  `vcs_input.cpp` puts the mouse wheel on this while driving: a notch down is L1, a notch up writes the station two
-  back and presses L1 (one forward from there); when the station is still where it was put 40 frames after the last
-  press the presses were not taken and the old station is written back.
+  The mouse wheel used to simulate L1 (writing the station two back first for a previous station). It now changes
+  weapons while driving; the radio still uses the game's L1 binding (Q by default).
 
 ### 12b. The camera and the mouse (2026-10-29)
 
@@ -2879,7 +2878,8 @@ hidden run (rig `peek` / `poke`, snapshots diffed).
   - The driver's weapon gate reads weapon info +0x68 and wants slot 5 (SMGs); for pistols the hook returns a copy
     of the info with slot 5 only at 0x2CEC90 (PAL 0x2CEE68). The rest of the game sees the real slot. The wheel calls
     the game's slot selector (0x200168, PAL 0x200150; traced from SET_CURRENT_CHAR_WEAPON) with the next loaded
-    pistol or SMG. It runs in place of the drive-by routine for that frame; its caller doesn't use a return value.
+    pistol or SMG. It runs before CGame::Process and returns to its hook to run the usual frame. This lets the wheel
+    work whether the player is aiming or not, including on a bike, without injecting a shoulder button.
 - **The forced free aim on foot: Phil's shooting range** (2026-11-01; mission 13 `SRANGE`). **04D6
   SET_PLAYER_FORCE_FREE_AIMING** (handler FUN_002D5C20: the script handler table at 0x4BEAF0 is per opcode, 8 bytes
   each, the function at +4) sets **bit 53 of the ped's flags at +0xCC8** (word +0xCCC, mask 0x200000) and, unless he

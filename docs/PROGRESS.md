@@ -1,10 +1,19 @@
 # Progress
 
+## Vehicle weapon wheel and 25 FPS cap (2026-11-16)
+
+- The mouse wheel now cycles loaded pistols and SMGs while driving, even with free aim off. The game's radio button
+  (L1, Q by default) still changes the station. The weapon switch runs before the world update and is separate from
+  the car's free aim.
+- Display > Frame rate cap now offers 25 FPS with frame-rate independent timing. Original timing keeps its 30 FPS
+  cadence for that choice.
+- Quick PAL build and hidden `python tools/driver_aim_check.py` passed: both wheel directions in a car without a
+  station change, switching on a motorcycle, and 25.07 game frames per second at the new cap. No US run.
+
 ## Driver's free aim (2026-11-16)
 
-- **Keyboard > Free aim** now works from the driver's seat of a car: right click to aim, left click to fire, wheel to
-  switch between pistols and SMGs while aiming. The normal car controls stay available; outside aim the wheel tunes the
-  radio. See game-internals.md 12c for the driver fire path and the PAL addresses.
+- **Keyboard > Free aim** now works from the driver's seat of a car: right click to aim, left click to fire. The
+  normal car controls stay available. See game-internals.md 12c for the driver fire path and the PAL addresses.
 - Quick PAL build and hidden `python tools/driver_aim_check.py` passed: 16 SMG and 7 pistol shots with matching ammo use,
   both wheel directions, steering and acceleration during aim, and the original handbrake binding with Free aim off.
   The US addresses were checked against the generated code; no US game run.
@@ -1200,7 +1209,7 @@ Python scripts still usable on their own. docs/LAUNCHER.md has the whole of it; 
 | `VCS_GAME_VOLUME=0` | Audio > Music / Sound effects leave the game's own levels alone (no setter hooks, no sync; the reference) |
 | `VCS_CARCAM=0` | the hook on the camera behind a vehicle not installed: the mouse moves the right stick there, as before 2026-11-03; Car camera return does nothing |
 | `VCS_FOOT_WALL=0` | on foot the mouse's turn does not ask the camera's update for the pull-in at walls: the camera stands at a wall's edge while its heading turns on, as before 2026-11-11 |
-| `VCS_FREEAIM=0` | free aim's hooks not installed (CGame::Process, CCamera::Process, the weapons' line test): the game's aiming untouched, the setting does nothing |
+| `VCS_FREEAIM=0` | the game's aiming untouched, the Free aim setting does nothing; the vehicle weapon wheel still works |
 | `VCS_INPUT_MAP=0` | the runtime's fixed built-in key / gamepad mapping instead of the player's bindings (`ps2_pad.cpp`; the reference) |
 | `VCS_VSYNC=0\|1\|2` | Vertical sync for one run: off, on, off with tearing allowed |
 | `VCS_REFLECTIONS=0\|1\|2` | Car reflections for one run: Original, Smooth, Auto (Smooth above 1x; always used otherwise, no setting) - game-internals.md 6g |

@@ -93,7 +93,9 @@ namespace vcs::aim
         PS2Runtime::RecompiledFunction g_origDriverFire = nullptr, g_origWeaponInfo = nullptr;
         uint32_t g_windowFlags = 0, g_windowBefore[2] = {};
         uint32_t g_driver = 0; // the vehicle as of the latest pad sample (game thread)
+        uint32_t g_wheelVehicle = 0, g_weaponReturn = 0;
         int g_driverWheel = 0;
+        bool g_vehicleWheel = false;
         std::atomic<bool> g_driverReticle{false};
         uint8_t *g_rdram = nullptr;
 
@@ -167,13 +169,18 @@ namespace vcs::aim
             return slot >= 0 && slot < 10 && isDriverGun(slotType(ped, slot));
         }
 
-        uint32_t driverCar(uint32_t ped)
+        uint32_t drivenVehicle(uint32_t ped)
         {
             if (!ped || rd32(ped + kPedState) != 0x37)
                 return 0;
-            const uint32_t car = rd32(ped + kPedVehicle);
-            return car && rd32(car + 0x384) == ped && rd32(car + 0x354) == 0 &&
-                   (rd32(car + 0x54) >> 16) != 194 ? car : 0; // the fire truck has its own gun
+            const uint32_t vehicle = rd32(ped + kPedVehicle);
+            return vehicle && rd32(vehicle + 0x384) == ped ? vehicle : 0;
+        }
+
+        uint32_t driverCar(uint32_t ped)
+        {
+            const uint32_t car = drivenVehicle(ped);
+            return car && rd32(car + 0x354) == 0 && (rd32(car + 0x54) >> 16) != 194 ? car : 0;
         }
 
         bool onFoot(uint32_t ped) { return ped && !rd32(ped + kPedVehicle) && rd32(ped + kPedState) != 0x37; }
@@ -261,6 +268,34 @@ namespace vcs::aim
         // free aim it moves the dummy, and Vic stands still).
         PS2_GUEST_CC void gameProcess(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
         {
+            if (g_weaponReturn && GPR_U32(ctx, 31) == kGameProcess)
+            {
+                SET_GPR_U32(ctx, 31, g_weaponReturn);
+                g_weaponReturn = 0;
+            }
+            else if (g_driverWheel)
+            {
+                const uint32_t ped = rd32(kPlayerPed);
+                const int step = g_driverWheel;
+                g_driverWheel = 0;
+                if (g_wheelVehicle == drivenVehicle(ped))
+                {
+                    const int current = std::clamp(weaponSlot(ped), 0, 9);
+                    for (int i = 1; i < 10; ++i)
+                    {
+                        const int slot = (current + step * i + 10) % 10;
+                        if (!isDriverGun(slotType(ped, slot)) || !rd32(ped + kPedWeapons + slot * 0x1Cu + 0xC))
+                            continue;
+                        // The selector returns here before CGame::Process runs; it can yield like any guest call.
+                        g_weaponReturn = GPR_U32(ctx, 31);
+                        SET_GPR_U32(ctx, 31, kGameProcess);
+                        SET_GPR_U32(ctx, 4, ped);
+                        SET_GPR_U32(ctx, 5, slot);
+                        ctx->pc = kSelectWeapon;
+                        return;
+                    }
+                }
+            }
             if (g_state == State::Active)
                 if (const uint32_t ped = rd32(kPlayerPed))
                     setFreeAimBit(ped, false);
@@ -325,23 +360,6 @@ namespace vcs::aim
             if (g_driver && car == g_driver && GPR_U32(ctx, 31) == kDriverReturn)
             {
                 const uint32_t ped = rd32(kPlayerPed);
-                if (g_driverWheel && driverCar(ped) == car)
-                {
-                    const int step = g_driverWheel > 0 ? 1 : -1;
-                    g_driverWheel -= step;
-                    const int current = std::clamp(weaponSlot(ped), 0, 9);
-                    for (int i = 1; i < 10; ++i)
-                    {
-                        const int slot = (current + step * i + 10) % 10;
-                        if (!isDriverGun(slotType(ped, slot)) || !rd32(ped + kPedWeapons + slot * 0x1Cu + 0xC))
-                            continue;
-                        // Its caller ignores the fire routine's return value; switch weapons on this frame instead.
-                        SET_GPR_U32(ctx, 4, ped);
-                        SET_GPR_U32(ctx, 5, slot);
-                        ctx->pc = kSelectWeapon;
-                        return;
-                    }
-                }
                 if (driverGun(ped))
                 {
                     // The chase camera's window flags choose the lean-out animation. Restore them at the guest return,
@@ -431,24 +449,27 @@ namespace vcs::aim
     void install(PS2Runtime &runtime)
     {
         g_rdram = runtime.memory().getRDRAM();
+        g_origGame = runtime.lookupFunction(kGameProcess);
+        if (!g_origGame)
+            return;
+        g_vehicleWheel = runtime.hasFunction(kSelectWeapon);
+        runtime.replaceFunction(kGameProcess, &gameProcess);
         if (const char *e = std::getenv("VCS_FREEAIM"); e && e[0] == '0')
         {
             std::fprintf(stderr, "[aim] free aim off (VCS_FREEAIM=0)\n");
             return;
         }
-        g_origGame = runtime.lookupFunction(kGameProcess);
         g_origCamera = runtime.lookupFunction(kCameraProcess);
         g_origShotLine = runtime.lookupFunction(kShotLine);
         g_origMovesAiming = runtime.lookupFunction(kMovesAiming);
-        if (!g_origGame || !g_origCamera || !g_origShotLine || !g_origMovesAiming)
+        if (!g_origCamera || !g_origShotLine || !g_origMovesAiming)
             return;
-        runtime.replaceFunction(kGameProcess, &gameProcess);
         runtime.replaceFunction(kCameraProcess, &cameraProcess);
         runtime.replaceFunction(kShotLine, &shotLine);
         runtime.replaceFunction(kMovesAiming, &movesAiming);
         g_origDriverFire = runtime.lookupFunction(kDriverFire);
         g_origWeaponInfo = runtime.lookupFunction(kGetWeaponInfo);
-        if (g_origDriverFire && g_origWeaponInfo && runtime.hasFunction(kSelectWeapon) && runtime.hasFunction(kDriverReturn) &&
+        if (g_origDriverFire && g_origWeaponInfo && runtime.hasFunction(kDriverReturn) &&
             !runtime.hasFunction(kRestoreWindows) && runtime.registerFunction(kRestoreWindows, &restoreWindows))
         {
             runtime.replaceFunction(kDriverFire, &driverFire);
@@ -476,7 +497,13 @@ namespace vcs::aim
 
     bool aiming() { return g_active.load(std::memory_order_relaxed); }
     bool driverReticle() { return g_driverReticle.load(std::memory_order_relaxed); }
-    void driverWheel(int step) { g_driverWheel = std::clamp(g_driverWheel + step, -3, 3); }
+    void driverWheel(int step)
+    {
+        if (!g_vehicleWheel || !step)
+            return;
+        g_wheelVehicle = drivenVehicle(rd32(kPlayerPed));
+        g_driverWheel = g_wheelVehicle ? step : 0;
+    }
 
     // The follow camera's first update after free aim starts it afresh behind Vic (a heading of its own, whatever the
     // aim's), and the view showed that for a frame (the user's report: a one-frame snap to another angle). Here, after
@@ -584,12 +611,10 @@ namespace vcs::aim
     Output update(const Input &in)
     {
         Output out;
-        const uint32_t ped = g_rdram && g_origGame ? rd32(kPlayerPed) : 0;
+        const uint32_t ped = g_rdram && g_origMovesAiming && g_origCamera && g_origShotLine ? rd32(kPlayerPed) : 0;
         const uint32_t car = g_origDriverFire && in.driverWant ? driverCar(ped) : 0;
         const uint32_t camMode = car ? rd32(activeCam()) & 0xFFFFu : 0;
         const uint32_t driver = camMode == 18 && rd32(activeCam() + 0x74) == 3 && rd32(kTheCamera + 0x7E0) == 0 ? car : 0;
-        if (driver != g_driver)
-            g_driverWheel = 0;
         g_driver = driver;
         g_driverReticle.store(driver && driverGun(ped), std::memory_order_relaxed);
         if (driver)

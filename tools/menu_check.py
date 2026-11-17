@@ -3,8 +3,8 @@
 
     python tools/menu_check.py [OUT] [--port N]
 
-One hidden session from a copy of build/rig/saves/fortbaxter. The cursor is set over the menu's 640x448 drawing with
-the control channel's `menumouse` (or in window pixels: `menumouse window x y`; the boxes come from `menustate`: where each item was drawn), the buttons and the
+One hidden session from a copy of build/rig/saves/fortbaxter. The cursor is set over the menu's 2D picture with
+the control channel's `menumouse` (or in window pixels: `menumouse window x y`; the boxes come from `menustate`: where each item was drawn and the picture's own size, 640x448 on the US disc and 640x512 on the European one), the buttons and the
 wheel are the keys mouseleft / mouseright / wheelup / wheeldown. Checks:
   keys      Escape opens the menu (Start), Enter selects, Escape goes back, Escape on the tab bar closes it; Enter
             outside the menu presses nothing
@@ -148,12 +148,13 @@ def main():
         # ---- the cursor in window pixels: the real cursor's mapping (the 4:3 area of the 16:9 frame) ----
         c.press("escape", 2.0)
         ww, wh = (int(v) for v in c.state()["window"].split("x"))  # (a screenshot may be another size)
+        pw, ph = (int(v) for v in c.state()["picture"].split("x"))  # the menu's 2D drawing (the disc's frame height)
         x0, y0, fw, fh = fit_rect(4 / 3, 16 / 9, ww, wh)
 
         def window_point(item, fx=0.5, fy=0.5):
             """`item`'s box at (fx, fy) of its size, in window pixels"""
             b = c.state()["items"][item][0]
-            return x0 + (b[0] + fx * (b[2] - b[0])) / 640 * fw, y0 + (b[1] + fy * (b[3] - b[1])) / 448 * fh
+            return x0 + (b[0] + fx * (b[2] - b[0])) / pw * fw, y0 + (b[1] + fy * (b[3] - b[1])) / ph * fh
         missed = []
         # the tabs at the bottom corners of the menu and in the middle; their text's middle and near its corners (a
         # mapping off by a few pixels at the edges - the hit areas pulled to the middle - misses those)
@@ -225,15 +226,26 @@ def main():
              st.get("page") == "DISPLAY_PAGE" and "wide_scr_MI" not in st["items"] and "RADAR_MODE_MI" in st["items"],
              sorted(st["items"]))
         c.shot("03b_display")
+        # the page's focus moves: down cycles through its rows once. The rows whose Widescreen row is hidden are the
+        # US disc's, then the European one's (it adds a Language row); the rows the check names are on both.
         walk = [c.where()[3]]
-        for _ in range(6):
+        wrapped = False
+        for _ in range(12):
             c.press("down", 0.6)
+            if c.where()[3] == walk[0]:
+                wrapped = True
+                break
             walk.append(c.where()[3])
-        rows = ["Brightness_MI", "Subtitles_MI", "RADAR_MODE_MI", "HUD_MODE_MI", "Trails_MI", "screen_pos_MI", "Brightness_MI"]
-        c.ok("display: down walks the rows past the hidden one", walk == rows, walk)
-        for _ in range(4):  # Brightness (wrapped) -> Screen position, Trails, HUD mode, Radar mode
+        core = ["Brightness_MI", "Subtitles_MI", "RADAR_MODE_MI", "HUD_MODE_MI", "Trails_MI", "screen_pos_MI"]
+        rest = iter(walk)
+        inOrder = all(any(x == want for x in rest) for want in core)
+        c.ok("display: down walks the rows past the hidden one",
+             wrapped and "wide_scr_MI" not in walk and inOrder, walk)
+        # up past it too: from Radar mode, up is Subtitles (the hidden row is out of both ways round)
+        if "RADAR_MODE_MI" in walk:
+            for _ in range(walk.index("RADAR_MODE_MI")):
+                c.press("down", 0.6)
             c.press("up", 0.6)
-        c.press("up", 0.6)
         c.ok("display: up past it (Radar mode -> Subtitles)", c.where()[3] == "Subtitles_MI", c.where())
         sub, radar = (c.state()["items"][n][0] for n in ("Subtitles_MI", "RADAR_MODE_MI"))
         c.ok("display: the rows below it moved up (no gap)", 30 <= radar[1] - sub[1] <= 50, (sub, radar))
@@ -272,8 +284,9 @@ def main():
         time.sleep(0.4)
         p1 = pan()
         moved = (p1[0] - p0[0], p1[1] - p0[1])
-        c.ok("map: a drag moves it with the cursor (80 x 40 pixels: 60 x 24.3 units)",
-             abs(moved[0] + 60.0) < 1.0 and abs(moved[1] + 40 * 272 / 448) < 1.0, "%.1f, %.1f" % moved)
+        uy = 272.0 / ph  # menu units per picture pixel (1.882.. on the European disc's 640x512, 1.647.. on 640x448)
+        c.ok("map: a drag moves it with the cursor (80 x 40 pixels: 60 x %.1f units)" % (40 * uy),
+             abs(moved[0] + 60.0) < 1.0 and abs(moved[1] + 40 * uy) < 1.0, "%.1f, %.1f" % moved)
         c.move(100, 100, 0.2)
         g.cmd("key mouseleft down")
         for i in range(1, 30):

@@ -30,6 +30,7 @@
 #include "game/vcs_music_timing.h"
 #include "game/vcs_particle_timing.h"
 #include "game/vcs_framerate.h"
+#include "game/vcs_frontend.h"
 #include "game/vcs_physics_timing.h"
 #include "game/vcs_script_fixes.h"
 #include "game/vcs_script_timing.h"
@@ -999,6 +1000,7 @@ int main(int argc, char *argv[])
         vcs::installScriptFixHooks(runtime);
         vcs::installDisplayHooks(runtime);
         vcs::installHudHooks(runtime);
+        vcs::frontend::install(runtime); // the pause menu with Enter / Escape and the mouse (game/vcs_frontend.h)
         vcs::installMovieHooks(runtime);
         vcs::installMusicTimingHooks(runtime);   // the radio off the air on the time step (game/vcs_music_timing.h)
         vcs::installParticleTimingHooks(runtime); // particle fades and emitters on the time step (game/vcs_particle_timing.h)

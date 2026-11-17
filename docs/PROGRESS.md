@@ -1,5 +1,30 @@
 # Progress
 
+## The pause menu on the European disc (2026-11-17)
+
+- The game's pause menu with the keyboard and the mouse had never been installed on the European build: `vcs_frontend`
+  was hooked only from `applyVcs`, registered for SLUS_215.90. It now installs from `main.cpp`'s PAL branch (after the
+  HUD's draw hooks, before the button prompts' - each chains onto the ones under it), and the PAL frame kick calls its
+  `onFrameKick`.
+- PAL addresses: the manager 0x729780 with its "made" flag 0x4CDAB0 (from the PAL `FUN_00471740`, the US
+  `FUN_00471400`'s twin), the item class vtables +0x300 (Background 0x490110, Map 0x4908E8, Slider 0x490980,
+  ScrollList 0x48FCA8), the menu / page / Im2D draws and the after-items functions from `build/analysis/candidates.csv`
+  (the 8-byte getter US 0x2AF108 has no twin: its 11 call sites all `jal` 0x2AF2E0). Each is an entry of the PAL
+  function map. game-internals.md 14 has the list and how each was found.
+- Two European layout differences: the menu draws in a **640x512** 2D picture (the US one is 640x448) and the pages'
+  units scale y 512/272, so the cursor and the map's drag clamp use that height; the slider's step count is the low
+  **byte** at +0xE8 (the slider's own draw loops that many bars) where the US object reads it as a word - a word there
+  on the European disc is 0x01D26308 for Music.
+- `python tools/menu_check.py`: 33 checks, 0 failed on the European disc (a hidden run from a copy of the player's
+  card, screenshots in `build/menu_check_pal`). Its Display row walk follows the page's own rows now (the European
+  Display page adds a `language_MI` row) and it reads the picture's size from `menustate`'s new `picture=`. Quick PAL
+  build only (`python tools/build.py`); the US build was not run - its constants are unchanged (640x448, and its step
+  word's low byte is still 8).
+- Two tools were tried on the European card and are not adapted to it (neither depends on this change): `saves.py`
+  hard-codes the US card folder `BASLUS-21590GTA40001` and its save names, and `prompts_check.py`'s expand / sets steps
+  expect the English text table - the player's card is French, so the game's phrases are "touche R3" and the prompt
+  phrase list (English) does not turn them into control tokens; its menu step passes (6 buttons in both sets).
+
 ## Vehicle weapon wheel and 25 FPS cap (2026-11-16)
 
 - The mouse wheel now cycles loaded pistols and SMGs while driving, even with free aim off. The game's radio button

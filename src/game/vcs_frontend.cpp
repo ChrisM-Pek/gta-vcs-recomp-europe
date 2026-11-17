@@ -17,8 +17,9 @@
 // So the mouse is played as the pad: a step toward the item under the cursor (a breadth-first search over the items'
 // type-0 actions), Cross on it, D-pad left / right on sliders and choices, Triangle for back, L1 / R1 to zoom the map.
 // Where items are on screen comes from their drawing: each item class's draw is hooked (as the pages draw them) and
-// the Im2D primitives drawn inside it make up its box, in the 640x448 picture (what the player sees, text widths and
-// alignment included). The map is panned by its own offset (+0xE4 / +0xE8, menu units).
+// the Im2D primitives drawn inside it make up its box, in the game's 2D picture (what the player sees, text widths and
+// alignment included) - 640x448 on the US disc, 640x512 on the European one (both stretched to the menu's 4:3 area).
+// The map is panned by its own offset (+0xE4 / +0xE8, menu units).
 #include "game/vcs_frontend.h"
 
 #include "platform/platform.h"
@@ -44,6 +45,28 @@ namespace vcs::frontend
     namespace
     {
         constexpr uint32_t kRamMask = 0x01FFFFFFu;
+#ifdef VCS_EXPERIMENTAL_PAL
+        // SLES_546.22 (docs/game-internals.md 14): the globals are the US ones + 0x300 (the manager's own address read
+        // from the PAL FUN_00471740's `lui 0x73; addiu -0x6880`, the flag from the same function's `lw -0x2550`), the
+        // code addresses the matched functions of tools/match_versions.py --candidates (every one is an entry of the
+        // PAL function map; the after-items entries were checked through all their call sites' PAL `jal` targets).
+        // Its 2D picture is 640x512 (the PAL frame; the pages' backdrop is drawn 0,0 - 640,512), not the US 640x448.
+        constexpr float kPictureWidth = 640.0f, kPictureHeight = 512.0f;
+        constexpr uint32_t kManager = 0x00729780u;      // the menu manager (above)
+        constexpr uint32_t kManagerBuilt = 0x004CDAB0u; // FUN_00471740's "made" flag
+        constexpr uint32_t kFrameCounter = 0x004CD424u; // CTimer::m_FrameCounter (runs in the menu too)
+        constexpr uint32_t kMenuDraw = 0x003B56D0u;     // the menu's draw (FUN_0021f960 calls it while the menu is up)
+        constexpr uint32_t kPageDraw = 0x003CE220u;     // a page's draw: each visible item's draw (focused: +0x2C)
+        constexpr uint32_t kIm2DRender = 0x002FBFE8u, kIm2DRenderIndexed = 0x002FC048u;
+        constexpr uint32_t kGlyphBatch = 0x003E0124u;   // Im2D's return address in the font's glyph batch: text
+        constexpr uint32_t kAfterItems[] = {0x003E0E10u, 0x003E0F18u, 0x00108640u, 0x002AF2E0u, 0x00287028u};
+        // item classes (vtables)
+        constexpr uint32_t kSlider = 0x00490980u;     // value +0xDC (0..1), steps +0xE8 (Music / SFX volume: 8)
+        constexpr uint32_t kMap = 0x004908E8u;        // the map page's map: +0xE4 / +0xE8 its offset (menu units)
+        constexpr uint32_t kScrollList = 0x0048FCA8u; // Brief, Stats: scrolled by up / down
+        constexpr uint32_t kBackground = 0x00490110u; // a page's backdrop (0, 0, 480, 272): the units' place on screen
+#else
+        constexpr float kPictureWidth = 640.0f, kPictureHeight = 448.0f;
         constexpr uint32_t kManager = 0x00729480u;      // the menu manager (above)
         constexpr uint32_t kManagerBuilt = 0x004CD7B0u; // FUN_00471400's "made" flag
         constexpr uint32_t kFrameCounter = 0x004CD124u; // CTimer::m_FrameCounter (runs in the menu too)
@@ -59,6 +82,7 @@ namespace vcs::frontend
         constexpr uint32_t kMap = 0x004905E8u;        // the map page's map: +0xE4 / +0xE8 its offset (menu units)
         constexpr uint32_t kScrollList = 0x0048F9A8u; // Brief, Stats: scrolled by up / down
         constexpr uint32_t kBackground = 0x0048FE10u; // a page's backdrop (0, 0, 480, 272): the units' place on screen
+#endif
 
         // the pad word as game/vcs_input.cpp builds it (pressed = 1)
         constexpr uint16_t kUp = 0x0010, kRight = 0x0020, kDown = 0x0040, kLeft = 0x0080, kL1 = 0x0400, kR1 = 0x0800,
@@ -158,7 +182,9 @@ namespace vcs::frontend
         }
         int sliderSteps(uint32_t item)
         {
-            const int steps = static_cast<int>(rd32(item + 0xE8));
+            // the game's own bar count: a byte at +0xE8. The European build follows it with a pointer's bytes, so a
+            // whole word there is not the count (Music: 0x01D26308); the US one's whole word is 8, whose low byte it is.
+            const int steps = static_cast<int>(rd8(item + 0xE8));
             return itemClass(item) == kSlider && steps >= 1 && steps <= 64 ? steps : 0;
         }
         int sliderLevel(uint32_t item)
@@ -233,8 +259,8 @@ namespace vcs::frontend
             std::memcpy(r, g_rdram + ((d.item + 0x10u) & kRamMask), 16);
             if (r[2] <= 0 || r[3] <= 0 || r[2] > 2000 || r[3] > 2000)
                 return;
-            const float x0 = r[0] * (640.0f / 480.0f), y0 = r[1] * (448.0f / 272.0f);
-            const float x1 = (r[0] + r[2]) * (640.0f / 480.0f), y1 = (r[1] + r[3]) * (448.0f / 272.0f);
+            const float x0 = r[0] * (kPictureWidth / 480.0f), y0 = r[1] * (kPictureHeight / 272.0f);
+            const float x1 = (r[0] + r[2]) * (kPictureWidth / 480.0f), y1 = (r[1] + r[3]) * (kPictureHeight / 272.0f);
             for (Box *b : {&d.box, &d.value})
                 if (b->any())
                 {
@@ -375,7 +401,7 @@ namespace vcs::frontend
         }
 
         // ---- the cursor (main thread -> game thread) -------------------------------------------------------------------
-        std::atomic<float> g_cursorX{0.0f}, g_cursorY{0.0f}; // over the 640x448 picture
+        std::atomic<float> g_cursorX{0.0f}, g_cursorY{0.0f}; // over the menu's 2D picture (640x448 / 640x512)
         std::atomic<bool> g_cursorValid{false};
         std::atomic<int> g_windowW{0}, g_windowH{0}; // drawable pixels, at the last host frame (menustate)
         // "menumouse" (tests): the cursor set from the control channel - over the 640x448 picture ("menumouse x y") or
@@ -626,18 +652,19 @@ namespace vcs::frontend
                 std::replace(focus.begin(), focus.end(), ' ', '_');
                 std::snprintf(buf, sizeof(buf), "open=1 tabbar=%d page=%s focus=%s", m.tabBar ? 1 : 0, page.c_str(), focus.c_str());
                 s = buf;
-                // the window's size in pixels ("menumouse window"'s units; a screenshot may be another size) and the
-                // cursor over the 640x448 picture, as the menu sees it
+                // the window's size in pixels ("menumouse window"'s units; a screenshot may be another size), the
+                // drawing's own size (640x448 on the US disc, 640x512 on the European one) and the cursor over it, as
+                // the menu sees it
                 float cx = 0.0f, cy = 0.0f;
                 const bool on = cursor(cx, cy);
-                std::snprintf(buf, sizeof(buf), " window=%dx%d cursor=", g_windowW.load(std::memory_order_relaxed),
-                              g_windowH.load(std::memory_order_relaxed));
+                std::snprintf(buf, sizeof(buf), " window=%dx%d picture=%dx%d cursor=", g_windowW.load(std::memory_order_relaxed),
+                              g_windowH.load(std::memory_order_relaxed), static_cast<int>(kPictureWidth), static_cast<int>(kPictureHeight));
                 s += buf;
                 if (on)
                     std::snprintf(buf, sizeof(buf), "%.1f,%.1f", cx, cy);
                 s += on ? buf : "-";
                 // the items of the page shown and of the tab bar: name:x0,y0,x1,y1[:i interactive][:v level/steps]
-                // [:m pan x, pan y] ("menumouse" takes the same 640x448 coordinates)
+                // [:m pan x, pan y] ("menumouse" takes the same picture coordinates)
                 s += " items=";
                 for (uint32_t page : {m.shown, m.root})
                     for (uint32_t item : pointers(page + 0x2C))
@@ -960,14 +987,15 @@ namespace vcs::frontend
         {
             // The menu is shown at 4:3 in the game's frame (vcs_hud.cpp anchors it in the middle; the presenter's
             // fitRect: a 4:3 frame fills it, a wide one has the menu squeezed into its middle 4:3), and its 640x448
-            // drawing fills that area - the items' boxes are in the same coordinates. (A shrink to 480x360 here once
-            // was the frame's own letterbox counted twice: the hit areas sat towards the middle of the screen.)
+            // drawing (640x512 on the European disc, stretched to the same 4:3 area) fills that area - the items' boxes
+            // are in the same coordinates. (A shrink to 480x360 here once was the frame's own letterbox counted twice:
+            // the hit areas sat towards the middle of the screen.)
             float x0 = 0.0f, y0 = 0.0f, fw = 0.0f, fh = 0.0f;
             present::fitRect(4.0f / 3.0f, present::displayAspect(true), static_cast<float>(w), static_cast<float>(h), x0, y0, fw, fh);
             if (fw > 0.0f && fh > 0.0f)
             {
-                g_cursorX.store((mx - x0) / fw * 640.0f, std::memory_order_relaxed);
-                g_cursorY.store((my - y0) / fh * 448.0f, std::memory_order_relaxed);
+                g_cursorX.store((mx - x0) / fw * kPictureWidth, std::memory_order_relaxed);
+                g_cursorY.store((my - y0) / fh * kPictureHeight, std::memory_order_relaxed);
             }
             else
                 over = false;
@@ -1046,8 +1074,9 @@ namespace vcs::frontend
             reply("ok " + g_state);
         });
         // menumouse <x> <y> | menumouse window <x> <y> | menumouse off -> ok: the cursor set from here (hidden test
-        // runs): over the 640x448 picture, or in the window's pixels (the real cursor's mapping, at the next host
-        // frame). The buttons and the wheel are keys: "key mouseleft down", "press wheelup".
+        // runs): over the game's 2D picture (menustate's picture=; 640x448 US, 640x512 European), or in the window's
+        // pixels (the real cursor's mapping, at the next host frame). The buttons and the wheel are keys: "key mouseleft
+        // down", "press wheelup".
         ps2control::addCommand("menumouse", [](const std::string &args, ps2control::Reply reply) {
             float x = 0.0f, y = 0.0f;
             if (args == "off")

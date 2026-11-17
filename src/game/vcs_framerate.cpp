@@ -22,6 +22,7 @@
 #include "game/vcs_prompts.h"
 #include "game/vcs_display.h"
 #include "game/vcs_hud.h"
+#include "game/vcs_frontend.h"
 #include "game/vcs_volume.h"
 #include "game/vcs_trainer.h"
 #include "debug/rig.h"
@@ -115,6 +116,7 @@ namespace vcs
             ps2perf::markGameFrame();
             applyDisplay(rdram);
             onFrameKick();
+            frontend::onFrameKick(); // the pause menu's drawing is over (game/vcs_frontend.h)
             world::onGameFrame(rdram);
             volume::onGameFrame(rdram);
             prompts::onFrameKick(rdram);

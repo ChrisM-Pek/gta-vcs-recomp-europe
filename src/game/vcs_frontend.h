@@ -12,15 +12,16 @@ class PS2Runtime;
 
 namespace vcs::frontend
 {
-    // At start-up (applyVcs, after installHudHooks: the Im2D hooks chain onto the HUD's): the menu draw, its pages'
+    // At start-up (applyVcs on the US disc, main.cpp's PAL branch on the European one; after installHudHooks, before
+    // the prompts' install: the Im2D hooks chain onto the HUD's, the prompts' onto theirs): the menu draw, its pages'
     // and items' draws (to know where each item is on screen), the control-channel commands menustate / menumouse.
     // VCS_MENU_MOUSE=0 leaves the menu to the pad (Enter / Escape still select / go back).
     void install(PS2Runtime &runtime);
 
     bool open(); // the pause menu (or the save menu) is up; any thread
 
-    // Main thread, once per host frame: where the cursor is over the menu's 640x448 picture (the 4:3 area the menu is
-    // shown in, game/vcs_hud.cpp keeps it there in widescreen).
+    // Main thread, once per host frame: where the cursor is over the menu's 2D picture (640x448 on the US disc,
+    // 640x512 on the European one) - the 4:3 area the menu is shown in, game/vcs_hud.cpp keeps it there in widescreen.
     void onHostFrame();
 
     // Game thread, at each pad read. `user`: the buttons the bindings and the gamepad press, and whether a stick is

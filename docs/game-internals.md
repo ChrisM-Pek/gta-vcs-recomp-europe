@@ -1654,6 +1654,11 @@ through the rig (`peek`, the item lists below dumped page by page) and `tools/ee
   D-pad's scroll. **The D-pad scrolls the offset only while |offset - (240, 114)| <= zoom - 100** (measured at the
   smallest zoom, 392 and 576: x -236.6..715.9 and y -362.6..589.9 at 576); written past that, the map's tiles are drawn
   wrong (the 3D world shows through). Cross toggles the legend, Square the target (the crosshair).
+- **The European disc** (SLES_546.22; 2026-11-17, section 14): the same structures and layout, its game data 0x300 above
+  the US one (the manager 0x729780, the tables/actions unchanged), but **its picture is 640x512** (the backdrop is drawn
+  0, 0 - 640, 512 and the units scale x 4/3, y 512/272), and its slider's step count at +0xE8 is the low **byte** of a
+  word whose upper bytes hold a pointer (the US one reads as the word 8). `src/game/vcs_frontend.cpp` carries the PAL
+  addresses and the picture's height.
 
 ### 6n. Button prompts: control tokens, the font's button glyphs, the menu's button pictures (2026-11-07)
 
@@ -3291,3 +3296,37 @@ one. A hidden PAL run at 60 fps (independent timing) logged `[music-timing] stat
 step`, `[effects] 78.1 frames/s, 29.9 PS2 frames/s ... glare rolls 29.9 shake rolls 29.9` and particle call sites marked
 `*` (throttled) at their PAL return addresses: the mapped sites are the ones the game really calls. Playing the
 missions through (Purple Haze, Hose the Hoes, Snitch Hitch, Kill Phil) on the European disc is still to do.
+
+PAL pause menu (2026-11-17): the game's pause menu with Enter / Escape and the mouse (section 6m,
+`src/game/vcs_frontend.cpp`) was installed only by `applyVcs`, which is registered for SLUS_215.90 - so the European
+build had none of it (no keyboard mapping, no item boxes, no mouse). Its addresses:
+
+- **The manager** is 0x729780: the PAL twin of the US `FUN_00471400` is `FUN_00471740`, whose `lui 0x73; addiu -0x6880`
+  (and the returned pointer) forms it, and whose `lui 0x4d; lw -0x2550` reads the "made" flag at 0x4CDAB0 (US
+  0x4CD7B0). `CTimer::m_FrameCounter` is 0x4CD424 (US 0x4CD124, +0x300). The manager's fields are the US ones: +0 the
+  tab bar's page ("MASTER"), +4 / +8 the pages vector (29 pages), +0x24 the page shown (0 = MAP_PAGE), +0x28 the tab
+  bar's focus, +0x40 non-zero while it is up.
+- **The item class vtables** are data + 0x300: Background 0x490110 (US 0x48FE10; the button prompts' image item, the
+  same class), Map 0x4908E8, Slider 0x490980, ScrollList 0x48FCA8; the choice class is 0x490D58. Each was found as a
+  `lui` + `addiu` reference to the US address re-read in a matched PAL function (`build/analysis/pal_translate.py`), and
+  each vtable's +0x14 / +0x2C / +0x3C slots point to PAL function entries.
+- **The code**: the menu's draw 0x3B56D0 (US 0x3B53F8; the HUD's hooks use it too), a page's draw 0x3CE220 (US
+  0x3CDF20), Im2D's render 0x2FBFE8 / 0x2FC048, the glyph batch's return address 0x3E0124, and the after-items functions
+  {0x3E0E10, 0x3E0F18, 0x108640, 0x2AF2E0, 0x287028}. 0x2AF108 (a `jr ra; lw v0, 0x10(a0)` getter, 8 bytes) has no
+  candidate twin: all 11 of its call sites in matched functions `jal` 0x2AF2E0 instead, which is the PAL function.
+- **The picture is 640x512, not 448**: the pages' backdrop (an item with the 480x272 rect) is drawn 0,0 - 640,512, and
+  the items' rects scale x 4/3, y 512/272 (MapTitle's rect 20,10,150,40 is drawn 26,18 - 107,90; the tab rows sit at
+  y 427..459 and 466..498, i.e. the layout is stretched to the 512-line frame). The presenter shows the frame in the same
+ 4:3 area, so the cursor maps onto 640x512.
+- **Sliders**: the step count is the low **byte** at +0xE8 - the slider's draw (`FUN_002ab718`) `lbu 0xE8` and its
+  helper `FUN_002abb38` loops that many bars; the European object follows it with a pointer's bytes, so a whole word
+  there is not 8 (Music / SFX / Brightness: 0x01D26308 / 0x01D26208 / 0x01D25E08 - all 8 steps; the US object's word is
+  8). The value is the float at +0xDC in both builds. **Choices**: the option at +0xDC (16 bytes an entry), the current
+  index the byte at +0xED and the count at +0xEC - the choice text draw `FUN_002f0d00` does `lbu 0xED` - so the US `:c`
+  byte read holds on PAL too. **The map**: +0xE4 / +0xE8 the offset, +0xF0 zoom 110 and +0x104 minimum 100 when it opens
+  (the US numbers).
+- **Installed** from `main.cpp`'s PAL branch, after `installHudHooks` and before `prompts::install` (the draw hooks chain
+  onto the HUD's, the prompts onto both), and the PAL frame kick (0x272578, `vcs_framerate.cpp`'s `frameKick`) calls
+  `frontend::onFrameKick` before the prompts'. `tools/menu_check.py`: 33 checks, 0 failed on the European disc (the
+  Display page adds a `language_MI` row: the check now follows the page's own rows instead of the US list, and reads
+  the picture's size from `menustate`'s `picture=`).

@@ -1608,3 +1608,27 @@ takes a zip given by hand). Choices:
   start it, and `publish` runs because the ref is the tag's. The workflow builds the Windows zip, the AppImage and,
   since upstream's port came in, a macOS dmg. The European disc has not been tried on a Mac, so the dmg was removed
   from this release: the fork ships Windows and Linux.
+
+## 2026-11-17 - The fork's releases bump the patch number (the user's change)
+
+- **The user wants `0.3.1-europe`, not a fourth segment** (`0.3.0-europe.2`): a fork-only release raises the patch
+  number, as `0.2.5-europe` ... `0.2.10-europe` did. This supersedes the 2026-11-14 entry's fourth segment for the
+  fork's own releases.
+- The tradeoff stays: when upstream releases 0.3.1 and the fork merges it, `0.3.1-europe` is already taken, so that
+  merge's release takes the next free number (0.3.2-europe) rather than upstream's exact number.
+- `tools/update.py`'s `version_key` reads every number, so `0.3.1-europe` sorts after `0.3.0-europe`.
+
+## 2026-11-17 - The fork's releases: Windows and Linux only, from a dispatch run
+
+- **No Mac release** (the user's choice; the European disc hasn't been tried on a Mac). The source keeps upstream's
+  macOS support.
+- Upstream's workflow has a macOS job and `publish` needs all three platforms, so a tag-triggered run would build and
+  publish the dmg. A release runs `gh workflow run launcher.yml --ref vX -f platforms=windows,linux`: the Windows and
+  Linux jobs make and self-test their release files as artifacts, macOS is skipped, and `publish` (needing macOS) is
+  skipped too.
+- **The release is created from those artifacts by hand**: `gh run download <run> -D dist`, then `gh release create vX`
+  with the Windows zip, the AppImage and their `.sha256` files, `--title "GTA Vice City Stories Launcher vX"` and
+  `--notes-file docs/releases/vX.md`. `0.3.1-europe` was made this way.
+- A tag pushed on its own still starts nothing; the dispatch on the tag's ref is what runs it.
+- What would change it: trying the European build on a Mac, after which the dmg can be added (a tag-triggered run would
+  then publish everything by itself).

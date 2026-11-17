@@ -1,5 +1,16 @@
 # Progress
 
+## 0.3.1-europe released (2026-11-17)
+
+- The fork's release after 0.3.0-europe: the game's pause menu with the keyboard and the mouse on the European disc,
+  aim and fire from the driver's seat, the mouse wheel cycling weapons while driving, and the 25 FPS frame rate cap
+  with its steady pacing. The notes are `docs/releases/v0.3.1-europe.md`.
+- Windows and Linux only: a `workflow_dispatch` run on the tag with `platforms=windows,linux` made the Windows zip and
+  the Linux AppImage (and their `.sha256`), and the release was created from those artifacts - no macOS dmg
+  (DECISIONS.md 2026-11-17).
+- The version bumps the fork's patch number (`0.3.1-europe`), not upstream's number with a fourth segment
+  (DECISIONS.md 2026-11-17, the user's choice).
+
 ## The pause menu on the European disc (2026-11-17)
 
 - The game's pause menu with the keyboard and the mouse had never been installed on the European build: `vcs_frontend`
